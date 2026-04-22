@@ -90,4 +90,4 @@ zero_frequency_window_days = 90
 db_path = "~/.cache/writ/origin_context.db"
 
 [enforcement]
-methodology_absorb.enabled = false
+methodology_absorb.enabled = true
