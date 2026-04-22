@@ -36,7 +36,8 @@
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-pressure-audit.sh)",
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-quality-judge.sh)",
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/validate-test-file.sh)",
-      "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/validate-design-doc.sh)"
+      "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/validate-design-doc.sh)",
+      "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-memory-policy-guard.sh)"
     ],
     "deny": [
       "Bash(touch */.claude/gates/*)",
@@ -286,6 +287,15 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/skills/writ/.claude/hooks/validate-design-doc.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-memory-policy-guard.sh"
           }
         ]
       }
