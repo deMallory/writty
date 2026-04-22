@@ -29,13 +29,39 @@ def analyze_friction(
     since: int = typer.Option(0, help="Only include events from the last N days (0 = all)."),
     top: int = typer.Option(10, help="Cap top-N rankings."),
     rotate: bool = typer.Option(False, help="Rotate log to .1 if it exceeds 5MB, then exit."),
+    json_output: bool = typer.Option(False, "--json", help="Emit {by_rule, by_event, total} as JSON."),
+    rule: str | None = typer.Option(None, "--rule", help="Filter events to a single rule_id."),
 ) -> None:
     """Summarize workflow-friction.log: event counts, hook p95s, top rules, gate activity."""
-    from writ.analysis.friction import load_events, summarize, format_report, rotate_if_needed
+    from writ.analysis.friction import (
+        load_events, summarize, format_report, rotate_if_needed,
+        parse_log, aggregate_by_rule, aggregate_by_event,
+    )
 
     if rotate:
         rotated = rotate_if_needed(log)
         typer.echo(f"{'rotated' if rotated else 'no rotation needed'}: {log}")
+        return
+
+    # Phase 4 path: Pydantic-validated events with --json / --rule filters.
+    if json_output or rule:
+        events = parse_log(log)
+        if rule:
+            events = [e for e in events if e.rule_id == rule]
+        payload = {
+            "by_rule": aggregate_by_rule(events),
+            "by_event": aggregate_by_event(events),
+            "total": len(events),
+        }
+        if json_output:
+            typer.echo(json.dumps(payload))
+        else:
+            # Rule-filtered text output: show per-rule count + events involved.
+            typer.echo(f"Events matching rule={rule}: {payload['total']}")
+            for rid, n in payload["by_rule"].items():
+                typer.echo(f"  {rid}: {n}")
+            for evt, n in payload["by_event"].items():
+                typer.echo(f"  event={evt}: {n}")
         return
 
     events = load_events(log)
