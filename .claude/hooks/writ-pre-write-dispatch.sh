@@ -11,6 +11,12 @@
 # Hook type: PreToolUse (matcher: Write|Edit)
 # Exit: always 0
 
+# PSR-003c follow-up: capture any stderr (Python tracebacks etc.) to a
+# debug log so the next time a hook traceback shows in the Claude Code
+# UI we can read the actual exception. tee preserves stderr propagation
+# so behavior is unchanged.
+exec 2> >(tee -a /tmp/writ-hook-debug.log >&2)
+
 SKILL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 SESSION_HELPER="$SKILL_DIR/bin/lib/writ-session.py"
 source "$SKILL_DIR/bin/lib/common.sh"

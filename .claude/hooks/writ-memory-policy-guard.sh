@@ -102,8 +102,14 @@ if [ -z "$MATCHED" ]; then
     exit 0
 fi
 
-# Friction log: memory_policy_deny event.
-PROJECT_ROOT=$(python3 <<PY
+# Friction log: memory_policy_deny event. Hardening (PSR-003c follow-up):
+# - Pipe matched-JSON through stdin instead of heredoc interpolation
+#   (single quotes, triple quotes, backslashes in regex matches no longer
+#   break Python parsing).
+# - Always-on fallback log at /tmp/writ-memory-policy-guard.log so the
+#   audit trail is never silent when a project root cannot be discovered.
+# - Surface emission failures to stderr instead of `|| true` swallowing.
+PROJECT_ROOT=$(python3 <<'PY'
 import os
 markers = ['composer.json','package.json','Cargo.toml','go.mod','pyproject.toml','.git']
 path = os.getcwd()
@@ -113,21 +119,48 @@ while path != '/':
     path = os.path.dirname(path)
 PY
 )
-if [ -n "$PROJECT_ROOT" ]; then
-    SESSION_ID=$(detect_session_id "$PARSED" 2>/dev/null || echo "unknown")
-    python3 <<PY 2>/dev/null || true
-import json
+SESSION_ID=$(detect_session_id "$PARSED" 2>/dev/null || echo "unknown")
+FALLBACK_LOG="/tmp/writ-memory-policy-guard.log"
+EMIT_ERR=$(SESSION_ID="$SESSION_ID" \
+    FILE_PATH="$FILE_PATH" \
+    PROJECT_ROOT="$PROJECT_ROOT" \
+    FALLBACK_LOG="$FALLBACK_LOG" \
+    MATCHED_RAW="$MATCHED" \
+    python3 <<'PY' 2>&1 1>/dev/null
+import json, os, sys
+matched_raw = os.environ.get("MATCHED_RAW", "").strip()
+try:
+    matched = json.loads(matched_raw) if matched_raw else []
+except json.JSONDecodeError:
+    matched = [matched_raw[:80]]
 from datetime import datetime, timezone
 entry = json.dumps({
     "ts": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-    "session": "$SESSION_ID",
+    "session": os.environ.get("SESSION_ID", "unknown"),
     "event": "memory_policy_deny",
-    "file_path": "$FILE_PATH",
-    "matched_patterns": json.loads('''$MATCHED'''),
-})
-with open("$PROJECT_ROOT/workflow-friction.log", "a") as f:
-    f.write(entry + "\n")
+    "file_path": os.environ.get("FILE_PATH", ""),
+    "matched_patterns": matched,
+}) + "\n"
+project_root = os.environ.get("PROJECT_ROOT", "").strip()
+fallback_log = os.environ.get("FALLBACK_LOG", "/tmp/writ-memory-policy-guard.log")
+wrote = False
+if project_root:
+    try:
+        with open(os.path.join(project_root, "workflow-friction.log"), "a") as f:
+            f.write(entry)
+        wrote = True
+    except OSError as e:
+        print(f"writ-memory-policy-guard: project log write failed: {e}", file=sys.stderr)
+if not wrote:
+    try:
+        with open(fallback_log, "a") as f:
+            f.write(entry)
+    except OSError as e:
+        print(f"writ-memory-policy-guard: fallback log write failed: {e}", file=sys.stderr)
 PY
+)
+if [ -n "$EMIT_ERR" ]; then
+    printf '%s\n' "$EMIT_ERR" >&2
 fi
 
 # Emit deny directive. The assistant should either (a) revise the memory
