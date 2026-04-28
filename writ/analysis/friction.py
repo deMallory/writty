@@ -3,6 +3,10 @@
 Reads the JSONL workflow-friction.log that Writ hooks write to, produces
 a human-readable summary, and rotates the log when it grows too large.
 Exposed via the `writ analyze-friction` CLI subcommand.
+
+Phase 4 additions: FrictionEvent Pydantic model + parse_log + per-rule and
+per-event aggregators. Used to turn pressure-run log deltas into structured
+compliance reports.
 """
 
 from __future__ import annotations
@@ -14,7 +18,73 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-__all__ = ["load_events", "summarize", "rotate_if_needed", "format_report"]
+from pydantic import BaseModel, ConfigDict
+
+__all__ = [
+    "load_events", "summarize", "rotate_if_needed", "format_report",
+    "FrictionEvent", "parse_log", "aggregate_by_rule", "aggregate_by_event",
+]
+
+
+class FrictionEvent(BaseModel):
+    """One JSONL row from workflow-friction.log.
+
+    Extra fields (rule_id, gate, matched_prompt, etc.) are preserved via
+    model_config.extra so callers can inspect without hard-coding every
+    hook's emit schema.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    ts: str
+    session: str
+    event: str
+    mode: str | None = None
+    rule_id: str | None = None
+    gate: str | None = None
+
+
+def parse_log(path: Path) -> list[FrictionEvent]:
+    """Parse JSONL log into validated FrictionEvent models.
+
+    Malformed lines are skipped. Missing file returns []. Use this when
+    the caller wants typed access; use load_events for raw dicts.
+    """
+    if not path.exists():
+        return []
+    events: list[FrictionEvent] = []
+    with path.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            try:
+                events.append(FrictionEvent.model_validate(row))
+            except Exception:
+                # Row with unexpected shape -- skip, not fatal.
+                continue
+    return events
+
+
+def aggregate_by_rule(events: list[FrictionEvent]) -> dict[str, int]:
+    """Count events per rule_id. Events without rule_id are ignored."""
+    counts: Counter[str] = Counter()
+    for e in events:
+        if e.rule_id:
+            counts[e.rule_id] += 1
+    return dict(counts)
+
+
+def aggregate_by_event(events: list[FrictionEvent]) -> dict[str, int]:
+    """Count events per event-name."""
+    counts: Counter[str] = Counter()
+    for e in events:
+        counts[e.event] += 1
+    return dict(counts)
 
 DEFAULT_ROTATION_THRESHOLD_BYTES = 5 * 1024 * 1024  # 5MB
 
@@ -93,6 +163,13 @@ def summarize(
         elif evt == "rag_query":
             for rid in e.get("rule_ids", []):
                 rule_hits[rid] += 1
+
+        # Any event carrying a single rule_id (gate_deny, rule_injection,
+        # authoring events) contributes to top_rules so the default text
+        # report surfaces which rules were involved in the log delta.
+        single_rid = e.get("rule_id")
+        if single_rid and evt != "rag_query":
+            rule_hits[single_rid] += 1
         elif evt == "pre_write_decision":
             decision = e.get("decision", "unknown")
             pre_write_decisions[decision] += 1

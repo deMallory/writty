@@ -1,4 +1,4 @@
-# Global -- Claude Code Instructions
+# Global Claude Code Instructions
 
 Loaded in every session, every project.
 
@@ -11,7 +11,7 @@ Loaded in every session, every project.
 | Tier | Location | Use for |
 |---|---|---|
 | Global | This file + `~/.claude/memory/` | Cross-project facts, preferences, corrections |
-| Skill | Committed files in `~/.claude/skills/` | Domain knowledge -- versioned rulebooks, not memory files |
+| Skill | Committed files in `~/.claude/skills/` | Domain knowledge: versioned rulebooks, not memory files |
 | Project | `~/.claude/projects/{encoded}/memory/MEMORY.md` | Project-specific context only |
 
 When something is learned that should persist:
@@ -21,7 +21,7 @@ When something is learned that should persist:
 
 ---
 
-## Mandatory workflow -- before any task
+## Mandatory workflow before any task
 
 Rules are injected automatically by hooks. Your job is to follow the workflow.
 
@@ -76,7 +76,7 @@ instructions, follow those. They override the generic workflow above.
 ## Global preferences
 
 - No emojis unless explicitly requested
-- No em dashes. Use standard punctuation: hyphens (-), double hyphens (--), commas, colons, or semicolons.
+- No em dashes and no double hyphens (`--`) used as em-dash substitutes. Use standard punctuation: hyphens (-) only when joining words, plus commas, colons, semicolons, or parentheses for clause breaks.
 - Confirm before: pushing to remote, deleting files/branches, force-pushing, amending published commits
-- Short, direct responses -- lead with the answer, not the reasoning
+- Short, direct responses; lead with the answer, not the reasoning
 - Do not add comments, error handling, or abstractions beyond what was asked
