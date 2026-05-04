@@ -17,7 +17,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tests.fixtures.methodology_loader import (
+# onnxruntime is the embedding backend used by these benchmark tests.
+# It is not a hard repo dependency (Phase 0 benchmark only); skip the
+# whole module when absent rather than erroring at collection time.
+pytest.importorskip("onnxruntime")
+
+from tests.fixtures.methodology_loader import (  # noqa: E402
     MethodologyIndex,
     MethodologyNode,
     build_adjacency,
@@ -25,7 +30,7 @@ from tests.fixtures.methodology_loader import (
     load_corpus,
     load_ground_truth,
 )
-from writ.retrieval.embeddings import CachedEncoder, OnnxEmbeddingModel
+from writ.retrieval.embeddings import CachedEncoder, OnnxEmbeddingModel  # noqa: E402
 
 BLOCKER_MRR = 0.78
 BLOCKER_HIT_RATE = 0.90

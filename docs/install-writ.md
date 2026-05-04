@@ -66,6 +66,22 @@ Settings sync is destructive (overwrites). Commands install is
 idempotent. If you have local `~/.claude/settings.json` customizations,
 back up before sync.
 
+## 3. Restart the writ daemon (when server.py changes)
+
+When `writ/server.py` changes (new endpoints, modified routes), the
+running uvicorn process keeps serving the old module until restarted.
+PSR-005 caught a `/dashboard` 404 traced to exactly this: the route
+was wired in code but the daemon predated the change.
+
+```bash
+pkill -f "writ.*serve" || true
+nohup writ serve > /tmp/writ-server.log 2>&1 &
+```
+
+Verify with `curl -sf http://localhost:8765/health`. Restart is only
+required when `server.py` (or any FastAPI route module it imports)
+changes; routine ingest, query, or hook updates do not need it.
+
 ## Known limitations
 
 - The settings sync replaces your active `~/.claude/settings.json`

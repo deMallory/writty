@@ -8,6 +8,7 @@ Per PY-PYDANTIC-001: request/response bodies validated through Pydantic models.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.util
 import os
 import sys
@@ -17,10 +18,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from writ.analysis import AnalyzeRequest, AnalyzeResponse
 from writ.analysis.analyzer import run_analysis
+from writ.analysis.friction import log_friction_event
 from writ.analysis.instrumentation import Instrumentation
 from writ.analysis.llm import LlmAnalyzer
 from writ.config import get_neo4j_uri, get_neo4j_user, get_neo4j_password
@@ -672,25 +675,67 @@ async def session_active_playbook_get(session_id: str) -> dict[str, Any]:
 
 @app.post("/session/{session_id}/active-playbook")
 async def session_active_playbook_set(session_id: str, body: dict) -> dict[str, Any]:
-    """Set active playbook and phase. body: {playbook_id, phase_id}.
+    """Set active playbook and phase. body: {playbook_id, phase_id, total_steps?}.
 
     Appends the prior (playbook, phase) pair to history for audit trail.
+    Also emits a `playbook_step_complete` friction event so the Phase 5
+    `--playbook-compliance` analyzer can score in-order vs skip-step
+    sessions.
     """
 
     def _set() -> dict[str, Any]:
         cache = writ_session._read_cache(session_id)
         prev = (cache.get("active_playbook"), cache.get("active_phase"))
+        history = list(cache.get("playbook_phase_history", []))
         if prev[0] is not None:
-            history = list(cache.get("playbook_phase_history", []))
             history.append({"playbook": prev[0], "phase": prev[1],
                             "ts": datetime.now().isoformat()})
             cache["playbook_phase_history"] = history
         cache["active_playbook"] = body.get("playbook_id")
         cache["active_phase"] = body.get("phase_id")
         writ_session._write_cache(session_id, cache)
-        return {"ok": True, "active_playbook": cache["active_playbook"], "active_phase": cache["active_phase"]}
+        return {
+            "ok": True,
+            "active_playbook": cache["active_playbook"],
+            "active_phase": cache["active_phase"],
+            "_history_at_advance": history,
+            "_prev_ts": history[-1]["ts"] if history else None,
+            "_total_steps": body.get("total_steps"),
+        }
 
-    return await asyncio.to_thread(_set)
+    result = await asyncio.to_thread(_set)
+
+    # Phase 5 instrumentation: emit playbook_step_complete event.
+    pb = result.get("active_playbook")
+    step = result.get("active_phase")
+    if pb and step:
+        history = result.get("_history_at_advance") or []
+        step_index = len(history)
+        prev_ts = result.get("_prev_ts")
+        elapsed_ms: int | None = None
+        if prev_ts:
+            try:
+                prev_dt = datetime.fromisoformat(prev_ts)
+                elapsed_ms = max(0, int((datetime.now() - prev_dt).total_seconds() * 1000))
+            except ValueError:
+                elapsed_ms = None
+        total = result.get("_total_steps")
+        log_friction_event(
+            session_id=session_id,
+            mode=None,
+            event="playbook_step_complete",
+            playbook_id=pb,
+            step_id=step,
+            step_index=step_index,
+            total_steps=total,
+            elapsed_ms_since_prev_step=elapsed_ms,
+        )
+
+    return {
+        "ok": True,
+        "active_playbook": result["active_playbook"],
+        "active_phase": result["active_phase"],
+    }
 
 
 @app.post("/session/{session_id}/verification-evidence")
@@ -739,8 +784,14 @@ async def session_quality_judgment_set(session_id: str, body: dict) -> dict[str,
     """Record a Gate 5 Tier 2 (Haiku judge) quality score for an artifact.
 
     body: {artifact_path: str, score: int (0-5), failing_section: str|None,
-           rationale: str, overridden: bool}
+           rationale: str, overridden: bool, rubric: str|None}
+
+    Also emits a `quality_judgment` friction event so the Phase 5
+    `--quality-judge-false-positives` analyzer can compute per-rubric
+    override rates.
     """
+    import time as _time
+    start_perf = _time.perf_counter()
 
     def _set() -> dict[str, Any]:
         cache = writ_session._read_cache(session_id)
@@ -754,6 +805,7 @@ async def session_quality_judgment_set(session_id: str, body: dict) -> dict[str,
             "failing_section": body.get("failing_section"),
             "rationale": body.get("rationale", ""),
             "overridden": bool(body.get("overridden", False)),
+            "rubric": body.get("rubric"),
             "recorded_at": datetime.now().isoformat(),
         }
         cache["quality_judgment_state"] = judgments
@@ -763,9 +815,42 @@ async def session_quality_judgment_set(session_id: str, body: dict) -> dict[str,
         return {
             "ok": True, "artifact_path": path, "score": score,
             "override_count": cache.get("quality_override_count", 0),
+            "_mode": cache.get("mode"),
         }
 
-    return await asyncio.to_thread(_set)
+    result = await asyncio.to_thread(_set)
+    if result.get("ok"):
+        score = int(body.get("score", 0))
+        decision = "pass" if score >= 3 else "fail"
+        path = body.get("artifact_path") or ""
+        judgment_id = hashlib.md5(
+            f"{path}:{datetime.now().isoformat()}".encode()
+        ).hexdigest()[:12]
+        # latency_ms records the time the judgment took to produce. Callers
+        # whose judge ran out-of-process (Haiku, etc.) should pass their
+        # measured value via body["latency_ms"]. When absent we fall back
+        # to the recording-side latency (server-side cache write only --
+        # not inference time, but a non-zero placeholder useful for
+        # detecting endpoint-write regressions).
+        body_latency = body.get("latency_ms")
+        if isinstance(body_latency, (int, float)) and body_latency >= 0:
+            latency_ms = int(body_latency)
+        else:
+            latency_ms = max(0, int((_time.perf_counter() - start_perf) * 1000))
+        log_friction_event(
+            session_id=session_id,
+            mode=result.get("_mode"),
+            event="quality_judgment",
+            judgment_id=judgment_id,
+            rubric=body.get("rubric") or "default",
+            decision=decision,
+            override=bool(body.get("overridden", False)),
+            latency_ms=latency_ms,
+            score=score,
+            failing_section=body.get("failing_section"),
+        )
+    # Strip private fields before returning to caller.
+    return {k: v for k, v in result.items() if not k.startswith("_")}
 
 
 @app.get("/session/{session_id}/quality-judgment")
@@ -1014,3 +1099,24 @@ async def pre_write_check(request: PreWriteCheckRequest) -> dict[str, Any]:
 
     result = await asyncio.to_thread(_check)
     return result
+
+
+# --- Phase 5: dashboard --------------------------------------------------------
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard() -> HTMLResponse:
+    """Server-rendered HTML dashboard. No JS framework, auto-refreshes via meta.
+
+    Calls the analyzer functions directly (ARCH-SSOT-001). Reads the
+    friction log path from WRIT_FRICTION_LOG or falls back to
+    ./workflow-friction.log. Empty / missing log renders a placeholder
+    body without throwing.
+    """
+    from writ.dashboard import render_dashboard
+
+    def _render() -> str:
+        return render_dashboard()
+
+    html = await asyncio.to_thread(_render)
+    return HTMLResponse(content=html, status_code=200)

@@ -43,3 +43,43 @@ CONFLICTS_WITH edges require human resolution. When two rules conflict:
 - The PR should include the `writ add` or `writ edit` terminal output showing validation results, suggestions, and any warnings.
 - The reviewer verifies that relationship decisions are reasonable and that redundancy/conflict warnings were addressed.
 - Domain-specific rules should be reviewed by someone familiar with that domain.
+
+## Monthly review (Phase 5)
+
+Run on the first Monday of each month. Goal: turn the friction log
+into actionable graduation, trim, and rubric-refinement decisions.
+
+### Cadence
+
+1. Capture the month's signal:
+
+   ```bash
+   writ analyze-friction --rule-effectiveness --since 30 --json > review-$(date +%Y-%m).json
+   writ analyze-friction --skill-usage --since 60
+   writ analyze-friction --playbook-compliance --since 30
+   writ analyze-friction --graduation-candidates
+   writ analyze-friction --trim-candidates --since 90
+   writ analyze-friction --quality-judge-false-positives --since 30
+   ```
+
+2. Triage rule effectiveness:
+   - Stick rate < 50%: trigger too broad, rationalization unaddressed, or rule wrong. File an issue or revise the rule.
+   - Stick rate ≥ 85% with low rationalization: graduation candidate (Step 4).
+
+3. Process trim candidates:
+   - Rules with < 5 activations in 90 days and 0 denials: deprecate or consolidate.
+   - Skills with < 2 loads in 60 days: deprecate.
+   - Document the rationale on the issue.
+
+4. Process graduation candidates:
+   - Promote eligible rules to canonical tier in the graph.
+   - Update authority / confidence fields via `writ edit`.
+
+5. Refine quality-judge rubrics:
+   - Override rate > 25% on any rubric: the rubric is a false-positive generator. Edit the rubric prose in `.claude/hooks/writ-quality-judge.sh`.
+
+6. File the review notes in `docs/monthly-reviews/YYYY-MM.md` (copy from `TEMPLATE.md`).
+
+### Why monthly
+
+Friction signal is noisy at the per-session level. A 30 / 60 / 90-day rolling window smooths over PSR runs, one-off pressure tests, and individual exploratory sessions. Acting on a week of data tunes against noise; acting on a month of data tunes against signal.

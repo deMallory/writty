@@ -29,18 +29,94 @@ def analyze_friction(
     since: int = typer.Option(0, help="Only include events from the last N days (0 = all)."),
     top: int = typer.Option(10, help="Cap top-N rankings."),
     rotate: bool = typer.Option(False, help="Rotate log to .1 if it exceeds 5MB, then exit."),
-    json_output: bool = typer.Option(False, "--json", help="Emit {by_rule, by_event, total} as JSON."),
+    json_output: bool = typer.Option(False, "--json", help="Emit structured JSON instead of text."),
     rule: str | None = typer.Option(None, "--rule", help="Filter events to a single rule_id."),
+    rule_effectiveness: bool = typer.Option(False, "--rule-effectiveness", help="Per-rule denial-stick-rate (Phase 5)."),
+    skill_usage: bool = typer.Option(False, "--skill-usage", help="Skill loads vs playbook completion (Phase 5)."),
+    playbook_compliance: bool = typer.Option(False, "--playbook-compliance", help="Per-playbook in-order compliance (Phase 5)."),
+    graduation_candidates: bool = typer.Option(False, "--graduation-candidates", help="Rules ready to graduate (Phase 5)."),
+    trim_candidates: bool = typer.Option(False, "--trim-candidates", help="Rules / skills with low activation (Phase 5)."),
+    quality_judge_false_positives: bool = typer.Option(False, "--quality-judge-false-positives", help="Per-rubric override rates (Phase 5)."),
 ) -> None:
-    """Summarize workflow-friction.log: event counts, hook p95s, top rules, gate activity."""
+    """Summarize workflow-friction.log: event counts, hook p95s, top rules, gate activity.
+
+    Phase 5 flags select a single analyzer and emit a focused report. They
+    are mutually exclusive with each other and with the default summary.
+    """
     from writ.analysis.friction import (
         load_events, summarize, format_report, rotate_if_needed,
         parse_log, aggregate_by_rule, aggregate_by_event,
+        analyze_rule_effectiveness, analyze_skill_usage,
+        analyze_playbook_compliance, analyze_graduation_candidates,
+        analyze_trim_candidates, analyze_quality_judge_false_positives,
     )
 
     if rotate:
         rotated = rotate_if_needed(log)
         typer.echo(f"{'rotated' if rotated else 'no rotation needed'}: {log}")
+        return
+
+    # Phase 5: mutual exclusion of analyzer flags.
+    phase5_flags = {
+        "--rule-effectiveness": rule_effectiveness,
+        "--skill-usage": skill_usage,
+        "--playbook-compliance": playbook_compliance,
+        "--graduation-candidates": graduation_candidates,
+        "--trim-candidates": trim_candidates,
+        "--quality-judge-false-positives": quality_judge_false_positives,
+    }
+    active = [name for name, on in phase5_flags.items() if on]
+    if len(active) > 1:
+        typer.echo(
+            f"Error: flags {', '.join(active)} are mutually exclusive. Use one at a time.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    # Phase 5 dispatch.
+    if active:
+        flag = active[0]
+        events = parse_log(log)
+        since_days = since if since > 0 else 0
+        rows: list = []
+        if flag == "--rule-effectiveness":
+            rows = analyze_rule_effectiveness(events, since_days=since_days or 30, top=top)
+            headers = ["rule_id", "activations", "stuck", "stick_rate", "rationalizations"]
+            cells = [[r.rule_id, r.activations, r.stuck_denials,
+                      f"{r.denial_stick_rate:.2f}", r.rationalizations] for r in rows]
+        elif flag == "--skill-usage":
+            rows = analyze_skill_usage(events, since_days=since_days or 60, top=top)
+            headers = ["skill_id", "loads", "completions", "completion_rate"]
+            cells = [[r.skill_id, r.loads, r.completions,
+                      f"{r.completion_rate:.2f}"] for r in rows]
+        elif flag == "--playbook-compliance":
+            rows = analyze_playbook_compliance(events, since_days=since_days or 30, top=top)
+            headers = ["playbook_id", "runs", "compliant", "skip_points"]
+            cells = [[r.playbook_id, r.runs, r.compliant_runs,
+                      ", ".join(r.common_skip_points)] for r in rows]
+        elif flag == "--graduation-candidates":
+            rows = analyze_graduation_candidates(events, top=top)
+            headers = ["rule_id", "days_stable", "current", "recommended", "stick_rate"]
+            cells = [[r.rule_id, r.days_stable, r.current_tier, r.recommended_tier,
+                      f"{r.denial_stick_rate:.2f}"] for r in rows]
+        elif flag == "--trim-candidates":
+            rows = analyze_trim_candidates(events, since_days=since_days or 90, top=top)
+            headers = ["entity", "type", "activations", "last_seen", "recommendation"]
+            cells = [[r.entity_id, r.entity_type, r.activations_in_window,
+                      r.last_activation or "-", r.recommendation] for r in rows]
+        else:  # --quality-judge-false-positives
+            rows = analyze_quality_judge_false_positives(events, since_days=since_days or 30, top=top)
+            headers = ["rubric", "fails", "overrides", "override_rate"]
+            cells = [[r.rubric, r.total_fails, r.overrides,
+                      f"{r.override_rate:.2f}"] for r in rows]
+
+        if json_output:
+            typer.echo(json.dumps([r.model_dump() for r in rows]))
+        else:
+            typer.echo(" | ".join(str(h) for h in headers))
+            typer.echo("-" * 60)
+            for row in cells:
+                typer.echo(" | ".join(str(c) for c in row))
         return
 
     # Phase 4 path: Pydantic-validated events with --json / --rule filters.
@@ -56,7 +132,6 @@ def analyze_friction(
         if json_output:
             typer.echo(json.dumps(payload))
         else:
-            # Rule-filtered text output: show per-rule count + events involved.
             typer.echo(f"Events matching rule={rule}: {payload['total']}")
             for rid, n in payload["by_rule"].items():
                 typer.echo(f"  {rid}: {n}")
