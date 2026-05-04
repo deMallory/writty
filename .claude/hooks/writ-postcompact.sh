@@ -28,5 +28,28 @@ fi
 _writ_session reset-after-compaction "$SESSION_ID" \
     >> "/tmp/writ-postcompact-${SESSION_ID}.log" 2>/dev/null || true
 
+# Phase 4c (PSR-004 follow-up): emit a verify-discipline directive so
+# the model treats recalled verification output as second-hand after
+# compaction. Without this, "Is it working?" post-compact gets answered
+# from pre-compact memory ("last run was N tests passing") rather than
+# fresh evidence. See docs/pressure-runs/2026-04-22/PSR-004/analysis.md.
+cat <<'DIRECTIVE'
+[Writ: context compacted]
+Until the next compaction, treat any pre-compact verification output (test counts,
+"passing" claims, file reads) as second-hand evidence.
+
+If asked "is it working?" / "is it done?" / "did it pass?":
+  1. Re-run the relevant verification (tests, lint, typecheck, smoke command) FIRST.
+  2. If the re-run is BLOCKED (tool rejection, permission denied, env unavailable):
+       STOP. Do NOT answer "yes", "passing", or "should be working".
+       Respond instead: "Re-verification was blocked by [reason]. I cannot confirm
+       post-compact. Pre-compact context says X but I have no fresh evidence.
+       Want me to verify another way?"
+  3. Only answer affirmatively with fresh test/lint output cited inline.
+
+Saying "yes" / "passing" / "all good" without fresh evidence is a forbidden response
+in this state. Recalled output is not fresh evidence.
+DIRECTIVE
+
 hook_timer_end "$HOOK_START_NS" "writ-postcompact" "$SESSION_ID" ""
 exit 0

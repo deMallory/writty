@@ -5,6 +5,11 @@
 # Denies dispatch if spec-reviewer for the current task hasn't completed.
 # Feature-flag gated.
 set -euo pipefail
+
+# Phase 4c: capture stderr (Python tracebacks etc.) to debug log so
+# next-occurrence diagnostics are readable. tee preserves stderr
+# propagation so behavior is unchanged.
+exec 2> >(tee -a /tmp/writ-hook-debug.log >&2)
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 SESSION_HELPER="$WRIT_DIR/bin/lib/writ-session.py"
