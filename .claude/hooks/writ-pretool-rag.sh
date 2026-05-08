@@ -184,10 +184,18 @@ fi
 # Build request
 REQUEST=$(python3 -c "
 import json, sys
+try:
+    exclude_ids = json.loads(sys.argv[3])
+except (json.JSONDecodeError, ValueError) as _e:
+    sys.stderr.write(
+        f'[writ-hook json.loads recovery] argv[3] (LOADED_RULE_IDS) in writ-pretool-rag.sh build-request: {_e}\\n'
+        f'  len={len(sys.argv[3])} sample={sys.argv[3][:200]!r}\\n'
+    )
+    exclude_ids = []
 print(json.dumps({
     'query': sys.argv[1],
     'budget_tokens': int(sys.argv[2]),
-    'exclude_rule_ids': json.loads(sys.argv[3]),
+    'exclude_rule_ids': exclude_ids,
     'top_k': 3,
 }))
 " "$QUERY" "$PRETOOL_BUDGET" "$LOADED_RULE_IDS" 2>/dev/null)
@@ -299,7 +307,14 @@ except Exception:
     python3 -c "
 import json, sys, os
 from datetime import datetime, timezone
-rule_ids = json.loads(sys.argv[4])
+try:
+    rule_ids = json.loads(sys.argv[4])
+except (json.JSONDecodeError, ValueError) as _e:
+    sys.stderr.write(
+        f'[writ-hook json.loads recovery] argv[4] (NEW_RULE_IDS) in writ-pretool-rag.sh rag_query emit: {_e}\\n'
+        f'  len={len(sys.argv[4])} sample={sys.argv[4][:200]!r}\\n'
+    )
+    rule_ids = []
 entry = json.dumps({
     'ts': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'session': sys.argv[1],

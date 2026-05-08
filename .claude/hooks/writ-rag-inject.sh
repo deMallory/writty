@@ -272,12 +272,23 @@ INSTRUCTIONS_RULE_IDS=$(echo "$CACHE" | python3 -c "import sys,json; print(json.
 REQUEST=$(python3 -c "
 import json, sys
 
+def _safe_loads(idx, name):
+    raw = sys.argv[idx]
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as _e:
+        sys.stderr.write(
+            f'[writ-hook json.loads recovery] argv[{idx}] ({name}) in writ-rag-inject.sh: {_e}\\n'
+            f'  len={len(raw)} sample={raw[:200]!r}\\n'
+        )
+        return []
+
 query = sys.argv[1]
 budget = int(sys.argv[2])
-exclude_ids = json.loads(sys.argv[3])
-prefer_ids = json.loads(sys.argv[4])
+exclude_ids = _safe_loads(3, 'LOADED_RULE_IDS')
+prefer_ids = _safe_loads(4, 'PREFER_RULE_IDS')
 detected_domain = sys.argv[5]
-instructions_ids = json.loads(sys.argv[6])
+instructions_ids = _safe_loads(6, 'INSTRUCTIONS_RULE_IDS')
 
 # Merge instructions_rule_ids into exclude list (deduplicated)
 all_excludes = list(set(exclude_ids) | set(instructions_ids))
@@ -550,6 +561,14 @@ except Exception:
     python3 -c "
 import json, sys, os
 from datetime import datetime, timezone
+try:
+    rule_ids = json.loads(sys.argv[4])
+except (json.JSONDecodeError, ValueError) as _e:
+    sys.stderr.write(
+        f'[writ-hook json.loads recovery] argv[4] (NEW_RULE_IDS) in writ-rag-inject.sh rag_query emit: {_e}\\n'
+        f'  len={len(sys.argv[4])} sample={sys.argv[4][:200]!r}\\n'
+    )
+    rule_ids = []
 entry = json.dumps({
     'ts': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'session': sys.argv[1],
@@ -557,8 +576,8 @@ entry = json.dumps({
     'event': 'rag_query',
     'query_source': 'broad',
     'tokens_injected': int(sys.argv[3]),
-    'rules_returned_count': len(json.loads(sys.argv[4])),
-    'rule_ids': json.loads(sys.argv[4]),
+    'rules_returned_count': len(rule_ids),
+    'rule_ids': rule_ids,
 })
 markers = ['composer.json','package.json','Cargo.toml','go.mod','pyproject.toml','.git']
 path = os.getcwd()
