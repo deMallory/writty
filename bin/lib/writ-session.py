@@ -53,6 +53,7 @@ DEFAULT_SESSION_BUDGET = _budget_data["default_budget"]
 APPROX_TOKENS_PER_RULE_FULL = _budget_data["rule_cost_full"]
 APPROX_TOKENS_PER_RULE_STANDARD = _budget_data["rule_cost_standard"]
 APPROX_TOKENS_PER_RULE_SUMMARY = _budget_data["rule_cost_summary"]
+DEFAULT_ALWAYS_ON_CAP = _budget_data.get("always_on_cap", 5000)
 
 CACHE_DIR = os.environ.get("WRIT_CACHE_DIR", tempfile.gettempdir())
 
@@ -98,6 +99,8 @@ def _read_cache(session_id: str) -> dict:
         "phase_transitions": [],
         "quality_judgment_state": {},
         "quality_override_count": 0,
+        "always_on_budget": DEFAULT_ALWAYS_ON_CAP,
+        "always_on_tokens_used": 0,
     }
     if not os.path.exists(path):
         return default
@@ -136,6 +139,8 @@ def _read_cache(session_id: str) -> dict:
         data.setdefault("verification_evidence", {})
         data.setdefault("quality_judgment_state", {})
         data.setdefault("quality_override_count", 0)
+        data.setdefault("always_on_budget", DEFAULT_ALWAYS_ON_CAP)
+        data.setdefault("always_on_tokens_used", 0)
         return data
     except (json.JSONDecodeError, OSError):
         return default
@@ -231,6 +236,13 @@ def cmd_update(session_id: str, args: list[str]) -> None:
         elif args[i] == "--add-failed-write" and i + 1 < len(args):
             record = json.loads(args[i + 1])
             cache.setdefault("failed_writes", []).append(record)
+            i += 2
+        elif args[i] == "--add-always-on-tokens" and i + 1 < len(args):
+            n = int(args[i + 1])
+            cache["always_on_tokens_used"] = cache.get("always_on_tokens_used", 0) + n
+            cache["always_on_budget"] = max(
+                0, cache.get("always_on_budget", DEFAULT_ALWAYS_ON_CAP) - n
+            )
             i += 2
         else:
             i += 1

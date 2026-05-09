@@ -265,7 +265,7 @@ if [ -n "$META_LINE" ]; then
     _writ_session update "$SESSION_ID" \
         --add-rules "$NEW_RULE_IDS" \
         --cost "$COST" \
-        --inc-queries 2>/dev/null || true
+        --inc-queries 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
 
     # Store full rule objects for compliance checking
     RULE_OBJECTS=$(echo "$RESPONSE" | python3 -c "
@@ -292,7 +292,7 @@ except Exception:
 
     if [ "$RULE_OBJECTS" != "[]" ]; then
         _writ_session update "$SESSION_ID" \
-            --add-rule-objects "$RULE_OBJECTS" 2>/dev/null || true
+            --add-rule-objects "$RULE_OBJECTS" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
     fi
 
     # Log rag_query event (direct Python call to avoid shell quoting issues with JSON arrays)

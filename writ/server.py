@@ -49,6 +49,7 @@ class QueryRequest(BaseModel):
     budget_tokens: int | None = None
     exclude_rule_ids: list[str] | None = None
     prefer_rule_ids: list[str] | None = None
+    node_types: list[str] | None = None
 
 
 class ProposeRequest(BaseModel):
@@ -123,6 +124,7 @@ async def query_rules(request: QueryRequest) -> dict[str, Any]:
         budget_tokens=request.budget_tokens,
         exclude_rule_ids=request.exclude_rule_ids,
         prefer_rule_ids=request.prefer_rule_ids,
+        node_types=request.node_types,
     )
     return result
 
