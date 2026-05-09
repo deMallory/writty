@@ -66,12 +66,12 @@ independently. Sub-phases 6a-6d (mechanical schema/ingest/migration)
 are prerequisites; 6e-6g (content authoring) consume the schema;
 6h-6j (retrieval / wiring / verification) consume the content.
 
-| ID | Title | Files touched | Acceptance |
-|----|-------|---------------|------------|
-| 6a | Pydantic node models | `writ/graph/schema.py`, `tests/test_phase6a_*` | All 10 models instantiate, validate per the proposal's required-field rules, and round-trip through `model_dump_json` |
-| 6b | Edge schema and traversal updates | `writ/graph/schema.py`, `writ/retrieval/traversal.py`, tests | 7 new edge types defined; graph-traversal queries surface them |
-| 6c | Ingest parser extension | `writ/graph/ingest.py`, tests | `<!-- NODE START type=Skill id=SKL-X-001 -->` markers parse to the right Pydantic model; `<!-- RULE START -->` still works |
-| 6d | Neo4j migration | `scripts/migrate.py`, tests | Idempotent MERGE for the 10 new labels and 7 new edge types; running twice is a no-op |
+| ID | Title | Files touched | Acceptance | Status |
+|----|-------|---------------|------------|--------|
+| 6a | Pydantic node models | `writ/graph/schema.py`, `tests/test_phase6a_*` | All 10 models instantiate, validate per the proposal's required-field rules, and round-trip through `model_dump_json` | shipped (`08adb6c`) |
+| 6b | Edge schema and traversal updates | `writ/graph/schema.py`, `writ/retrieval/traversal.py`, tests | 7 new edge types defined; graph-traversal queries surface them | verified-shipped (consolidated commit; existing tests `tests/test_schema_roundtrip.py::TestNewEdgeTypes` 24/24 + `tests/test_phase6bcd_verification.py::TestPhase6bEdgeContract` 11/11) |
+| 6c | Ingest parser extension | `writ/graph/ingest.py`, tests | `<!-- NODE START type=Skill id=SKL-X-001 -->` markers parse to the right Pydantic model; `<!-- RULE START -->` still works | verified-shipped (consolidated commit; existing tests `tests/test_multi_node_ingest.py` 16/16 + `tests/test_phase6bcd_verification.py::TestPhase6cIngestContract` 3/3) |
+| 6d | Neo4j migration | `scripts/migrate.py`, tests | Idempotent MERGE for the 10 new labels and 7 new edge types; running twice is a no-op | verified-shipped (consolidated commit; `tests/test_phase6bcd_verification.py::TestPhase6dMigrationContract` 2/2 -- script imports cleanly, audit confirms MERGE-only no `CREATE (n:Label)`. Live-Neo4j idempotency is an integration concern out of scope for this commit.) |
 | 6e | Author 6 methodology playbooks | `bible/playbooks/PBK-PROC-*.md` | PBK-PROC-PLAN-001, SDD-001, DEBUG-001, TDD-001, FINISH-001, REVREQ-001 -- each ingests cleanly, has at least 3 step nodes, and references the existing Writ workflow |
 | 6f | Author 6 methodology skills | `bible/skills/SKL-PROC-*.md` | SKL-PROC-BRAIN-001, VISUAL-001, EXEC-001, VERIFY-001, REVRECV-001, PARALLEL-001 |
 | 6g | Author roles, antipatterns, forbiddens, techniques, meta-auth | `bible/roles/*.md`, `bible/antipatterns/*.md`, etc. | At least one node of each remaining type, ingest-clean |
