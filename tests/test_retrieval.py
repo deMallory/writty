@@ -30,7 +30,16 @@ NEO4J_PASSWORD = "writdevpass"
 
 @pytest_asyncio.fixture(scope="module")
 async def pipeline_db():
-    """Shared db connection with migrated rules for pipeline tests."""
+    """Shared db connection with migrated rules for pipeline tests.
+
+    Setup wipes Neo4j and reloads from `bible/`. Teardown wipes again
+    AND re-runs the methodology migration so subsequent tests in the
+    full-suite run see a populated graph (otherwise tests that depend
+    on Skill/Playbook/etc. nodes would silently misbehave -- the
+    isolation issue that bit Phase 6j integration verification).
+    """
+    import subprocess
+    import sys
     from pathlib import Path
 
     db = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
@@ -55,8 +64,27 @@ async def pipeline_db():
                     await db.create_edge("RELATED_TO", rule_data["rule_id"], ref_id)
 
     yield db
+
     await db.clear_all()
     await db.close()
+
+    # Restore production-like state for downstream tests via the
+    # migration script. Best-effort -- if the script is missing or
+    # fails, downstream tests will hit empty Neo4j (the original
+    # isolation bug); we surface that via stderr but do not raise.
+    try:
+        subprocess.run(
+            [sys.executable, "scripts/migrate.py",
+             "--methodology-dir", "bible/methodology"],
+            cwd="~/.claude/skills/writ",
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    except (subprocess.SubprocessError, OSError) as e:
+        sys.stderr.write(
+            f"[test_retrieval teardown] migrate.py restore failed: {e}\n"
+        )
 
 
 @pytest_asyncio.fixture(scope="module")
