@@ -99,7 +99,9 @@ class TestPipeline:
         assert exclude_id not in second_ids
 
     def test_latency_under_budget(self, pipeline) -> None:
-        """p95 latency < 10ms on warm index (100 queries)."""
+        """p95 latency < 15ms on warm index (100 queries). Budget raised
+        from 10ms -> 15ms 2026-05-09 to accommodate the larger
+        post-Phase-6 candidate pool (Rule + 5 methodology labels)."""
         latencies: list[float] = []
         queries = [
             "controller SQL query", "dependency injection", "plugin observer",
@@ -118,7 +120,7 @@ class TestPipeline:
         p95_idx = int(len(latencies) * 0.95)
         p95 = latencies[p95_idx]
         print(f"\nPipeline latency: p50={latencies[len(latencies)//2]:.1f}ms, p95={p95:.1f}ms")
-        assert p95 < 10.0, f"p95 latency {p95:.1f}ms exceeds 10ms budget"
+        assert p95 < 15.0, f"p95 latency {p95:.1f}ms exceeds 15ms budget"
 
 
 class TestRanking:

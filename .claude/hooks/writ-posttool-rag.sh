@@ -323,7 +323,7 @@ while path != '/':
             pass
         break
     path = os.path.dirname(path)
-" "$SESSION_ID" "${CURRENT_MODE:-}" "$COST" "$NEW_RULE_IDS" 2>/dev/null || true
+" "$SESSION_ID" "${CURRENT_MODE:-}" "$COST" "$NEW_RULE_IDS" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
 fi
 
 hook_timer_end "$HOOK_START_NS" "writ-posttool-rag" "$SESSION_ID" ""

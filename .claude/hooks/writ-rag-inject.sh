@@ -462,7 +462,7 @@ while path != '/':
             pass
         break
     path = os.path.dirname(path)
-" "$SESSION_ID" "${CURRENT_MODE:-}" "$AO_TOKENS" "$AO_RULE_COUNT" 2>/dev/null || true
+" "$SESSION_ID" "${CURRENT_MODE:-}" "$AO_TOKENS" "$AO_RULE_COUNT" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
         fi
     fi
 fi
@@ -570,7 +570,7 @@ try:
     os.rename(tmp, path)
 except Exception:
     pass
-" "$SESSION_ID" "$NEW_RULE_IDS" 2>/dev/null || true
+" "$SESSION_ID" "$NEW_RULE_IDS" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
 
     # C1: Store full rule objects for downstream compliance checking
     RULE_OBJECTS=$(echo "$RESPONSE" | python3 -c "
@@ -635,7 +635,7 @@ while path != '/':
             pass
         break
     path = os.path.dirname(path)
-" "$SESSION_ID" "${CURRENT_MODE:-}" "$COST" "$NEW_RULE_IDS" 2>/dev/null || true
+" "$SESSION_ID" "${CURRENT_MODE:-}" "$COST" "$NEW_RULE_IDS" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
 fi
 
 # 11c. Phase 6j: methodology companion query. In Work mode with budget
@@ -723,7 +723,7 @@ while path != '/':
             pass
         break
     path = os.path.dirname(path)
-" "$SESSION_ID" "${CURRENT_MODE:-}" "$METHOD_COST" "$METHOD_RULE_IDS" 2>/dev/null || true
+" "$SESSION_ID" "${CURRENT_MODE:-}" "$METHOD_COST" "$METHOD_RULE_IDS" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
             fi
         fi
     fi
@@ -817,7 +817,7 @@ for rid in rule_ids:
         urllib.request.urlopen(req, timeout=0.3)
     except (urllib.error.URLError, OSError):
         break
-" "$CACHE" "$ESC_GATE" 2>/dev/null || true
+" "$CACHE" "$ESC_GATE" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
 
         # Mark feedback as sent in escalation
         python3 -c "
@@ -836,7 +836,7 @@ try:
     os.rename(tmp, path)
 except Exception:
     pass
-" "$SESSION_ID" 2>/dev/null || true
+" "$SESSION_ID" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
         debug "sent enriched negative feedback for escalation"
     fi
 

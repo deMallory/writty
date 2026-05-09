@@ -26,13 +26,26 @@ POSTTOOL_HOOK = f"{SKILL_DIR}/.claude/hooks/writ-posttool-rag.sh"
 
 
 class TestHookStderrLogging:
-    """The mutating writ-session.py calls inside the hooks must redirect
-    stderr to $WRIT_HOOK_LOG (default /tmp/writ-hooks.log), not /dev/null.
+    """The mutating writ-session.py calls AND friction-log emit blocks
+    inside the hooks must redirect stderr to $WRIT_HOOK_LOG (default
+    /tmp/writ-hooks.log), not /dev/null.
 
     We grep the hook scripts for the call sites and assert they reference
     the env var rather than /dev/null. This is a structural test -- it
     catches regressions where someone reverts the redirection.
     """
+
+    def _friction_emit_blocks(self, body: str) -> list[str]:
+        """Find inline `python3 -c "..."` blocks that conclude with the
+        argv list + redirect; pick out the redirect tail (last 80 chars
+        of the line that closes with `|| true`)."""
+        import re
+        # Match terminal lines that look like `" args 2>... || true`
+        return re.findall(
+            r'^"\s+"[^"\n]*"\s*(?:"[^"\n]*"\s*)*2>[^\n]+\|\|\s*true',
+            body,
+            re.MULTILINE,
+        )
 
     def _read(self, path: str) -> str:
         with open(path) as f:
@@ -79,6 +92,19 @@ class TestHookStderrLogging:
             f"mutating update still uses 2>/dev/null:\n"
             + "\n".join(b[:240] for b in legacy)
         )
+
+    def test_friction_emit_blocks_use_writ_hook_log(self) -> None:
+        """The python3 -c blocks that emit friction events / write
+        cache files must redirect stderr to WRIT_HOOK_LOG too. Catch
+        regressions where a new emit slips in with 2>/dev/null."""
+        for path in (INJECT_HOOK, POSTTOOL_HOOK):
+            body = self._read(path)
+            blocks = self._friction_emit_blocks(body)
+            for b in blocks:
+                # Each tail line must redirect to WRIT_HOOK_LOG, not /dev/null.
+                assert "WRIT_HOOK_LOG" in b or "writ-hooks.log" in b, (
+                    f"friction-emit/cache-write block in {path} still uses /dev/null:\n{b}"
+                )
 
     def test_writ_session_update_failure_writes_to_hook_log(
         self, tmp_path
