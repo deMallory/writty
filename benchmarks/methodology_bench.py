@@ -5,7 +5,7 @@ Usage:
   .venv/bin/python benchmarks/methodology_bench.py --verbose  # per-query detail
   .venv/bin/python benchmarks/methodology_bench.py --json     # full JSON for phase-0 report
 
-Reads synthetic_methodology/*.md and ground_truth_proc.candidates.json, builds
+Reads bible/methodology/*.md and ground_truth_proc.candidates.json, builds
 an in-process BM25 + ONNX-vector pipeline (mirrors Writ's Stages 2-3-5), and
 reports MRR@5, hit rate, bundle completeness, p95 latency against plan
 Section 5.3 release-blocker thresholds.

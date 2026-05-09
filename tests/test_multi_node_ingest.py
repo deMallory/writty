@@ -3,12 +3,14 @@
 Covers the extended ingest that handles:
 - Legacy <!-- RULE START: id --> ... <!-- RULE END: id --> (back-compat)
 - New <!-- NODE START type=X id=Y --> ... <!-- NODE END --> markers
-- YAML front-matter (one node per file, used by Phase 0 synthetic corpus)
+- YAML front-matter (one node per file, used by the methodology corpus)
 - Edge markers (front-matter edges: list and/or inline <!-- EDGE: ... --> comments)
 - Type-dispatched validation against the 11 Pydantic models
 
-Integration test: parse every file in tests/fixtures/synthetic_methodology/ and
-validate each. All 60 Phase-0 fixtures must round-trip.
+Integration test: parse every file in bible/methodology/ and
+validate each. All 60 methodology fixtures must round-trip.
+Note: corpus moved from tests/fixtures/methodology corpus (bible/methodology)/
+to bible/methodology/ in Phase 6e/f/g promotion.
 """
 from __future__ import annotations
 
@@ -33,7 +35,8 @@ from writ.graph.schema import (
     Skill,
 )
 
-SYNTHETIC_DIR = Path(__file__).parent / "fixtures" / "synthetic_methodology"
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+SYNTHETIC_DIR = _REPO_ROOT / "bible" / "methodology"
 
 
 # --- Front-matter parsing ------------------------------------------------------
@@ -230,7 +233,7 @@ class TestNodeTypeDispatch:
 
 
 class TestSyntheticCorpusRoundTrip:
-    """Every synthetic_methodology fixture must parse AND validate through its Pydantic model."""
+    """Every methodology corpus (bible/methodology) fixture must parse AND validate through its Pydantic model."""
 
     def test_every_fixture_parses(self) -> None:
         files = sorted(SYNTHETIC_DIR.glob("*.md"))

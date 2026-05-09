@@ -27,7 +27,7 @@ def pytest_sessionfinish(session, exitstatus):
 
     async def _remigrate():
         bible = Path("bible/")
-        methodology = Path("tests/fixtures/synthetic_methodology")
+        methodology = Path("bible/methodology")
         if not bible.exists():
             return
         try:

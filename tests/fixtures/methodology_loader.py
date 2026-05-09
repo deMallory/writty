@@ -1,8 +1,9 @@
-"""Parse synthetic_methodology corpus into node dicts for Phase 0 benchmarks.
+"""Parse the methodology corpus into node dicts for Phase 0 benchmarks.
 
 Phase 0 harness reads this corpus without ingesting into Neo4j (plan Section 5.5
 says Phase 0 is read-only to production). Phase 1 ingest replaces this loader
-with the real parser.
+with the real parser. Phase 6e/f/g promoted the corpus from
+`tests/fixtures/synthetic_methodology/` to `bible/methodology/` (committed).
 """
 from __future__ import annotations
 
@@ -17,7 +18,10 @@ import yaml
 
 from writ.retrieval.keyword import _TANTIVY_RESERVED, _TANTIVY_SPECIAL  # type: ignore[attr-defined]
 
-FIXTURE_DIR = Path(__file__).parent / "synthetic_methodology"
+# Corpus location (Phase 6e/f/g promotion). The previous path
+# `tests/fixtures/synthetic_methodology/` is gone after the rename.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+FIXTURE_DIR = _REPO_ROOT / "bible" / "methodology"
 GROUND_TRUTH_PATH = Path(__file__).parent / "ground_truth_proc.json"
 
 RETRIEVABLE_TYPES = {"Skill", "Playbook", "Technique", "AntiPattern", "ForbiddenResponse"}
