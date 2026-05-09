@@ -110,6 +110,10 @@ def _read_cache(session_id: str) -> dict:
         data.setdefault("analysis_results", {})
         data.setdefault("feedback_sent", [])
         data.setdefault("loaded_rules", [])
+        data.setdefault("loaded_rule_ids", [])
+        data.setdefault("remaining_budget", DEFAULT_SESSION_BUDGET)
+        data.setdefault("context_percent", 0)
+        data.setdefault("queries", 0)
         data.setdefault("pending_violations", [])
         data.setdefault("invalidation_history", {})
         data.setdefault("escalation", {"gate": None, "needed": False, "diagnosis": None, "feedback_sent": False})
@@ -159,7 +163,7 @@ def cmd_update(session_id: str, args: list[str]) -> None:
         if args[i] == "--add-rules" and i + 1 < len(args):
             new_ids = json.loads(args[i + 1])
             # Flat list (all IDs ever loaded -- for feedback/coverage)
-            existing = set(cache["loaded_rule_ids"])
+            existing = set(cache.get("loaded_rule_ids", []))
             existing.update(new_ids)
             cache["loaded_rule_ids"] = sorted(existing)
             # Phase-partitioned list (for exclude-list scoping)
@@ -247,9 +251,9 @@ def cmd_should_skip(session_id: str, threshold: int = 75) -> bool:
     cache = _read_cache(session_id)
     if cache.get("is_subagent"):
         return False  # sub-agents: unlimited budget, never skip
-    if cache["remaining_budget"] <= 0:
+    if cache.get("remaining_budget", DEFAULT_SESSION_BUDGET) <= 0:
         return True  # skip: budget exhausted
-    if cache["context_percent"] >= threshold:
+    if cache.get("context_percent", 0) >= threshold:
         return True  # skip: context pressure
     return False  # proceed
 
