@@ -170,8 +170,8 @@ class TestPhase6iAdvancePhaseFiresPlaybookStep:
         # planning -> testing is the first advance (planning is the
         # initial state).
         assert ev["step_id"] == "testing"
-        assert ev["step_index"] == 1  # testing is index 1 in [planning, testing, implementation, complete]
-        assert ev["total_steps"] == 4
+        assert ev["step_index"] == 1  # testing is index 1 in [planning, testing, implementation]
+        assert ev["total_steps"] == 3
 
     def test_step_index_increments_across_advances(
         self, client: TestClient, tmp_log: Path
@@ -182,13 +182,15 @@ class TestPhase6iAdvancePhaseFiresPlaybookStep:
                 json={"confirmation_source": "tool"},
             )
         steps = _read_events(tmp_log, "playbook_step_complete")
-        # Three advances from the initial "planning": testing(1) ->
-        # implementation(2) -> complete(3).
-        assert len(steps) == 3
+        # Three advances happen on the state machine: planning->testing,
+        # testing->implementation, implementation->complete. Only the
+        # first two emit playbook_step_complete -- "complete" is the
+        # terminal state, not a step.
+        assert len(steps) == 2
         indices = [s["step_index"] for s in steps]
         step_ids = [s["step_id"] for s in steps]
-        assert indices == [1, 2, 3], f"step_index sequence wrong: {indices}"
-        assert step_ids == ["testing", "implementation", "complete"], (
+        assert indices == [1, 2], f"step_index sequence wrong: {indices}"
+        assert step_ids == ["testing", "implementation"], (
             f"step_id sequence wrong: {step_ids}"
         )
 

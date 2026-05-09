@@ -462,9 +462,11 @@ async def session_advance_phase(session_id: str, body: dict | None = None) -> di
         pass
 
     # Phase 6i: emit a parallel playbook_step_complete event so
-    # Phase 5's --playbook-compliance analyzer has signal. Each
-    # workflow phase advance IS a step in the SDD playbook.
-    _PHASE_ORDER = ["planning", "testing", "implementation", "complete"]
+    # Phase 5's --playbook-compliance analyzer has signal. The SDD
+    # playbook has three operational steps (planning, testing,
+    # implementation); "complete" is the terminal state, not a step,
+    # so it does not emit.
+    _PHASE_ORDER = ["planning", "testing", "implementation"]
     try:
         step_index = _PHASE_ORDER.index(result["phase"])
     except ValueError:
