@@ -608,11 +608,14 @@ def analyze_playbook_compliance(
             if not pairs:
                 continue
             indices = [p[0] for p in pairs]
-            in_order = indices == list(range(len(indices)))
+            in_order = (
+                bool(indices)
+                and indices == list(range(indices[0], indices[0] + len(indices)))
+            )
             total_known = _ev_field(run[-1], "total_steps")
             reached_end = (
                 not isinstance(total_known, int)
-                or len(indices) >= total_known
+                or max(indices) >= total_known - 1
             )
             if in_order and reached_end:
                 compliant += 1

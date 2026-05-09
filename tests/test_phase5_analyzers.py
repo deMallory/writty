@@ -163,6 +163,27 @@ class TestPlaybookCompliance:
         rows = analyze_playbook_compliance(events, since_days=30)
         assert rows[0].compliant_runs == 0
 
+    def test_compliant_when_sequence_starts_at_one_and_reaches_last_index(self, now: datetime) -> None:
+        events = [
+            _ev("playbook_step_complete", now, playbook_id="PBK-X", step_id="testing", step_index=1, total_steps=4, session="ss"),
+            _ev("playbook_step_complete", now + timedelta(seconds=10), playbook_id="PBK-X", step_id="implementation", step_index=2, total_steps=4, session="ss"),
+            _ev("playbook_step_complete", now + timedelta(seconds=20), playbook_id="PBK-X", step_id="complete", step_index=3, total_steps=4, session="ss"),
+        ]
+        rows = analyze_playbook_compliance(events, since_days=30)
+        assert len(rows) == 1
+        assert rows[0].playbook_id == "PBK-X"
+        assert rows[0].runs == 1
+        assert rows[0].compliant_runs == 1
+
+    def test_non_compliant_when_sequence_has_gap_starting_at_one(self, now: datetime) -> None:
+        events = [
+            _ev("playbook_step_complete", now, playbook_id="PBK-X", step_id="testing", step_index=1, total_steps=4, session="ss"),
+            _ev("playbook_step_complete", now + timedelta(seconds=10), playbook_id="PBK-X", step_id="complete", step_index=3, total_steps=4, session="ss"),
+        ]
+        rows = analyze_playbook_compliance(events, since_days=30)
+        assert len(rows) == 1
+        assert rows[0].compliant_runs == 0
+
 
 class TestGraduationCandidates:
     """analyze_graduation_candidates: stable-rule promotion candidates."""
