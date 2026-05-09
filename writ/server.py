@@ -423,6 +423,23 @@ async def session_advance_phase(session_id: str, body: dict | None = None) -> di
     def _advance() -> dict[str, Any]:
         cache = writ_session._read_cache(session_id)
         current = cache.get("current_phase", "planning")
+        # Defensive: advancing from `complete` is a silent no-op in the
+        # naive clamp-to-last-index implementation. That masks the
+        # pattern where an agent advances on user "approved" without
+        # realizing the prior task already terminated. Surface an
+        # explicit error so the caller (writ-approve, agent) resets via
+        # `mode set work` first.
+        if current == "complete":
+            return {
+                "error": (
+                    "Session phase is `complete`. Reset via "
+                    "`writ-session.py mode set work <sid>` before advancing "
+                    "into a new task."
+                ),
+                "phase": "complete",
+                "from": "complete",
+                "confirmation_source": source,
+            }
         phases = ["planning", "testing", "implementation", "complete"]
         idx = phases.index(current) if current in phases else 0
         next_phase = phases[min(idx + 1, len(phases) - 1)]
@@ -439,6 +456,8 @@ async def session_advance_phase(session_id: str, body: dict | None = None) -> di
         return {"from": current, "phase": next_phase, "confirmation_source": source}
 
     result = await asyncio.to_thread(_advance)
+    if "error" in result:
+        return result
 
     # Phase 5 telemetry: friction log gets an event per phase advance.
     import json as _json
