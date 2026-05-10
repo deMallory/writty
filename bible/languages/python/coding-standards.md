@@ -11,7 +11,7 @@ This document defines **Python-specific coding standards** for the Phaselock cod
 
 **Domain**: Python / Async
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 Calling a sync I/O function (requests.get, neo4j.Session.run, open(), subprocess.run) inside an async def function, or using a sync DB driver in an async call chain.
@@ -51,7 +51,7 @@ A single sync call in an async chain blocks the entire event loop thread. In a F
 
 **Domain**: Python / Module Design
 **Severity**: High
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 Any import that would fail at module load time, or any `TYPE_CHECKING`-guarded import used at runtime (not just for annotations).
@@ -95,7 +95,7 @@ Circular imports cause `ImportError` at module load, produce `None` references t
 
 **Domain**: Python / Type System
 **Severity**: Medium
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 Abstract base class used solely to define an interface (all methods abstract, no concrete implementation).
@@ -136,7 +136,7 @@ Protocol enables structural subtyping. The hnswlib-to-Qdrant swap in `embeddings
 
 **Domain**: Python / Data Validation
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 Data crossing a trust boundary (HTTP request, JSON file, DB result mapping, CLI input) without Pydantic model validation.

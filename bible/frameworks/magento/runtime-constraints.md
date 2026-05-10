@@ -17,7 +17,7 @@ These are the Magento 2 answers to questions those generic rules force the AI to
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing post-order-placement code (observer, consumer, cron) that checks product availability or stock status for an already-placed order.
@@ -78,7 +78,7 @@ ENF-SYS-002 (temporal truth source declaration). Per-slice findings table (ENF-P
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When writing code that reacts to or depends on Magento order state changes (observers on `sales_order_save_after`, `sales_order_place_after`, order processing consumers).
@@ -138,7 +138,7 @@ Magento's order state machine has non-obvious behaviors. Explicit declaration pr
 
 **Domain**: Frameworks / Magento 2
 **Severity**: High
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When a value classified as "deployment-variable policy" by ENF-SYS-004 is hardcoded in a Magento 2 module instead of being sourced from admin configuration.
@@ -201,7 +201,7 @@ Magento's multi-store architecture requires per-store configuration. `ScopeConfi
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing a REST endpoint (`webapi.xml`), GraphQL resolver, or admin controller in Magento 2.
@@ -298,7 +298,7 @@ Magento has four distinct caller types (admin, customer, integration, guest), ea
 
 **Domain**: Frameworks / Magento 2
 **Severity**: High
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When building a feature that uses Magento's message queue framework (any of: `communication.xml`, `queue_publisher.xml`, `queue_topology.xml`, `queue_consumer.xml`).
@@ -378,7 +378,7 @@ Magento's queue framework splits configuration across four XML files. Missing an
 
 **Domain**: Frameworks / Magento 2
 **Severity**: High
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When writing code that queries stock/inventory data and the Magento installation uses MSI (Multi-Source Inventory) with multiple websites.

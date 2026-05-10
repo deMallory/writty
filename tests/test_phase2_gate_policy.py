@@ -13,7 +13,7 @@ def _rule(**overrides) -> dict:
         "rule_id": "ENF-TEST-001",
         "domain": "test",
         "severity": "high",
-        "scope": "file",
+        "scope": "entity",
         "trigger": "When X happens",
         "statement": "Must do Y",
         "violation": "Did not do Y",

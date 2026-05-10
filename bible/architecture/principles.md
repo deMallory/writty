@@ -11,7 +11,7 @@ This document defines **architectural principles and design patterns** that gove
 
 **Domain**: Architecture
 **Severity**: High
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When creating or modifying a class that contains logic belonging to a different architectural layer (e.g., SQL queries in a controller, HTML in a service class, business logic in a resource model).
@@ -68,7 +68,7 @@ Mixed layers create classes that are untestable, unreusable, and fragile. A cont
 
 **Domain**: Architecture
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When a task requires changing behavior of a vendor/core class, and the proposed change involves directly editing the vendor file or copying it into the project.
@@ -119,7 +119,7 @@ Direct core modifications are lost on composer update. Extension-based changes s
 
 **Domain**: Architecture
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When a class constructor or method body contains `new SomeClass(` where SomeClass is a service, repository, handler, or factory -- not a DTO, value object, or exception.
@@ -168,7 +168,7 @@ Direct instantiation hides dependencies, breaks testability, and bypasses DI con
 
 **Domain**: Architecture
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When a literal number, string, or ID appears in logic that controls program behavior: conditionals, thresholds, timeouts, retry counts, business rules (group IDs, status values, prefixes, flags). Exemptions: logging strings, display text, test assertions with obvious intent.
@@ -220,7 +220,7 @@ Magic values obscure intent, make maintenance error-prone, and create implicit d
 
 **Domain**: Architecture
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When a feature produces data visible through multiple channels (REST API total segments, GraphQL response fields, frontend template blocks, quote extension attributes) and the implementation writes the same value to two or more storage locations independently.
@@ -279,7 +279,7 @@ Independent population of the same value in multiple locations creates stale dat
 
 **Domain**: Architecture
 **Severity**: Medium
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 Identical or near-identical logic (same control flow, different variable names) exists in 2+ locations. Logic must exceed 3 statements to qualify. Single-expression operations (type conversions, dict lookups, string formatting, guard clauses) are exempt.
@@ -331,7 +331,7 @@ Duplicate logic means duplicate bugs. When a fix is applied to one copy, the oth
 
 **Domain**: Architecture
 **Severity**: Medium
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 Function or method body exceeds 30 lines of logic. Excluded from count: docstrings, type annotations, decorators, blank lines, and single-line comments.
@@ -371,7 +371,7 @@ Long functions mix multiple levels of abstraction, are harder to test in isolati
 
 **Domain**: Architecture
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 Any public function (not prefixed with `_` in Python, not `private`/`protected` in PHP/TS) lacks complete parameter and return type annotations.
@@ -407,7 +407,7 @@ Public interfaces are contracts. Unannotated parameters force callers to read im
 
 **Domain**: Architecture
 **Severity**: High
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 Class hierarchy depth exceeds 2 levels of project code. Language/framework base classes (`ABC`, `Protocol`, `BaseModel`, `AbstractController`, `AbstractPlugin`) are excluded from the count.
@@ -446,7 +446,7 @@ Deep inheritance hierarchies create tight coupling, make behavior hard to trace,
 
 **Domain**: Architecture
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 Any catch/except/rescue block that discards the original error context.

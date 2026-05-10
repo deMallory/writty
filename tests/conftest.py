@@ -55,7 +55,7 @@ def valid_rule_data() -> dict:
         "rule_id": "ARCH-ORG-001",
         "domain": "Architecture",
         "severity": "critical",
-        "scope": "module",
+        "scope": "component",
         "trigger": "When creating a class that contains logic from a different layer.",
         "statement": "Each class must belong to exactly one architectural layer.",
         "violation": "Controller contains SQL query.",

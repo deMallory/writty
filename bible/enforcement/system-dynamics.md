@@ -16,7 +16,8 @@ System dynamics enforcement ensures the AI builds things that **survive real pro
 
 **Domain**: System Dynamics
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 When implementing any feature that involves shared state, database writes from multiple actors, message queues, multi-consumer processing, or any code path reachable by more than one concurrent caller (e.g., two queue consumers, admin + cron, REST + GraphQL simultaneously).
@@ -73,7 +74,8 @@ The most dangerous production bugs are temporal, not structural. Code that passe
 
 **Domain**: System Dynamics
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
+**Mandatory**: true
 
 ### Trigger
 When writing validation, check, or decision logic that depends on a fact established by a prior system event (e.g., "is this product salable?", "has this order been paid?", "is this coupon valid?") -- specifically when the code runs AFTER the authoritative event.
@@ -136,7 +138,8 @@ Phase D output must include temporal truth source declarations. Per-slice findin
 
 **Domain**: System Dynamics
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
+**Mandatory**: true
 
 ### Trigger
 When writing code that changes a status/state column in a database (e.g., `reserved` to `released`, `pending` to `processing`, `active` to `expired`) where more than one actor could attempt the same transition.
@@ -205,7 +208,8 @@ Naive read-then-write patterns are the #1 source of race conditions in queue-dri
 
 **Domain**: System Dynamics
 **Severity**: High
-**Scope**: file
+**Scope**: entity
+**Mandatory**: true
 
 ### Trigger
 When a literal value in code represents a business decision that could reasonably differ per store, tenant, website, or deployment (e.g., which order states to skip, retry counts, threshold quantities, payment method lists).
@@ -259,7 +263,8 @@ Multi-tenant and multi-context platforms have business semantics that differ per
 
 **Domain**: System Dynamics
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 When the implementation claims concurrency safety, idempotency, or atomicity, and the only tests validating those claims use mocked database operations.
@@ -325,7 +330,8 @@ Unit tests with mocked repositories prove logic flow, not system behavior. A moc
 
 **Domain**: System Dynamics
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 When the implementation declares a state machine (per ENF-SYS-003) and the AI is verifying completeness at the end of a slice or at ENF-GATE-FINAL.

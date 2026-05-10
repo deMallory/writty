@@ -63,7 +63,7 @@ Tests written after implementation become confirmation of what was built, not sp
 
 **Domain**: Testing
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing a unit test that interacts with external state (database, filesystem, network, shared static variables) or depends on another test's execution.
@@ -130,7 +130,7 @@ Isolated tests are faster, more reliable, and pinpoint failures precisely. Tests
 
 **Domain**: Testing
 **Severity**: Medium
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When ENF-SYS-005 identifies behaviors that cannot be proven with mocks (DB unique constraints, transaction isolation, queue redelivery, actual multi-step state transitions).

@@ -11,7 +11,7 @@ This document defines **error handling principles** for PHP code to ensure robus
 
 **Domain**: PHP / Error Handling
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When a function or method receives input that could be invalid, or when a precondition must hold for the function to work correctly -- and the code returns a default value or continues silently instead of throwing.
@@ -61,7 +61,7 @@ Silent failures mask bugs and make debugging extremely difficult. A `return 0.0`
 
 **Domain**: PHP / Error Handling
 **Severity**: Medium
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing error handling for code that runs in different execution contexts (user-facing storefront, REST API, GraphQL, admin panel, CLI, background job/consumer).

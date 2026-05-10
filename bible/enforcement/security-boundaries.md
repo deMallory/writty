@@ -12,6 +12,7 @@ This document defines **mandatory security reasoning** the AI must satisfy for a
 **Domain**: Security
 **Severity**: Critical
 **Scope**: slice
+**Mandatory**: true
 
 ### Trigger
 When generating code for any externally accessible endpoint (REST route, GraphQL resolver, admin controller, storefront controller, CLI command).
@@ -117,7 +118,8 @@ The most common security gap in AI-generated code is omission -- endpoints that 
 
 **Domain**: Security
 **Severity**: High
-**Scope**: file
+**Scope**: entity
+**Mandatory**: true
 
 ### Trigger
 When an API endpoint (REST or GraphQL) returns entity data to a caller, and the response includes the full entity object or uses `toArray()`/`getData()`/`jsonSerialize()` without field filtering.

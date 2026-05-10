@@ -11,7 +11,7 @@ This document defines **PHP-specific coding standards** for consistent, maintain
 
 **Domain**: PHP / Coding Standards
 **Severity**: Low
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When a variable is assigned from a method call where the return type is not inferrable by static analysis tools (e.g., repository `getById()` returns an interface type that PHPStan reports as `mixed`, or a factory method with no return type declaration).
@@ -47,7 +47,7 @@ Inline type annotations are self-documenting and eliminate entire categories of 
 
 **Domain**: PHP / Error Handling
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing a try-catch block in any PHP file.

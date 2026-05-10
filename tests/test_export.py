@@ -91,7 +91,7 @@ class TestRuleToMarkdown:
         md = rule_to_markdown(valid_rule_data)
         assert "**Domain**: Architecture" in md
         assert "**Severity**: Critical" in md
-        assert "**Scope**: Module" in md
+        assert "**Scope**: Component" in md
 
     def test_all_section_headers_present(self, valid_rule_data: dict) -> None:
         md = rule_to_markdown(valid_rule_data)
@@ -110,8 +110,8 @@ class TestRuleToMarkdown:
 
     def test_scope_title_cased(self, valid_rule_data: dict) -> None:
         md = rule_to_markdown(valid_rule_data)
-        assert "**Scope**: Module" in md
-        assert "**Scope**: module" not in md
+        assert "**Scope**: Component" in md
+        assert "**Scope**: component" not in md
 
     def test_pass_header_is_pass_not_pass_example(self, valid_rule_data: dict) -> None:
         md = rule_to_markdown(valid_rule_data)

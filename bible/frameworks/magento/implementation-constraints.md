@@ -11,7 +11,7 @@ This document defines **Magento 2-specific implementation constraints** that gov
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing validation logic that determines if a domain entity (coupon, product, rule, customer group, category) is legitimate.
@@ -57,7 +57,7 @@ Format-based validation creates false positives (entities that look valid but do
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When entity retrieval code contains `Factory->create()->load(`, `Model::load(`, `Model::loadByCode(`, or `Model::loadByAttribute(`.
@@ -93,7 +93,7 @@ Factory/model-load patterns bypass service contracts, skip event dispatching, ig
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing a plugin or observer that reads quote totals, subtotal, discount amounts, or any other totals-dependent data.
@@ -149,7 +149,7 @@ Quote totals are computed lazily and cached. Reading them before collection retu
 
 **Domain**: Frameworks / Magento 2
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing a `<plugin>` or `<type>` declaration in `di.xml` that targets an interface rather than a concrete class.
@@ -187,7 +187,7 @@ Interface-level plugins intercept all implementations, which may include interna
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing or modifying a custom totals collector class (extends `AbstractTotal` or implements `collect()` in the quote totals pipeline).
@@ -265,7 +265,7 @@ Totals collectors run multiple times per request (item add, address change, ship
 
 **Domain**: Frameworks / Magento 2
 **Severity**: High
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When implementing a feature that depends on fresh totals being available via `GET /V1/carts/mine/totals` (REST) for non-virtual quotes.

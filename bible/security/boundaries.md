@@ -10,7 +10,7 @@ Framework-specific patterns live in bible/frameworks/.
 
 **Domain**: Security
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When an endpoint checks that a caller is authenticated (token exists, session valid) but does not verify the caller has rights to the specific resource being accessed.
@@ -61,7 +61,7 @@ This is the #1 security flaw in AI-generated endpoints: authentication is implem
 
 **Domain**: Security
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When the design document or Phase A declaration states an ownership rule (e.g., "customer can only see their own orders") but the implementation code contains no comparison between caller identity and resource owner identity.
@@ -107,7 +107,7 @@ Design documents declaring ownership rules create false confidence. The only own
 
 **Domain**: Security
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When an API endpoint returns entity data to a caller and the response includes the full entity object or uses `toArray()`/`getData()`/`jsonSerialize()` without field filtering.
@@ -151,7 +151,7 @@ API responses that return entire entity objects "for convenience" create attack 
 
 **Domain**: Security
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When a string literal in source code matches patterns for API keys, tokens, passwords, or secrets (long alphanumeric strings, `sk_live_*`, `AKIA*`, `password =`, bearer tokens), or when `env.php`/`.env` values appear as hardcoded defaults in committed config files.

@@ -14,6 +14,7 @@ This document defines **mandatory reasoning constraints** the AI must satisfy be
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: session
+**Mandatory**: true
 
 ### Trigger
 When the AI receives any task -- before entering phases, loading phase-specific documents, or generating code.
@@ -82,7 +83,8 @@ Without complexity routing, every task pays the cost of the full protocol. A one
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 When the task involves writing a plugin, observer, or event listener in Magento 2 or any framework with context-dependent dispatch.
@@ -124,7 +126,8 @@ Plugins and observers that appear correct in one context often fail silently in 
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 When writing any validation method that determines whether a domain entity is legitimate, eligible, or active.
@@ -166,7 +169,8 @@ Validation logic that infers legitimacy from format alone (string matching, pref
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
+**Mandatory**: true
 
 ### Trigger
 When writing a plugin declaration (`<plugin>` or `<type>` with plugin in `di.xml`).
@@ -209,7 +213,8 @@ Incorrect plugin seam selection causes silent failures that are extremely diffic
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
+**Mandatory**: true
 
 ### Trigger
 When injecting any class as a constructor dependency into a class that is reachable via REST, GraphQL, or CLI -- especially if the dependency assumes UI context (session, message manager, layout).
@@ -260,6 +265,7 @@ Dependencies that assume UI context cause fatal errors or undefined behavior in 
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: session
+**Mandatory**: true
 
 ### Trigger
 When a Tier 3 (Complex) task involves plugins, observers, or event listeners -- after tier classification.
@@ -298,6 +304,7 @@ Single-phase output prevents front-loading all reasoning in one pass, which coll
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: session
+**Mandatory**: true
 
 ### Trigger
 After receiving human approval of Phase A, when proceeding to domain invariant analysis in a Tier 3 task.
@@ -336,6 +343,7 @@ Domain invariant analysis depends on a reviewed call-path. Presenting it separat
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: session
+**Mandatory**: true
 
 ### Trigger
 After receiving human approval of Phase B, when proceeding to seam justification in a Tier 3 task.
@@ -374,6 +382,7 @@ Seam justification depends on approved call-paths and domain invariants. Present
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: session
+**Mandatory**: true
 
 ### Trigger
 Continuously monitored during all Tier 2 and Tier 3 tasks.
@@ -418,6 +427,7 @@ Without anti-collapse, the AI optimizes for output completeness over review qual
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: session
+**Mandatory**: true
 
 ### Trigger
 When any ENF-SYS-* rule is triggered (concurrency, state transitions, queues, async processing, multi-website behavior). This forces the task to Tier 3 if not already.
@@ -467,6 +477,7 @@ Without a formal blocking gate, system dynamics analysis degenerates into prose 
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: slice
+**Mandatory**: true
 
 ### Trigger
 After all planning phases are approved and code generation begins -- applies to Tier 3 tasks. Tier 2 tasks use a single slice.
@@ -520,6 +531,7 @@ Generating all files in one pass is where drift happens. The AI "forgets" earlie
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: slice
+**Mandatory**: true
 
 ### Trigger
 After all planning phases are approved, BEFORE generating any implementation code -- applies to Tier 2 and Tier 3 tasks.
@@ -597,7 +609,8 @@ Tests generated after implementation become afterthought -- they validate what w
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 After generating all implementation files, before marking the module as complete.
@@ -633,7 +646,8 @@ Implementation drift from the original call-path declaration is a primary source
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 After generating all validation logic, before marking complete.
@@ -669,7 +683,8 @@ Validation that starts persistence-based in design but drifts to format-based in
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: file
+**Scope**: entity
+**Mandatory**: true
 
 ### Trigger
 After generating a class that implements an interface, or after generating an interface and its implementation.
@@ -709,7 +724,8 @@ Interface-implementation mismatches cause subtle runtime errors that surface onl
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 After generating tests, when verifying test coverage against Phase B domain invariant declarations.
@@ -757,7 +773,8 @@ Happy-path-only tests create false confidence. Without a hard gate tying tests t
 
 **Domain**: AI Enforcement
 **Severity**: High
-**Scope**: file
+**Scope**: entity
+**Mandatory**: true
 
 ### Trigger
 When the implementation contains threshold-based logic (item count, subtotal, quantity, date comparisons) and tests exist for that logic.
@@ -797,6 +814,7 @@ Off-by-one errors at boundaries are among the most common bugs in threshold-base
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: slice
+**Mandatory**: true
 
 ### Trigger
 After generating each code slice (per ENF-GATE-006).
@@ -864,6 +882,7 @@ A structured table with per-file, per-rule evidence converts self-reporting into
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: slice
+**Mandatory**: true
 
 ### Trigger
 After generating code, before marking a slice as complete.
@@ -923,7 +942,8 @@ Static analysis tools are an independent verifier with no reasoning bias. PHPSta
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 After generating code that makes operational claims about retry logic, dead-letter queues, backoff, max retries, escalation, or idempotency.
@@ -984,6 +1004,7 @@ The audit that exposed this gap: plan said "max_retries config exists" -- and it
 **Domain**: AI Enforcement
 **Severity**: High
 **Scope**: session
+**Mandatory**: true
 
 ### Trigger
 Before each implementation phase, when the AI is about to load context documents or Bible files.
@@ -1021,6 +1042,7 @@ Passive absorption of large context windows leads to hallucinated connections an
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: session
+**Mandatory**: true
 
 ### Trigger
 When the AI is about to assert a fact about execution flow, entity relationships, or API behavior that it has not verified from source code or context data.
@@ -1067,7 +1089,8 @@ Training data assumptions are the primary source of plausible-looking but incorr
 
 **Domain**: AI Enforcement
 **Severity**: High
-**Scope**: file
+**Scope**: entity
+**Mandatory**: true
 
 ### Trigger
 When generated code uses patterns that appear frequently in training data but conflict with the project's rules -- specifically: factory patterns over repositories, Model::load() over service contracts, string inference over persistence verification.
@@ -1103,6 +1126,7 @@ AI models are statistically biased toward deprecated patterns that appear freque
 **Domain**: AI Enforcement
 **Severity**: Critical
 **Scope**: session
+**Mandatory**: true
 
 ### Trigger
 At every ENF-GATE halt point (Phase A through FINAL) and whenever context usage approaches thresholds.
@@ -1148,7 +1172,8 @@ At 93% context in the LoyaltyRewards audit, the session missed zero test files o
 
 **Domain**: AI Enforcement
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 After all implementation slices are approved and before the module is declared complete -- Tier 3 tasks only.
