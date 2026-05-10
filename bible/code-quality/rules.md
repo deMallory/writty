@@ -1227,3 +1227,439 @@ Code review.
 Drifting type definitions create silent mismatches at module boundaries. A single source aligns every consumer.
 
 <!-- RULE END: DRY-TYPE-001 -->
+---
+
+<!-- RULE START: ERR-CIRCUIT-001 -->
+## Rule ERR-CIRCUIT-001
+
+**Domain**: code-quality
+**Severity**: Medium
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When an external dependency fails repeatedly.
+
+### Statement
+Repeated failures to an external service trigger a circuit breaker: the breaker opens, subsequent calls fail fast with a fallback or error, the breaker half-opens after a cooldown to probe recovery. Libraries: resilience4j, polly, py-breaker, opossum.
+
+### Violation
+```python
+# Every request continues to call the failing upstream, exhausting threads.
+```
+
+### Pass
+```python
+@breaker(failure_threshold=5, recovery_timeout=30)
+def call_upstream(): ...
+```
+
+### Enforcement
+Code review. Breaker libraries with metrics.
+
+### Rationale
+Without a breaker, every request waits the timeout before failing; the failing service drags down everything that calls it. The breaker turns a slow failure into a fast failure.
+
+<!-- RULE END: ERR-CIRCUIT-001 -->
+---
+
+<!-- RULE START: ERR-FALLBACK-001 -->
+## Rule ERR-FALLBACK-001
+
+**Domain**: code-quality
+**Severity**: Medium
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When implementing critical paths that depend on optional or recoverable inputs (cache, secondary service, personalization).
+
+### Statement
+Critical paths have defined fallback behavior, documented in code or comments. The fallback path is tested. 'If the cache is down, use the database' is explicit, not implicit.
+
+### Violation
+```python
+data = cache.get(key) or db.fetch(key)  # what if both fail?
+```
+
+### Pass
+```python
+try:
+    data = cache.get(key)
+except CacheError:
+    logger.warning('cache miss; using DB fallback')
+    data = db.fetch(key)
+# If DB also fails, the error propagates to the caller.
+```
+
+### Enforcement
+Code review.
+
+### Rationale
+Fallback decisions are part of the design, not an emergent property. Documented fallback paths preserve the critical workflow under partial outage.
+
+<!-- RULE END: ERR-FALLBACK-001 -->
+---
+
+<!-- RULE START: ERR-GRACEFUL-001 -->
+## Rule ERR-GRACEFUL-001
+
+**Domain**: code-quality
+**Severity**: High
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When implementing long-running processes (web servers, workers, daemons, CLI tools that accept signals).
+
+### Statement
+The application handles SIGTERM and SIGINT gracefully: stops accepting new work, drains in-flight requests within a deadline, flushes buffers, exits cleanly. Hard-kill on signal is a violation.
+
+### Violation
+```python
+# default behavior: SIGTERM kills the process mid-request.
+```
+
+### Pass
+```python
+shutdown_event = threading.Event()
+signal.signal(signal.SIGTERM, lambda *a: shutdown_event.set())
+while not shutdown_event.is_set():
+    serve_one_request(timeout=1.0)
+drain_in_flight(deadline=30)
+logger.info('shut down cleanly')
+```
+
+### Enforcement
+Code review.
+
+### Rationale
+Graceful shutdown preserves in-flight requests and avoids dropped writes on deployment. Hard-kill turns every deploy into a small outage.
+
+<!-- RULE END: ERR-GRACEFUL-001 -->
+---
+
+<!-- RULE START: ERR-GRACEFUL-002 -->
+## Rule ERR-GRACEFUL-002
+
+**Domain**: code-quality
+**Severity**: Medium
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When implementing background jobs, queue workers, or scheduled tasks.
+
+### Statement
+Workers have shutdown hooks that complete in-progress work or requeue it. A worker killed mid-job leaves either a half-done state or a re-runnable job; never a silently dropped job.
+
+### Violation
+```python
+# Worker yanked mid-job; the message is gone (auto-acked at receive).
+```
+
+### Pass
+```python
+# Worker acks message only after job completes. SIGTERM triggers
+# wait_for_current_job_to_finish(timeout) then exit.
+```
+
+### Enforcement
+Code review.
+
+### Rationale
+Dropped jobs on shutdown produce silent data inconsistency. Acknowledgement-after-complete plus shutdown hooks preserve the at-least-once contract.
+
+<!-- RULE END: ERR-GRACEFUL-002 -->
+---
+
+<!-- RULE START: ERR-HANDLE-001 -->
+## Rule ERR-HANDLE-001
+
+**Domain**: code-quality
+**Severity**: High
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When making any call to an external system: HTTP, database, file I/O, message queue, third-party SDK, IPC.
+
+### Statement
+Every external call is wrapped in error handling with an explicit timeout. Bare network or file calls without try/except + timeout are violations. The handler logs, maps to a domain error, or retries deliberately.
+
+### Violation
+```python
+response = requests.get('https://api.example.com/data')  # no timeout, no handling
+```
+
+### Pass
+```python
+try:
+    response = requests.get('https://api.example.com/data', timeout=5.0)
+    response.raise_for_status()
+except (requests.Timeout, requests.ConnectionError) as e:
+    logger.warning('upstream failure', extra={'service': 'example'})
+    raise UpstreamUnavailable('example') from e
+```
+
+### Enforcement
+Code review.
+
+### Rationale
+Unhandled external failures propagate as raw library exceptions to callers that cannot recover or even identify them. Wrapping is the structural defense.
+
+<!-- RULE END: ERR-HANDLE-001 -->
+---
+
+<!-- RULE START: ERR-HANDLE-002 -->
+## Rule ERR-HANDLE-002
+
+**Domain**: code-quality
+**Severity**: High
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When re-raising or wrapping caught exceptions.
+
+### Statement
+Errors propagate with context: the wrapping exception preserves the original via `raise ... from e` (Python), `cause:` (JS), `Throwable.initCause` (Java), `wrap` (Go errors.Is/As). Bare re-raise that loses the chain is a violation.
+
+### Violation
+```python
+try:
+    pay(order)
+except StripeError:
+    raise PaymentFailed()  # original cause lost
+```
+
+### Pass
+```python
+try:
+    pay(order)
+except StripeError as e:
+    raise PaymentFailed(order.id) from e
+```
+
+### Enforcement
+Code review.
+
+### Rationale
+Unchained exceptions hide the root cause behind a generic wrapper. The original stack trace is the most valuable artifact in an incident.
+
+<!-- RULE END: ERR-HANDLE-002 -->
+---
+
+<!-- RULE START: ERR-HANDLE-003 -->
+## Rule ERR-HANDLE-003
+
+**Domain**: code-quality
+**Severity**: Medium
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When constructing error messages returned to end users.
+
+### Statement
+User-facing error messages are helpful and human-readable but never expose internal details: file paths, stack traces, SQL fragments, library names, internal IDs. A correlation ID lets support map the user-facing message to the internal log.
+
+### Violation
+```python
+return {'error': str(traceback.format_exc())}, 500
+```
+
+### Pass
+```python
+return {'error': 'We could not process your request. Reference: ABCD-1234', 'reference': correlation_id}, 500
+```
+
+### Enforcement
+Code review.
+
+### Rationale
+Internal-detail leaks aid reconnaissance and confuse legitimate users. A clear public message + an internal correlation ID balances both audiences.
+
+<!-- RULE END: ERR-HANDLE-003 -->
+---
+
+<!-- RULE START: ERR-RETRY-001 -->
+## Rule ERR-RETRY-001
+
+**Domain**: code-quality
+**Severity**: High
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When implementing retry logic for external calls or transient failures.
+
+### Statement
+Retries use exponential backoff with jitter, not fixed intervals. Backoff base is at least 100ms; jitter is random within a window to avoid thundering herd; growth multiplier is 2-3x.
+
+### Violation
+```python
+for attempt in range(5):
+    try:
+        return call()
+    except TransientError:
+        time.sleep(1)  # fixed interval; thundering herd at scale
+```
+
+### Pass
+```python
+for attempt in range(5):
+    try:
+        return call()
+    except TransientError:
+        delay = min(30, (2 ** attempt) * 0.1) * (0.5 + random.random())
+        time.sleep(delay)
+```
+
+### Enforcement
+Code review. Retry libraries (tenacity, retry, polly) implement this correctly.
+
+### Rationale
+Fixed-interval retries synchronize and amplify upstream failures. Exponential backoff with jitter spreads the retry load and gives upstream room to recover.
+
+<!-- RULE END: ERR-RETRY-001 -->
+---
+
+<!-- RULE START: ERR-RETRY-002 -->
+## Rule ERR-RETRY-002
+
+**Domain**: code-quality
+**Severity**: Medium
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When implementing retry logic.
+
+### Statement
+Retry attempts are capped (typically 3-5). Infinite retry loops are forbidden. After the cap, the call fails through to the next layer of error handling (fallback, circuit break, error response).
+
+### Violation
+```python
+while True:
+    try: return call()
+    except TransientError: continue
+```
+
+### Pass
+```python
+for attempt in range(5):
+    try: return call()
+    except TransientError: continue
+raise ServiceUnavailable()
+```
+
+### Enforcement
+Code review.
+
+### Rationale
+Unbounded retries hang the request, consume the worker, and never surface the failure to the caller.
+
+<!-- RULE END: ERR-RETRY-002 -->
+---
+
+<!-- RULE START: ERR-TIMEOUT-001 -->
+## Rule ERR-TIMEOUT-001
+
+**Domain**: code-quality
+**Severity**: High
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When making any external call (HTTP, DB, RPC, lock acquisition, queue receive).
+
+### Statement
+All external calls have explicit timeouts. Unbounded waits are forbidden. The library default is not acceptable as documentation: the timeout is passed at the call site or set via shared client config.
+
+### Violation
+```python
+response = requests.get('https://api.example.com/data')  # no timeout
+```
+
+### Pass
+```python
+response = requests.get('https://api.example.com/data', timeout=5.0)
+```
+
+### Enforcement
+Code review. Linter rule (ruff S113 for requests without timeout).
+
+### Rationale
+Bare external calls inherit library defaults that are often 'no timeout' or 'minutes'. One slow upstream stalls the whole worker pool.
+
+<!-- RULE END: ERR-TIMEOUT-001 -->
+---
+
+<!-- RULE START: ERR-TIMEOUT-002 -->
+## Rule ERR-TIMEOUT-002
+
+**Domain**: code-quality
+**Severity**: Medium
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When configuring timeout values for external calls.
+
+### Statement
+Timeout values are configurable (env var, config file, settings module). Hardcoded timeouts spread across the codebase are violations; one config controls them by environment and downstream-service.
+
+### Violation
+```python
+response = requests.get(url, timeout=5)  # hardcoded everywhere
+```
+
+### Pass
+```python
+response = requests.get(url, timeout=settings.UPSTREAM_TIMEOUT_SECONDS)
+```
+
+### Enforcement
+Code review.
+
+### Rationale
+Tuning timeouts during an incident is a 1-line config change when timeouts are configurable. Otherwise it is a code change, a deploy, and a delay.
+
+<!-- RULE END: ERR-TIMEOUT-002 -->
+---
+
+<!-- RULE START: ERR-VALIDATION-001 -->
+## Rule ERR-VALIDATION-001
+
+**Domain**: code-quality
+**Severity**: High
+**Scope**: Component
+**Mandatory**: false
+
+### Trigger
+When returning validation errors from an API.
+
+### Statement
+Validation errors are returned as structured responses with field-level errors and error codes. A flat string like 'Validation failed' is a violation; the response identifies which field failed, why, and a machine-readable code.
+
+### Violation
+```python
+return {'error': 'Validation failed'}, 400
+```
+
+### Pass
+```python
+return {'errors': [
+    {'field': 'email', 'code': 'INVALID_FORMAT', 'message': 'Not a valid email'},
+    {'field': 'age', 'code': 'OUT_OF_RANGE', 'message': 'Must be 0-150'},
+]}, 400
+```
+
+### Enforcement
+Code review. Pydantic + FastAPI produces this shape automatically.
+
+### Rationale
+Structured validation errors let UIs highlight the bad field and let integrations handle errors programmatically. A bare string forces every consumer to parse.
+
+<!-- RULE END: ERR-VALIDATION-001 -->
