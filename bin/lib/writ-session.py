@@ -244,6 +244,24 @@ def cmd_update(session_id: str, args: list[str]) -> None:
                 0, cache.get("always_on_budget", DEFAULT_ALWAYS_ON_CAP) - n
             )
             i += 2
+        elif args[i] == "--reset-task-phase":
+            # Fresh-task transition: ExitPlanMode validation succeeded,
+            # signaling the user is reviewing a brand-new plan. Reset
+            # current_phase to planning and clear gates_approved so the
+            # next /advance-phase walks the planning -> testing ->
+            # implementation cycle from the start, instead of consuming
+            # the prior task's residual state.
+            old_phase = cache.get("current_phase")
+            cache["current_phase"] = "planning"
+            cache["gates_approved"] = []
+            if old_phase != "planning":
+                cache.setdefault("phase_transitions", []).append({
+                    "from": old_phase,
+                    "to": "planning",
+                    "trigger": "exit-plan-reset",
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                })
+            i += 1
         else:
             i += 1
 

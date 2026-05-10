@@ -119,6 +119,14 @@ print(json.dumps(result))
     exit 0
 fi
 
+# Reset task phase: ExitPlanMode validation succeeded, so this is the
+# canonical "fresh plan = fresh task" signal. Without this, current_phase
+# can carry over from a prior task (e.g. `implementation` or `complete`)
+# and the next /advance-phase silently consumes the wrong transition.
+# See tests/test_exit_plan_phase_reset.py and commit 33e0adc for context.
+_writ_session update "$SESSION_ID" \
+    --reset-task-phase 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
+
 # Log exitplanmode_allow
 python3 -c "
 import json, sys, os
