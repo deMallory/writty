@@ -610,6 +610,149 @@ for line_no, line in enumerate(lines, start=1):
 PYEOF
 }
 
+# ── Security crypto/headers scan (cross-language) ────────────────────────────
+# Phase 1C 2026-05-10. Detects hardcoded secrets (SEC-CRYPTO-KEY-001) plus
+# CSPRNG context for crypto-specific identifiers (SEC-CRYPTO-RAND-001).
+# Overlap with the auth-token CSPRNG detector is intentional: tokens are a
+# subset of security-sensitive randomness, and crypto-specific identifiers
+# (iv, nonce, salt) add new context to flag.
+analyze_security_crypto_headers() {
+  local file="$1"
+  local lang="$2"
+
+  python3 - <<'PYEOF' "$file" "$lang"
+import json, os, re, sys
+file_path = sys.argv[1]
+lang = sys.argv[2]
+basename = os.path.basename(file_path)
+if basename.startswith("seed_") and basename.endswith(".py"):
+    sys.exit(0)
+try:
+    with open(file_path, encoding="utf-8", errors="replace") as f:
+        src = f.read()
+except OSError:
+    sys.exit(0)
+
+lines = src.splitlines()
+
+def emit(line_no, rule, tool, message, severity="error"):
+    print(json.dumps({
+        "file": file_path,
+        "line": line_no,
+        "severity": severity,
+        "rule": rule,
+        "tool": "writ-crypto-scan/" + tool,
+        "message": message,
+    }))
+
+def near(line_no, marker_re, window=2):
+    lo = max(0, line_no - 1 - window)
+    hi = min(len(lines), line_no - 1 + window + 1)
+    return any(re.search(marker_re, lines[i]) for i in range(lo, hi))
+
+# SEC-CRYPTO-KEY-001: hardcoded secret patterns.
+SECRET_PATTERNS = [
+    (r"['\"](sk_live_[A-Za-z0-9]{16,})['\"]", "stripe-live", "Stripe live secret in source"),
+    (r"['\"](sk_test_[A-Za-z0-9]{16,})['\"]", "stripe-test", "Stripe test secret in source (rotate before production)"),
+    (r"['\"](AKIA[0-9A-Z]{16})['\"]", "aws-access-key", "AWS access key ID in source"),
+    (r"['\"](xox[baprs]-[A-Za-z0-9-]{10,})['\"]", "slack-token", "Slack token in source"),
+    (r"['\"](ghp_[A-Za-z0-9]{20,})['\"]", "github-pat", "GitHub personal access token in source"),
+    (r"['\"](gho_[A-Za-z0-9]{20,})['\"]", "github-oauth", "GitHub OAuth token in source"),
+    (r"-----BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY-----", "pem-private-key",
+     "PEM-encoded private key in source"),
+]
+
+# Identifier-based: API_KEY = "...", SECRET = "...", PASSWORD = "...", etc.
+IDENT_ASSIGN = re.compile(
+    r"\b(?:[A-Z_]*(?:API_?KEY|SECRET|PASSWORD|TOKEN|PRIVATE_?KEY|ACCESS_?KEY|AUTH_?KEY)[A-Z_]*)"
+    r"\s*[:=]\s*['\"]([^'\"]{8,})['\"]"
+)
+# Lowercase variant (Python attribute / dict key assignment).
+IDENT_ASSIGN_LOWER = re.compile(
+    r"\b(?:api_key|secret|password|token|private_key|access_key|auth_key)\b"
+    r"\s*[:=]\s*['\"]([^'\"]{8,})['\"]",
+    re.IGNORECASE,
+)
+
+# Allowlist: obvious placeholders the linter should not flag.
+PLACEHOLDER = re.compile(
+    r"^(your[-_]?|example|placeholder|change[-_]?me|fake|dummy|test|sample|todo|xxx+|\.\.\.|<.+>)",
+    re.IGNORECASE,
+)
+
+# SEC-CRYPTO-RAND-001: non-CSPRNG near crypto-specific identifiers.
+CRYPTO_RNG = [
+    (r"\bMath\.random\s*\(\s*\)", "weak-rng-crypto-node",
+     "Math.random() near crypto identifier: use crypto.randomBytes()"),
+    (r"\brandom\.(random|choice|choices|randint|randrange|uniform|getrandbits)\s*\(",
+     "weak-rng-crypto-py",
+     "random.* near crypto identifier: use secrets.token_bytes() or os.urandom()"),
+    (r"\b(mt_rand|rand|srand)\s*\(", "weak-rng-crypto-php",
+     "mt_rand/rand near crypto identifier: use random_bytes() or random_int()"),
+]
+CRYPTO_CTX = re.compile(
+    r"\b(iv|nonce|salt|aes|gcm|cbc|aead|encrypt|cipher|hmac|signing[_-]?key)\b",
+    re.IGNORECASE,
+)
+
+# SEC-CRYPTO-CERT-001: disabled cert verification.
+CERT_DISABLE = [
+    (r"\bverify\s*=\s*False\b", "verify-false-py",
+     "verify=False disables TLS cert validation -- forbidden outside scoped local-dev paths"),
+    (r"rejectUnauthorized\s*:\s*false", "reject-unauth-node",
+     "rejectUnauthorized: false disables TLS cert validation"),
+    (r"InsecureSkipVerify\s*:\s*true", "insecure-skip-go",
+     "InsecureSkipVerify: true disables TLS cert validation"),
+    (r"CURLOPT_SSL_VERIFYPEER\s*,\s*(false|0|FALSE)", "curl-verifypeer-php",
+     "CURLOPT_SSL_VERIFYPEER false disables TLS cert validation"),
+]
+
+# SEC-CRYPTO-ALGO-001: forbidden symmetric algorithms and modes.
+WEAK_CIPHER = [
+    (r"AES\.MODE_ECB\b", "aes-ecb",
+     "AES ECB mode: pattern-leaking; use AES-GCM or ChaCha20-Poly1305"),
+    (r"\b(?:DES|TripleDES|3DES)\.new\s*\(", "des-cipher",
+     "DES/3DES symmetric cipher: forbidden; use AES-256-GCM"),
+    (r"\bARC4\.new\s*\(", "rc4-cipher", "RC4 cipher: forbidden"),
+]
+
+for line_no, line in enumerate(lines, start=1):
+    stripped = line.lstrip()
+    if stripped.startswith(("#", "//", "*")):
+        continue
+
+    # Hardcoded-secret patterns.
+    for pat, tool, msg in SECRET_PATTERNS:
+        if re.search(pat, line):
+            emit(line_no, "SEC-CRYPTO-KEY-001", tool, msg, "error")
+
+    # Identifier-based credential assignment.
+    for ident_re in (IDENT_ASSIGN, IDENT_ASSIGN_LOWER):
+        m = ident_re.search(line)
+        if m:
+            literal = m.group(1)
+            if not PLACEHOLDER.match(literal):
+                emit(line_no, "SEC-CRYPTO-KEY-001", "credential-literal-assign",
+                     f"Credential assigned to string literal in source (load from env or secrets manager)",
+                     "error")
+
+    # CSPRNG context: only flag when crypto-specific identifier is nearby.
+    for pat, tool, msg in CRYPTO_RNG:
+        if re.search(pat, line) and near(line_no, CRYPTO_CTX, window=2):
+            emit(line_no, "SEC-CRYPTO-RAND-001", tool, msg, "error")
+
+    # Cert validation disable.
+    for pat, tool, msg in CERT_DISABLE:
+        if re.search(pat, line):
+            emit(line_no, "SEC-CRYPTO-CERT-001", tool, msg, "error")
+
+    # Weak symmetric algorithms.
+    for pat, tool, msg in WEAK_CIPHER:
+        if re.search(pat, line):
+            emit(line_no, "SEC-CRYPTO-ALGO-001", tool, msg, "error")
+PYEOF
+}
+
 # ── Main loop ────────────────────────────────────────────────────────────────
 ALL_FINDINGS=""
 HAS_ERRORS=0
@@ -664,6 +807,16 @@ print(json.dumps({
   if [ -n "$auth_result" ]; then
     ALL_FINDINGS="${ALL_FINDINGS}${auth_result}"$'\n'
     if echo "$auth_result" | grep -q '"severity": "error"'; then
+      HAS_ERRORS=1
+    fi
+  fi
+
+  # Cross-language crypto/headers scan (SEC-CRYPTO-* mandatory rules
+  # from the public rulebook, Phase 1C 2026-05-10).
+  crypto_result=$(analyze_security_crypto_headers "$file" "$lang")
+  if [ -n "$crypto_result" ]; then
+    ALL_FINDINGS="${ALL_FINDINGS}${crypto_result}"$'\n'
+    if echo "$crypto_result" | grep -q '"severity": "error"'; then
       HAS_ERRORS=1
     fi
   fi
