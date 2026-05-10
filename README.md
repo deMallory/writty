@@ -138,6 +138,17 @@ Full numbers in `SCALE_BENCHMARK_RESULTS.md`. Architectural detail in `HANDBOOK.
 | `writ audit-session <session_id>` | Per-session timeline and summary. |
 | `writ role-prompt <name>` | Print canonical SubagentRole prompt template from graph. |
 
+## Troubleshooting
+
+Common issues and fixes:
+
+- **`Docker daemon not reachable`**: start Docker Desktop, or `sudo systemctl start docker` on Linux, then re-run `bootstrap.sh`.
+- **`python3 version is 3.9; need >= 3.11`**: install a newer Python. `pyenv` is a clean way to manage versions without touching system Python.
+- **`port 7687 already in use`**: another Neo4j instance is running. Either stop it (`docker stop <container>`) or change the `ports:` mapping in `docker-compose.yml`.
+- **`Neo4j did not become reachable within 60s`**: check logs (`docker compose logs neo4j`). Common cause: insufficient memory allocated to Docker Desktop (Neo4j needs ~1 GB).
+- **`daemon did not become healthy within 10s`**: check `/tmp/writ-server.log`. Usually an import error; re-run `pip install -e .` from the skill directory with the venv activated.
+- **Default Neo4j credentials (`neo4j/writdevpass`)**: a development default. For any non-local use, change `NEO4J_AUTH` in `docker-compose.yml` and the matching `[neo4j]` section in `writ.toml`.
+
 ## API reference
 
 All endpoints under `http://localhost:8765`. JSON bodies; no auth (binds localhost only). Total: 36 endpoints (11 top-level plus 25 under `/session/{id}/`).
@@ -196,18 +207,7 @@ The benchmark suite has four files:
 
 **Production ready.** All five retrieval stages with budget headroom at every level. Mode and gate enforcement. AI rule proposal with the 5-check structural gate. Frequency-driven graduation logic. Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`). ONNX-optimized embedding inference verified identical to PyTorch on every test query. HNSW persistence with corpus-hash invalidation. 90 test files. Friction log analytics with a dashboard.
 
-**Mandatory rule cleanup (2026-05-10).** The pre-cleanup graph had 41 mandatory rules; the audit (`docs/mandatory-rule-audit.md`, 2026-04-21) recommended 18 of those for demotion because no mechanical enforcement path was viable. The 2026-05-10 cleanup went further: it deleted 17 rules tied to the dead Phase A-D / Tier-0-3 / completion-matrix workflow (rules whose principles were either duplicated by current hooks or whose enforcement mechanism no longer exists), demoted another 12 to advisory (sound principles with no automated check), and left 11 mandatory rules, every one of which now points at a real, verified mechanical enforcement path in the v2 system.
-
-**Documented but inert.** A handful of features are implemented but not yet wired into the runtime path:
-- Abstraction summary mode is built (`writ/compression/`) but `pipeline.query()` does not pass abstractions into the budget trimmer.
-- The `compute_confidence_weight` graduation read-time override is callable but not invoked from `query()`.
-- 7 of the 17 allowed edge types lack rules using them (`DEPENDS_ON`, `CONFLICTS_WITH`, `SUPPLEMENTS`, `SUPERSEDES`, `APPLIES_TO`, `ABSTRACTS`, `JUSTIFIED_BY`).
-- `Abstraction.abstraction_id` lacks a uniqueness constraint despite `MERGE`-based creation.
-
-**Documentation drift to clean up.** Older handbook claims are tracked against the live code:
-- The graduation logic uses a plain ratio threshold (`positive / n >= 0.75` at `n >= 50`), not a Wilson confidence interval. The Wilson reasoning is the justification for `n = 50`, not the runtime check.
-- The `normalize_ranks` docstring says "reciprocal rank fusion." The implementation is plain reciprocal rank `1 / (rank + 1)`, no `k` constant.
-- A comment in `writ/compression/clusters.py` says "cosine distance" where the formula is Euclidean. Behavior is identical because embeddings are L2-normalized, but the comment is wrong.
+**Under review.** Public out-of-the-box rulebook expansion: ~150 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, Documentation. See `RULEBOOK-AUDIT.md` for the per-rule mapping plan and `out-of-the-box-rules.md` for the target spec.
 
 ## Related documents
 

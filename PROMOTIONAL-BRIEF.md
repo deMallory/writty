@@ -144,9 +144,9 @@ Phase advancement requires a `--token` argument matching `/tmp/writ-gate-token-$
 
 Within score bands of 0.02, the ranker stabilizes injection order from `last_injected_rule_ids` (the rules from the previous turn). When the corpus is otherwise indistinguishable in score, stable order keeps the prompt cache warm. Prompt-cache reuse across turns becomes a first-class concern, not an afterthought.
 
-### Plain ratio graduation, not Wilson CI
+### Plain ratio graduation, invoked at query time
 
-Older documentation claimed graduation uses a Wilson confidence interval. The actual code uses a plain ratio threshold (`positive / n >= 0.75` at `n >= 50`). The Wilson reasoning is the justification for picking `n = 50` (Wilson 95 percent CI at n=50 with p=0.75 has acceptable width), not the runtime check. The runtime check is the simpler, observable, auditable comparison. The drift is recorded in the handbook discrepancy catalog so the gap does not widen.
+Graduation uses a plain ratio threshold: at 50+ observations with at least 75 percent positive, the empirical positive ratio replaces the static confidence-tier weight. The Wilson 95 percent CI at n=50, p=0.75 has acceptable width (about 0.61 to 0.86), which is the justification for picking n=50; the runtime check is the simpler ratio comparison. The check fires inside `compute_score` on every ranked candidate, so a rule with sustained positive feedback overrides its static tier without any maintainer action.
 
 ## Integration story
 
@@ -203,16 +203,10 @@ Same as context stuffing, but worse: it pollutes the system prompt where it is h
 - Friction log analytics with a dashboard (`GET /dashboard`).
 
 **Under review:**
-- Mandatory rule cleanup completed 2026-05-10. The pre-cleanup graph had 41 mandatory rules. The cleanup deleted 17 rules tied to the dead Phase A-D / Tier-0-3 workflow and demoted 12 more to advisory. The remaining 11 mandatory rules each have a real, verified mechanical enforcement path in the v2 system. The 2026-04-21 audit's 18 demotion recommendations were a strict subset of the actions taken.
 - Self-review judge calibration (`docs/phase-2-self-review-decision.md`).
+- Public out-of-the-box rulebook expansion: ~150 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, Documentation. See `RULEBOOK-AUDIT.md` for the mapping plan.
 
-**Known unwired surfaces** (recorded for future work):
-- Abstraction summary mode is built but `pipeline.query()` does not pass abstractions into the budget trimmer, so the summary path is currently inert.
-- The `compute_confidence_weight` graduation read-time override is callable but not invoked from `query()`. The static enum table runs.
-- 7 of the 17 allowed edge types lack rules using them.
-- `Abstraction.abstraction_id` lacks a uniqueness constraint despite `MERGE`-based creation.
-
-**Roadmap:** wire the abstraction summary mode through the pipeline; complete the multi-query session simulation work; consider a Qdrant-backed vector store for corpora over 100K rules; consider an optional remote-graph mode and distributed sub-agent dispatch.
+**Roadmap:** complete the public rulebook expansion (Phases 1 through 6 in `RULEBOOK-AUDIT.md`); complete the multi-query session simulation work; consider a Qdrant-backed vector store for corpora over 100K rules; consider an optional remote-graph mode and distributed sub-agent dispatch.
 
 ## TL;DR by audience
 

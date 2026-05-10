@@ -186,6 +186,7 @@ class RetrievalPipeline:
         rule_metadata: dict[str, dict],
         weights: RankingWeights | None = None,
         authority_preference_threshold: float = 0.0,
+        abstractions: list[dict] | None = None,
     ) -> None:
         self._keyword = keyword_index
         self._vector = vector_store
@@ -194,6 +195,7 @@ class RetrievalPipeline:
         self._metadata = rule_metadata
         self._weights = weights or RankingWeights()
         self._authority_preference_threshold = authority_preference_threshold
+        self._abstractions = abstractions or []
 
     def query(
         self,
@@ -327,6 +329,8 @@ class RetrievalPipeline:
                 severity=meta.get("severity", "medium"),
                 confidence=meta.get("confidence", "production-validated"),
                 weights=first_pass_weights,
+                times_seen_positive=meta.get("times_seen_positive", 0) or 0,
+                times_seen_negative=meta.get("times_seen_negative", 0) or 0,
             )
             first_pass_scores.append((rid, fp_score))
 
@@ -368,6 +372,8 @@ class RetrievalPipeline:
                 graph_proximity=proximity.get(rid, 0.0),
                 bundle_cohesion=bundle_cohesion.get(rid, 0.0),
                 weights=active_weights,
+                times_seen_positive=meta.get("times_seen_positive", 0) or 0,
+                times_seen_negative=meta.get("times_seen_negative", 0) or 0,
             )
             rule_entry = {
                 "rule_id": rid,
@@ -397,8 +403,10 @@ class RetrievalPipeline:
         if prefer_rule_ids:
             scored_rules = _apply_sticky_tiebreak(scored_rules, prefer_rule_ids)
 
-        # Apply context budget.
-        trimmed, mode = apply_context_budget(scored_rules, budget_tokens)
+        # Apply context budget. Abstraction summaries (when present in the
+        # graph and the budget triggers summary mode) replace raw rule
+        # renders.
+        trimmed, mode = apply_context_budget(scored_rules, budget_tokens, self._abstractions)
 
         elapsed_ms = (time.perf_counter() - start) * 1000
         return {
@@ -592,6 +600,10 @@ async def build_pipeline(
     adjacency_cache = AdjacencyCache()
     await adjacency_cache.build_from_db(db)
 
+    # Load Abstraction nodes so summary-mode can return abstraction summaries
+    # instead of raw rule renders when budget_tokens < SUMMARY_THRESHOLD.
+    abstractions = await db.get_all_abstractions()
+
     return RetrievalPipeline(
         keyword_index=keyword_index,
         vector_store=vector_store,
@@ -599,4 +611,5 @@ async def build_pipeline(
         embedding_model=query_encoder,
         rule_metadata=rule_metadata,
         weights=weights,
+        abstractions=abstractions,
     )
