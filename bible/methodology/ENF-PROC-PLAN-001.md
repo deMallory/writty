@@ -10,7 +10,7 @@ pass_example: "plan.md Step 5: 'In src/api.py line 42, wrap the fetch() call in 
 enforcement: "Gate 5 Tier 1 via validate-exit-plan.sh: lexical match against placeholder blocklist (TBD, TODO, fill in, appropriate, similar to, as needed, placeholder). Gate 5 Tier 2 via Haiku judge rubric on PostToolUse for semantic-level boilerplate."
 rationale: "Placeholder plans transfer design decisions to the implementer as interpretation. They are the canonical failure mode of AI-generated planning."
 mandatory: true
-always_on: false
+always_on: true
 confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21

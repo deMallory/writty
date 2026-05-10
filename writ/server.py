@@ -954,7 +954,24 @@ async def always_on_bundle(mode: str | None = None) -> dict[str, Any]:
         result = await session.run(frb_query)
         frb_rows = [record.data() async for record in result]
 
-    combined = rows + frb_rows
+    # Phase 6 follow-up: methodology nodes (Skill, Playbook) tagged
+    # always_on=true also surface here. Rule + ForbiddenResponse remain
+    # the primary tenants; methodology adds high-signal companions.
+    methodology_rows: list[dict] = []
+    for label, id_field in (("Skill", "skill_id"), ("Playbook", "playbook_id")):
+        q = f"""
+            MATCH (n:{label})
+            WHERE n.always_on = true
+            RETURN n.{id_field} AS rule_id, n.trigger AS trigger,
+                   n.statement AS statement, n.severity AS severity,
+                   n.scope AS scope, n.domain AS domain
+            ORDER BY n.{id_field}
+        """
+        async with _db._driver.session(database=_db._database) as session:
+            result = await session.run(q)
+            methodology_rows.extend([record.data() async for record in result])
+
+    combined = rows + frb_rows + methodology_rows
 
     # Mode scoping: when mode is "debug", include only rules with scope="session"
     # or those explicitly tagged for debug context. When "work", the full set.
