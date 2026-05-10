@@ -1,6 +1,6 @@
 """Section 10 contractual performance targets -- automated benchmark suite.
 
-Measures all metrics from RAG_arch_handbook.md Section 10. These are
+Measures all metrics from HANDBOOK.md Section "By the numbers". These are
 pass/fail gates: if any target is missed, the pipeline must be re-architected
 before proceeding to Phases 6-9.
 

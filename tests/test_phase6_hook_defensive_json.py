@@ -129,7 +129,9 @@ class TestRecoveredPatternBehavior:
 # --- Hook-source pattern audit ---------------------------------------------
 
 
-_AFFECTED_HOOKS = ["writ-rag-inject.sh", "writ-pretool-rag.sh"]
+_AFFECTED_HOOKS = ["writ-rag-inject.sh"]
+# writ-pretool-rag.sh was removed in the 2026-05-10 cleanup (superseded by
+# writ-pre-write-dispatch.sh).
 
 
 def _hook_source(name: str) -> str:

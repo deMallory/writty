@@ -1,16 +1,10 @@
-# Security Boundaries
-
-Universal security rules for all projects and frameworks.
-Framework-specific patterns live in bible/frameworks/.
-
----
-
 <!-- RULE START: SEC-UNI-001 -->
-## Rule SEC-UNI-001: Authentication Is Not Authorization
+## Rule SEC-UNI-001
 
 **Domain**: Security
 **Severity**: Critical
-**Scope**: entity
+**Scope**: Entity
+**Mandatory**: false
 
 ### Trigger
 When an endpoint checks that a caller is authenticated (token exists, session valid) but does not verify the caller has rights to the specific resource being accessed.
@@ -18,7 +12,7 @@ When an endpoint checks that a caller is authenticated (token exists, session va
 ### Statement
 Every endpoint that returns user-specific data must verify both authentication (who is the caller?) AND authorization (does this caller own this resource?). A logged-in user must not be able to access another user's data by changing an ID in the request.
 
-### Violation (bad)
+### Violation
 ```php
 public function getOrderDetails(int $orderId): OrderInterface
 {
@@ -31,7 +25,7 @@ public function getOrderDetails(int $orderId): OrderInterface
 }
 ```
 
-### Pass (good)
+### Pass
 ```php
 public function getOrderDetails(int $orderId): OrderInterface
 {
@@ -48,28 +42,29 @@ public function getOrderDetails(int $orderId): OrderInterface
 ```
 
 ### Enforcement
-ENF-SEC-001 (access boundary declaration) requires ownership rules. Per-slice findings table (ENF-POST-006) must quote the ownership comparison code. ENF-GATE-007 test skeletons must include unauthorized + ownership violation + valid cases.
+ENF-SEC-001 (access boundary declaration) requires ownership rules. ENF-GATE-007 test skeletons must include unauthorized + ownership violation + valid cases.
 
 ### Rationale
 This is the #1 security flaw in AI-generated endpoints: authentication is implemented but authorization is omitted. Any authenticated customer can access any other customer's data by changing the ID parameter.
-<!-- RULE END: SEC-UNI-001 -->
 
+<!-- RULE END: SEC-UNI-001 -->
 ---
 
 <!-- RULE START: SEC-UNI-002 -->
-## Rule SEC-UNI-002: Ownership Verification Must Be In Code
+## Rule SEC-UNI-002
 
 **Domain**: Security
 **Severity**: Critical
-**Scope**: entity
+**Scope**: Entity
+**Mandatory**: false
 
 ### Trigger
-When the design document or Phase A declaration states an ownership rule (e.g., "customer can only see their own orders") but the implementation code contains no comparison between caller identity and resource owner identity.
+When the design document or g., "customer can only see their own orders") but the implementation code contains no comparison between caller identity and resource owner identity.
 
 ### Statement
 Every ownership rule declared in design must have a corresponding code path that compares authenticated caller identity to resource owner identity. If the comparison fails, the request is rejected. Design-only ownership rules are not enforcement.
 
-### Violation (bad)
+### Violation
 ```php
 // Design says: "customer can only see own orders"
 // Code uses the customer_id from the request argument, not from auth context
@@ -80,7 +75,7 @@ public function resolve($field, $context, $info, $value, $args): array
 }
 ```
 
-### Pass (good)
+### Pass
 ```php
 public function resolve($field, $context, $info, $value, $args): array
 {
@@ -94,20 +89,21 @@ public function resolve($field, $context, $info, $value, $args): array
 ```
 
 ### Enforcement
-ENF-SEC-001 hard gate (ownership verification must exist in code). Per-slice findings table (ENF-POST-006) must quote the identity comparison line.
+ENF-SEC-001 hard gate (ownership verification must exist in code).
 
 ### Rationale
 Design documents declaring ownership rules create false confidence. The only ownership rule that matters is the one enforced by a code path that compares caller identity to resource owner identity.
-<!-- RULE END: SEC-UNI-002 -->
 
+<!-- RULE END: SEC-UNI-002 -->
 ---
 
 <!-- RULE START: SEC-UNI-003 -->
-## Rule SEC-UNI-003: Explicit Response Field Selection
+## Rule SEC-UNI-003
 
 **Domain**: Security
 **Severity**: High
-**Scope**: entity
+**Scope**: Entity
+**Mandatory**: false
 
 ### Trigger
 When an API endpoint returns entity data to a caller and the response includes the full entity object or uses `toArray()`/`getData()`/`jsonSerialize()` without field filtering.
@@ -115,7 +111,7 @@ When an API endpoint returns entity data to a caller and the response includes t
 ### Statement
 API responses must explicitly select which fields to include. Never return the full entity. Internal IDs, credentials, PII, and internal state are excluded unless the endpoint specifically requires them and the caller has rights.
 
-### Violation (bad)
+### Violation
 ```php
 public function getCustomer(int $id): array
 {
@@ -125,7 +121,7 @@ public function getCustomer(int $id): array
 }
 ```
 
-### Pass (good)
+### Pass
 ```php
 public function getCustomer(int $id): CustomerResponseInterface
 {
@@ -138,20 +134,21 @@ public function getCustomer(int $id): CustomerResponseInterface
 ```
 
 ### Enforcement
-ENF-SEC-002 (data exposure minimization). Per-slice findings table (ENF-POST-006) must list all exposed response fields and justify each.
+ENF-SEC-002 (data exposure minimization).
 
 ### Rationale
 API responses that return entire entity objects "for convenience" create attack surfaces. Every exposed field is a potential information leak. Minimizing response data reduces the blast radius of any future authorization bypass.
-<!-- RULE END: SEC-UNI-003 -->
 
+<!-- RULE END: SEC-UNI-003 -->
 ---
 
 <!-- RULE START: SEC-UNI-004 -->
-## Rule SEC-UNI-004: No Secrets in Code
+## Rule SEC-UNI-004
 
 **Domain**: Security
 **Severity**: Critical
-**Scope**: entity
+**Scope**: Entity
+**Mandatory**: false
 
 ### Trigger
 When a string literal in source code matches patterns for API keys, tokens, passwords, or secrets (long alphanumeric strings, `sk_live_*`, `AKIA*`, `password =`, bearer tokens), or when `env.php`/`.env` values appear as hardcoded defaults in committed config files.
@@ -159,7 +156,7 @@ When a string literal in source code matches patterns for API keys, tokens, pass
 ### Statement
 API keys, tokens, passwords, and secrets are never hardcoded in source files. Read from environment variables or a secrets manager. Config files that may be committed must never contain secrets, even as defaults.
 
-### Violation (bad)
+### Violation
 ```php
 private const API_KEY = 'sk_live_EXAMPLE_DO_NOT_USE_1234567890';
 
@@ -169,7 +166,7 @@ public function callPaymentGateway(): void
 }
 ```
 
-### Pass (good)
+### Pass
 ```php
 public function __construct(
     private readonly DeploymentConfig $deploymentConfig
@@ -186,8 +183,9 @@ public function callPaymentGateway(): void
 ```
 
 ### Enforcement
-Static analysis (ENF-POST-007) -- PHPCS secret detection sniff. Git pre-commit hook secret scanning. Per-slice findings table (ENF-POST-006).
+Static analysis (ENF-POST-007) -- PHPCS secret detection sniff. Git pre-commit hook secret scanning.
 
 ### Rationale
 Hardcoded secrets in source code end up in git history, CI logs, error messages, and any system that processes the codebase. Once committed, a secret is effectively public and must be rotated.
+
 <!-- RULE END: SEC-UNI-004 -->

@@ -1,140 +1,219 @@
 # Writ
 
-**Stop stuffing 120,000 tokens of coding rules into every prompt.**
+A Claude Code harness that gives every coding session two helpers: a fast librarian that picks the rules that fit the current task, and a process keeper that blocks risky writes until you have approved a plan and tests.
 
-Writ is a local service that retrieves only the rules an AI coding agent needs for the current task -- in under 1ms, with deterministic latency. Mandatory safety rules are loaded out-of-band so they can't be dropped by ranking.
+At the live 73-rule production corpus, the librarian returns ranked results in **0.435 ms at the 95th percentile**. At the 10,000-rule synthetic scale, it still holds at 0.557 ms while reducing context tokens by **726 times** versus loading the whole rulebook every turn.
 
 ## The problem
 
-Teaching an AI agent to follow your coding conventions means giving it rules. The naive approach -- paste all of them into the system prompt -- falls over as the rulebook grows. Tokens you spend on rules you can't spend on the task, and the agent's attention dilutes across content most of it doesn't need right now.
+Three things break when you give a coding agent a large rulebook the obvious way (paste it all into the prompt):
 
-## The result
+1. **Token cost grows with the rulebook, not the work.** At 80 rules: about 13,876 tokens of rule text every turn. At 10,000 rules: 1,174,142 tokens. Cache hit rates collapse, latency climbs, the bill scales with the rulebook.
+2. **Relevance degrades.** A model handed every rule treats none of them as load bearing. Specific rules drown in generic ones.
+3. **Workflow discipline has nowhere to live.** Static skill files can describe a process; they cannot enforce it. Telling the model to write tests first does not stop it from writing the implementation first.
 
-Measured on a 1,000-rule corpus across 10 representative queries (`benchmarks/scale_benchmark.py`, 2026-04-13):
+## What Writ does about it
 
-```
-Context-stuffing: 121,473 tokens  (all rules, every turn)
-Writ retrieval:     1,602 tokens  (~5 rules, 0.4ms p95)
-                   ------------
-                   76x reduction
-```
+Two layers, sharing a Neo4j-backed knowledge graph:
 
-The ratio compounds with scale:
-
-| Corpus | Stuffed | Retrieved | Reduction | p95 |
-|---|---:|---:|---:|---:|
-| 80 rules | 13,876 | 3,155 | 4.4x | 0.28ms |
-| 500 rules | 63,003 | 1,600 | 39.4x | 0.36ms |
-| 1,000 rules | 121,473 | 1,602 | 75.8x | 0.40ms |
-| 10,000 rules | 1,174,142 | 1,617 | 726.1x | 0.56ms |
-
-Three things you get that flat-file loading can't do:
-
-- **Relevance, not pattern-match.** Hybrid retrieval (BM25 + ANN vector + graph proximity + RRF ranking) returns rules that fit the situation, not every rule whose filename contains the right keyword.
-- **Sub-millisecond retrieval that holds at scale.** p95 stays under 0.6ms from 80 to 10,000 rules. Pre-warmed indexes, ONNX embeddings, LRU-cached inference.
-- **Mandatory rules that can't be dropped.** `ENF-*` rules bypass the ranker entirely and load directly from the skill. Ranking can deprioritize a style rule; it can't silently drop a security gate.
-
-## How it integrates
-
-Writ ships as a local HTTP service plus a set of Claude Code hooks that wire into the agent's turn lifecycle. On every user prompt, a hook POSTs the query to Writ, receives the ranked rules, and injects them into Claude's context as a single block. There is no retrieval code in the prompt and no manual rule loading -- the agent just reacts to rules that fit what it's about to do.
+**The knowledge layer (the librarian).** A FastAPI service on `localhost:8765` that runs a five-stage hybrid retrieval pipeline:
 
 ```
---- WRIT RULES (3 rules, standard mode) ---
-
-[PY-ASYNC-001] (?, ?, ?) score=0.892
-WHEN: Calling a sync I/O function inside an async def function.
-RULE: Async call chains must use async I/O end-to-end.
-VIOLATION: Using requests.get() in an async handler
-CORRECT: Using httpx.AsyncClient within async context
-
---- END WRIT RULES ---
+Query text
+  Stage 1: Domain Filter            < 1 ms     domain-scoped corpus
+  Stage 2: BM25 keyword (Tantivy)   < 2 ms     top 50 candidates
+  Stage 3: ANN vector (hnswlib)     < 3 ms     top 10 candidates
+  Stage 4: Graph traversal          < 3 ms     adjacency cache for DEPENDS_ON,
+                                                 SUPPLEMENTS, CONFLICTS_WITH, ...
+  Stage 5: Two-pass ranking         < 1 ms     reciprocal rank + context budget
+                                              total p95 budget: 10 ms
 ```
 
-Installation, hook wiring, mode system, CLI, and HTTP reference live in [docs/integration.md](docs/integration.md).
+Each retriever covers a blind spot the others have. BM25 catches exact keyword matches. Vectors catch paraphrase ("SQL" versus "database query"). Graph traversal catches rules that share neither but are causally related. The two-pass ranker fuses everything with severity, confidence, and graph-proximity weights.
 
-## Quick Start
+**The enforcement layer (the process keeper).** 30 hook scripts under `.claude/hooks/`, all wired into Claude Code via `templates/settings.json`, a session state machine in `bin/lib/writ-session.py`, slash commands, and 6 sub-agent role files. The state machine owns mode, phase, and gate state; hooks are thin clients that delegate to it.
 
-Three commands to go from zero to working Writ on a new machine:
+**Mandatory rules (the architectural invariant).** Rules with `mandatory: true` (all 41 of them carry the `ENF-` prefix in the live corpus) are excluded from the retrieval pipeline at index build time. They are loaded out of band by hooks with their own 5,000 token budget cap. No change to ranking weights, embedding model, BM25 tuning, or graph traversal can cause an enforcement rule to disappear from agent context.
+
+## Quick start
 
 ```bash
-git clone https://github.com/infinri/Writ ~/.claude/skills/writ
+git clone <writ-repo> ~/.claude/skills/writ
 cd ~/.claude/skills/writ
 bash scripts/bootstrap.sh
 ```
 
-Then restart Claude Code. That's it.
+The bootstrap script handles everything: prerequisite checks (Python 3.11+, Docker, git, envsubst), virtualenv, dependency install, harness config rendered into `~/.claude/`, rule and agent symlinks, Neo4j container via Docker Compose, rule corpus ingestion, and Writ daemon startup. Idempotent.
 
-`bootstrap.sh` handles everything: prerequisite checks, Python virtualenv, dependency install, harness config (`~/.claude/settings.json` + `CLAUDE.md`), rule/agent symlinks, Neo4j container via Docker Compose, rule corpus ingestion, and Writ daemon startup. It's idempotent — safe to re-run.
+Verify:
 
-### Prerequisites
+```bash
+writ status
+# {"status":"healthy","rule_count":90,"mandatory_count":41,"index_state":"warm",...}
 
-- Python 3.11+
-- Docker (with the daemon running)
-- git, envsubst, curl
+writ query "controller contains SQL query"
+# Mode: full | Candidates: 14 | Latency: 0.3ms
+# 1. [0.984] DB-SQL-001  Controllers must not embed SQL...
+```
 
-If any of these are missing, `bootstrap.sh` prints a clear error with install hints and exits.
+Open Claude Code in any project. Type a prompt. You should see a `[Writ: ...]` status line and a `--- WRIT RULES ---` block with the rules that apply to what you are doing.
 
-### Troubleshooting
+## What you experience
 
-- **"Docker daemon not reachable"** — start Docker Desktop, or `sudo systemctl start docker` on Linux, then re-run `bootstrap.sh`.
-- **"python3 version is 3.9; need >= 3.11"** — install a newer Python. `pyenv` is a clean way to manage versions without touching system Python.
-- **"port 7687 already in use"** — another Neo4j instance is running. Either stop it (`docker stop <container>` or equivalent) or change the `ports:` mapping in `docker-compose.yml`.
-- **"Neo4j did not become reachable within 60s"** — check logs: `docker compose -f ~/.claude/skills/writ/docker-compose.yml logs neo4j`. Common cause: insufficient memory allocated to Docker Desktop (Neo4j needs ~1GB).
-- **"daemon did not become healthy within 10s"** — check `/tmp/writ-server.log`. Usually means an import error in the Writ package; re-run `pip install -e .` from the skill directory with the venv activated.
-- **Default Neo4j credentials (`neo4j/writdevpass`) are a dev default.** For any non-local use, change `NEO4J_AUTH` in `docker-compose.yml` and the matching `[neo4j]` section in `writ.toml`.
+When Claude is doing read-only work (asking questions, debugging, reviewing), Writ injects relevant rules and stays out of the way. When Claude is in Work mode and tries to write code before you have approved a plan, the write is denied with a clear reason like:
 
-## Architecture
+```
+[ENF-GATE-PLAN] Write blocked. Approve plan.md first.
+```
 
-Five-stage hybrid retrieval pipeline:
+You write the plan, you say "approved," the gate opens. The next gate (test skeletons) blocks code that has no tests pointing at it. Same pattern: write the tests, approve, gate opens. After both gates clear, Claude writes the implementation freely.
 
-1. **Domain Filter** -- Pre-filter to relevant domain subgraph
-2. **BM25 Keyword** -- Tantivy sparse retrieval on trigger, statement, tags
-3. **ANN Vector** -- hnswlib in-process semantic search
-4. **Graph Traversal** -- Pre-computed adjacency cache for `DEPENDS_ON`, `CONFLICTS_WITH`, `SUPPLEMENTS`
-5. **Ranking** -- Two-pass RRF: first pass scores BM25 + vector + severity + confidence; second pass adds graph-neighbor proximity seeded from top-3 results (AI-provisional rules excluded from proximity seeding). Context budget applied. Summary mode (< 2K tokens) returns abstraction summaries when available.
+Approval cannot be self-served. The slash command `/writ-approve` requires a one-time token written to `/tmp/writ-gate-token-${SESSION_ID}` only when the user actually types an approval phrase. If Claude tries to advance the gate via raw bash, the token is missing and the call is denied (logged as `agent_self_approval_blocked`).
 
-Mandatory enforcement rules (`ENF-*`) are never ranked -- they are loaded by the skill directly, outside the retrieval pipeline. Ranking can deprioritize a style rule; it cannot silently drop a security gate.
+## The mode system
 
-**Authority model.** Rules carry authority levels (human, ai-provisional, ai-promoted). AI-proposed rules enter as ai-provisional with capped confidence and pass through a five-check structural gate (schema, specificity, redundancy, novelty, conflict). Human review via `writ review` promotes, rejects, or downweights them. Frequency tracking enables empirical confidence graduation at n=50 observations with positive ratio >= 0.75.
+| Mode         | Purpose                                            | Code generation |
+|--------------|----------------------------------------------------|------------------|
+| Conversation | Discussion, brainstorming, questions               | No               |
+| Debug        | Investigating a specific problem (read only)       | No               |
+| Review       | Evaluating code against rules (read only)          | No               |
+| Work         | Building or modifying code                         | Yes (with gates) |
 
-**Compression layer.** Rules cluster into abstraction nodes (HDBSCAN or k-means, auto-selected by silhouette score). When the context budget is tight, the pipeline returns abstraction summaries instead of individual rules.
+In Work mode, two gates apply:
+1. **`phase-a`** validates `plan.md` against four required sections (`## Files`, `## Analysis`, `## Rules Applied`, `## Capabilities`) and verifies every cited rule ID against rules actually loaded in the session.
+2. **`test-skeletons`** requires at least one test file with real assertions before production code is written.
 
-## Benchmarks
+## Performance
 
-Raw numbers and methodology in [SCALE_BENCHMARK_RESULTS.md](SCALE_BENCHMARK_RESULTS.md). Run with `pytest benchmarks/bench_targets.py -v -s` for latency and quality, or `python benchmarks/scale_benchmark.py` for the full scale curve.
+Live system measurement (2026-05-10, 73 rule production corpus post-cleanup, ONNX runtime, warm indexes; 500 samples per stage):
 
-### Latency (80-rule corpus, ONNX Runtime, warm indexes + LRU cache)
+| Stage             | Median   | p95      | p99      | Budget  | Headroom at p95 |
+|-------------------|---------:|---------:|---------:|--------:|----------------:|
+| BM25 (Tantivy)    | 0.205 ms | 0.280 ms | 0.350 ms | 2.0 ms  | 7.1x            |
+| Vector (hnswlib)  | 0.038 ms | 0.062 ms | 0.114 ms | 3.0 ms  | 48x             |
+| Adjacency cache   | 0.001 ms | 0.001 ms | 0.003 ms | 3.0 ms  | 3000x           |
+| End to end        | 0.314 ms | 0.435 ms | 0.650 ms | 10.0 ms | 23x             |
 
-| Stage | Component | p95 | Budget | Headroom |
-|---|---|---|---|---|
-| 2 | BM25 (Tantivy) | 0.175ms | 2.0ms | 11x |
-| 3 | Vector (hnswlib) | 0.047ms | 3.0ms | 64x |
-| 4 | Adjacency cache | 0.001ms | 3.0ms | 3000x |
-| 5 | Ranking (two-pass) | 0.089ms | 1.0ms | 11x |
-| -- | **End-to-end** | **0.19ms** | **10.0ms** | **53x** |
+Cold start (median of 3 runs): 769 ms. Process peak RSS: 905 MB.
 
-### Retrieval quality
+Synthetic scale curve (2026-04-13, from `SCALE_BENCHMARK_RESULTS.md`):
 
-| Metric | Value | Threshold |
+| Corpus     | E2E p95   | Tokens stuffed | Tokens retrieved | Reduction |
+|------------|----------:|---------------:|-----------------:|----------:|
+| 80 rules   | 0.278 ms  | 13,876         | 3,155            | 4.4x      |
+| 500 rules  | 0.359 ms  | 63,003         | 1,600            | 39.4x     |
+| 1,000 rules| 0.399 ms  | 121,473        | 1,602            | 75.8x     |
+| 10,000 rules| 0.557 ms | 1,174,142      | 1,617            | **726.1x**|
+
+Quality (against 83 ground truth queries plus a 40-query methodology corpus):
+
+| Metric                                            | Threshold | Actual         |
+|---------------------------------------------------|-----------|----------------|
+| MRR at 5 (ambiguous queries, n=19)                | >= 0.78   | 0.7842 (17/19) |
+| Hit rate (all 83 queries)                         | >= 0.90   | 0.9759 (81/83) |
+| Methodology MRR at 5 (n=40, signed off corpus)    | >= 0.78   | 0.8583         |
+| Methodology hit rate                              | >= 0.90   | 1.0000         |
+| ONNX vs PyTorch ranking stability                 | identical | 0/83 differ    |
+
+Full numbers in `SCALE_BENCHMARK_RESULTS.md`. Architectural detail in `HANDBOOK.md`.
+
+## CLI reference
+
+| Command | What it does |
+|---|---|
+| `writ serve [--host --port]` | Start the FastAPI service via uvicorn (default `localhost:8765`). |
+| `writ status` | Health check via the HTTP service. |
+| `writ query <text> [--domain --budget]` | Run a retrieval query. |
+| `writ import-markdown [path]` | Ingest rules from `bible/` Markdown into Neo4j. Auto-exports back on success. |
+| `writ export [output]` | Regenerate Markdown from graph (overwrites output dir). |
+| `writ add` | Interactive add-a-new-rule wizard. Schema validates, redundancy checks, suggests edges, writes. |
+| `writ edit <rule_id>` | Edit existing rule with current values as defaults. |
+| `writ validate [--review-confidence --benchmark]` | Run integrity checks (conflicts, orphans, stale, redundant, frequency). |
+| `writ compress` | Cluster rules (HDBSCAN + k-means) into Abstraction nodes for summary mode. |
+| `writ propose ...` | Submit AI authored rule through structural gate. |
+| `writ review [rule_id] [--promote --reject --downweight --stats]` | Triage AI provisional rules. |
+| `writ feedback <rule_id> <positive\|negative>` | Record feedback signal. |
+| `writ migrate` | Run `scripts/migrate.py` (initial bootstrap). |
+| `writ analyze-friction [flags]` | Analyze `workflow-friction.log`: rule effectiveness, skill usage, playbook compliance, graduation candidates, trim candidates, quality judge false positives. |
+| `writ audit-session <session_id>` | Per-session timeline and summary. |
+| `writ role-prompt <name>` | Print canonical SubagentRole prompt template from graph. |
+
+## API reference
+
+All endpoints under `http://localhost:8765`. JSON bodies; no auth (binds localhost only). Total: 36 endpoints (11 top-level plus 25 under `/session/{id}/`).
+
+| Method | Path | Purpose |
 |---|---|---|
-| MRR@5 (19 ambiguous queries) | 0.7842 | > 0.78 |
-| Hit rate (83 total queries) | 97.59% | > 90% |
-| ONNX vs PyTorch ranking stability | 0/83 queries diverge | Identical top-5 |
+| `POST` | `/query` | Run the 5-stage pipeline. Body: `{query, domain?, budget_tokens?, exclude_rule_ids?, prefer_rule_ids?, node_types?}`. Returns `{rules, mode, total_candidates, latency_ms}`. |
+| `POST` | `/analyze` | Run the analyzer (pattern plus optional LLM escalation) on a code snippet. |
+| `GET` | `/rule/{rule_id}` | Fetch a rule, optionally with `?include_graph=true` for one-hop neighbors. |
+| `POST` | `/propose` | Submit AI authored rule through the 5-check structural gate. |
+| `POST` | `/feedback` | Record a positive or negative signal for a rule. |
+| `POST` | `/conflicts` | Check `CONFLICTS_WITH` edges among a list of rule IDs. |
+| `GET` | `/health` | Real Neo4j round-trip; reports rule count, mandatory count, index state, startup time. |
+| `GET` | `/always-on` | Returns mandatory rules plus `ForbiddenResponse` nodes plus always-on Skills/Playbooks. Mode-scoped. |
+| `GET` | `/subagent-role/{name}` | Resolve `writ-explorer` to its role record. |
+| `POST` | `/pre-write-check` | Consolidated gate plus final-gate plus RAG check. |
+| `GET` | `/dashboard` | Server-rendered HTML view of friction-log analytics. |
+| `GET` `POST` | `/session/{sid}/...` | 25 routes covering mode, phase, gates, coverage, escalation, quality judgment, playbook progress, compaction, verification evidence. |
 
-### Ranking weights (tuned via sweep against 83-query ground-truth set)
+Errors come back as HTTP 200 with `{"error": "..."}` for logical failures, 422 for Pydantic validation, 5xx for unhandled DB exceptions. Clients should check the `error` key, not just status codes.
 
-| Component | Weight |
-|---|---:|
-| Vector semantic rank | 0.594 |
-| BM25 keyword rank | 0.198 |
-| Severity | 0.099 |
-| Confidence | 0.099 |
-| Graph proximity | 0.010 |
+## Configuration
 
-## Links
+| File | Purpose |
+|---|---|
+| `writ.toml` | Service configuration: Neo4j credentials, ranking weights, embedding model, context budgets, gate thresholds. |
+| `pyproject.toml` | Package metadata. Production deps: fastapi, uvicorn, neo4j, tantivy, sentence-transformers, hnswlib, pydantic, typer, rich, httpx. Entry point: `writ = "writ.cli:app"`. |
+| `.claude-plugin/plugin.json` | Plugin manifest. `defaultEnabled: true`. Lifecycle Init invokes `scripts/ensure-server.sh`; Shutdown invokes `scripts/stop-server.sh`. |
+| `docker-compose.yml` | Single `neo4j:5` service on ports 7474 and 7687, health-checked via cypher-shell. |
+| `templates/settings.json` | Canonical hook wiring (30 hooks). |
+| `bin/lib/checklists.json` | Phase exit criteria. |
+| `bin/lib/gate-categories.json` | File classification glob patterns plus framework detection. |
+| `writ/shared/budget.json` | Single source of truth for budget constants (default 8000, summary cost 40, standard 120, full 200, always_on_cap 5000). |
 
-- [Architecture handbook](RAG_arch_handbook.md) -- complete specification
-- [Integration guide](docs/integration.md) -- install, hooks, modes, CLI, API reference
-- [Scale benchmarks](SCALE_BENCHMARK_RESULTS.md) -- raw 80 / 500 / 1K / 10K numbers
-- [Evolution reference](docs/evolution-reference.md) -- design history and rationale
-- [Contributing](CONTRIBUTING.md) -- rule governance and authoring
+Environment variables read by hooks: `WRIT_HOST` (default `localhost`), `WRIT_PORT` (default `8765`), `WRIT_CACHE_DIR` (default `tempfile.gettempdir()`), `WRIT_FRICTION_LOG`, `WRIT_HOOK_LOG`, `WRIT_DEBUG_LOG`. Neo4j credentials are read from `writ.toml` only; there is no `WRIT_NEO4J_*` override.
+
+## Testing
+
+90 test files, 1,192 test functions. The end-of-suite hook in `tests/conftest.py` shells out to `scripts/migrate.py --methodology-dir bible/methodology` to restore the production graph after tests run.
+
+```bash
+make test          # pytest tests/ -x -q
+make bench         # pytest benchmarks/bench_targets.py -x -q
+make check         # both
+```
+
+Pre-commit: `make bench` runs at `pre-push`. No formatting or lint hooks configured.
+
+The benchmark suite has four files:
+- `benchmarks/bench_targets.py` (12 contractual targets, all pass/fail).
+- `benchmarks/run_benchmarks.py` (Neo4j traversal scale at 1K and 10K nodes; wipes the graph).
+- `benchmarks/scale_benchmark.py` (the synthetic 80/500/1K/10K scale curve generator; restores only Rule nodes).
+- `benchmarks/methodology_bench.py` (methodology retrieval against the curated 40-query Phase 0 corpus; read only, no Neo4j changes).
+
+## Status
+
+**Production ready.** All five retrieval stages with budget headroom at every level. Mode and gate enforcement. AI rule proposal with the 5-check structural gate. Frequency-driven graduation logic. Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`). ONNX-optimized embedding inference verified identical to PyTorch on every test query. HNSW persistence with corpus-hash invalidation. 90 test files. Friction log analytics with a dashboard.
+
+**Mandatory rule cleanup (2026-05-10).** The pre-cleanup graph had 41 mandatory rules; the audit (`docs/mandatory-rule-audit.md`, 2026-04-21) recommended 18 of those for demotion because no mechanical enforcement path was viable. The 2026-05-10 cleanup went further: it deleted 17 rules tied to the dead Phase A-D / Tier-0-3 / completion-matrix workflow (rules whose principles were either duplicated by current hooks or whose enforcement mechanism no longer exists), demoted another 12 to advisory (sound principles with no automated check), and left 11 mandatory rules, every one of which now points at a real, verified mechanical enforcement path in the v2 system.
+
+**Documented but inert.** A handful of features are implemented but not yet wired into the runtime path:
+- Abstraction summary mode is built (`writ/compression/`) but `pipeline.query()` does not pass abstractions into the budget trimmer.
+- The `compute_confidence_weight` graduation read-time override is callable but not invoked from `query()`.
+- 7 of the 17 allowed edge types lack rules using them (`DEPENDS_ON`, `CONFLICTS_WITH`, `SUPPLEMENTS`, `SUPERSEDES`, `APPLIES_TO`, `ABSTRACTS`, `JUSTIFIED_BY`).
+- `Abstraction.abstraction_id` lacks a uniqueness constraint despite `MERGE`-based creation.
+
+**Documentation drift to clean up.** Older handbook claims are tracked against the live code:
+- The graduation logic uses a plain ratio threshold (`positive / n >= 0.75` at `n >= 50`), not a Wilson confidence interval. The Wilson reasoning is the justification for `n = 50`, not the runtime check.
+- The `normalize_ranks` docstring says "reciprocal rank fusion." The implementation is plain reciprocal rank `1 / (rank + 1)`, no `k` constant.
+- A comment in `writ/compression/clusters.py` says "cosine distance" where the formula is Euclidean. Behavior is identical because embeddings are L2-normalized, but the comment is wrong.
+
+## Related documents
+
+- `HANDBOOK.md` for the full architecture, including detailed graph schema, gate mechanics, and the discrepancy catalog.
+- `SCALE_BENCHMARK_RESULTS.md` for the full live measurement plus the synthetic scale curve.
+- `CONTRIBUTING.md` for rule authoring workflow, monthly review cadence, and AI proposal triage.
+- `PROMOTIONAL-BRIEF.md` for the pitch-oriented version of this document.
+
+License: MIT. Authored by Lucio Saldivar.

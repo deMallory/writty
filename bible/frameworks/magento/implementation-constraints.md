@@ -1,17 +1,10 @@
-# Magento 2 Implementation Constraints
-
-## Purpose
-
-This document defines **Magento 2-specific implementation constraints** that govern how domain logic, data access, and plugin interception must be implemented. These are hard rules, not suggestions.
-
----
-
 <!-- RULE START: FW-M2-001 -->
-## Rule FW-M2-001: Validation Must Be Backed by Persistence
+## Rule FW-M2-001
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: entity
+**Scope**: Entity
+**Mandatory**: false
 
 ### Trigger
 When writing validation logic that determines if a domain entity (coupon, product, rule, customer group, category) is legitimate.
@@ -19,7 +12,7 @@ When writing validation logic that determines if a domain entity (coupon, produc
 ### Statement
 Legitimacy checks must use a repository, service contract, or resource model lookup. String matching, prefix checking, or format inference alone does not validate a domain entity's legitimacy.
 
-### Violation (bad)
+### Violation
 ```php
 // Format-based validation -- does not prove the coupon actually exists
 public function isValidCoupon(string $couponCode): bool
@@ -28,7 +21,7 @@ public function isValidCoupon(string $couponCode): bool
 }
 ```
 
-### Pass (good)
+### Pass
 ```php
 // Persistence-backed validation -- proves the coupon exists and is active
 public function isValidCoupon(string $couponCode): bool
@@ -44,20 +37,21 @@ public function isValidCoupon(string $couponCode): bool
 ```
 
 ### Enforcement
-ENF-PRE-002 (domain invariant declaration) must declare whether validation is format-based or persistence-based. Per-slice findings table (ENF-POST-006) must quote the validation code. If format validation is intentional, a code comment referencing the business requirement is mandatory.
+ENF-PRE-002 (domain invariant declaration) must declare whether validation is format-based or persistence-based. If format validation is intentional, a code comment referencing the business requirement is mandatory.
 
 ### Rationale
 Format-based validation creates false positives (entities that look valid but don't exist) and false negatives (entities that exist but don't match expected format). Only the persistence layer is the source of truth for entity legitimacy.
-<!-- RULE END: FW-M2-001 -->
 
+<!-- RULE END: FW-M2-001 -->
 ---
 
 <!-- RULE START: FW-M2-002 -->
-## Rule FW-M2-002: Factory and Model::load() Patterns Are Forbidden
+## Rule FW-M2-002
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: entity
+**Scope**: Entity
+**Mandatory**: false
 
 ### Trigger
 When entity retrieval code contains `Factory->create()->load(`, `Model::load(`, `Model::loadByCode(`, or `Model::loadByAttribute(`.
@@ -65,14 +59,14 @@ When entity retrieval code contains `Factory->create()->load(`, `Model::load(`, 
 ### Statement
 All entity retrieval must go through the repository layer. Factory/model-load patterns are forbidden in new code. If no repository method exists for the required lookup, declare the gap and create a repository method -- do not fall back to deprecated patterns.
 
-### Violation (bad)
+### Violation
 ```php
 $product = $this->productFactory->create()->load($productId);
 $rule = $this->ruleFactory->create()->loadByCode($ruleCode);
 $customer = $this->customerFactory->create()->loadByEmail($email);
 ```
 
-### Pass (good)
+### Pass
 ```php
 $product = $this->productRepository->getById($productId);
 $rule = $this->ruleRepository->getById($ruleId);
@@ -80,20 +74,21 @@ $customer = $this->customerRepository->get($email); // repository method for ema
 ```
 
 ### Enforcement
-Magento Coding Standard PHPCS (ENF-POST-007) flags factory/load patterns. PHPStan custom rule. Per-slice findings table (ENF-POST-006).
+Magento Coding Standard PHPCS (ENF-POST-007) flags factory/load patterns. PHPStan custom rule.
 
 ### Rationale
 Factory/model-load patterns bypass service contracts, skip event dispatching, ignore extension attributes, and create tight coupling to the persistence layer. Repository-based retrieval is the Magento 2 architectural standard.
-<!-- RULE END: FW-M2-002 -->
 
+<!-- RULE END: FW-M2-002 -->
 ---
 
 <!-- RULE START: FW-M2-003 -->
-## Rule FW-M2-003: Quote State Must Be Read at the Correct Execution Point
+## Rule FW-M2-003
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: entity
+**Scope**: Entity
+**Mandatory**: false
 
 ### Trigger
 When writing a plugin or observer that reads quote totals, subtotal, discount amounts, or any other totals-dependent data.
@@ -101,7 +96,7 @@ When writing a plugin or observer that reads quote totals, subtotal, discount am
 ### Statement
 Totals-dependent logic must execute after `collect_totals` has run. A `before` plugin must not read totals data. An `around` plugin that needs post-apply state must read data after `proceed()` and re-fetch the quote.
 
-### Violation (bad)
+### Violation
 ```php
 // before plugin reads totals that haven't been collected yet
 public function beforeSaveAddressInformation(
@@ -117,7 +112,7 @@ public function beforeSaveAddressInformation(
 }
 ```
 
-### Pass (good)
+### Pass
 ```php
 // after plugin reads totals after collection
 public function afterSaveAddressInformation(
@@ -136,20 +131,21 @@ public function afterSaveAddressInformation(
 ```
 
 ### Enforcement
-ENF-PRE-003 (seam justification) must declare what state is available at the interception point. Per-slice findings table (ENF-POST-006) must verify no totals reads before collection.
+ENF-PRE-003 (seam justification) must declare what state is available at the interception point.
 
 ### Rationale
 Quote totals are computed lazily and cached. Reading them before collection returns stale or zero values, causing silent logical errors that are extremely difficult to reproduce and diagnose.
-<!-- RULE END: FW-M2-003 -->
 
+<!-- RULE END: FW-M2-003 -->
 ---
 
 <!-- RULE START: FW-M2-004 -->
-## Rule FW-M2-004: Target Concrete Classes for Plugins by Default
+## Rule FW-M2-004
 
 **Domain**: Frameworks / Magento 2
 **Severity**: High
-**Scope**: entity
+**Scope**: Entity
+**Mandatory**: false
 
 ### Trigger
 When writing a `<plugin>` or `<type>` declaration in `di.xml` that targets an interface rather than a concrete class.
@@ -157,7 +153,7 @@ When writing a `<plugin>` or `<type>` declaration in `di.xml` that targets an in
 ### Statement
 Plugins must target the concrete class, not the interface, unless multi-implementation coverage is explicitly required and justified. Interface-level plugins intercept all implementations, which may include internal framework classes.
 
-### Violation (bad)
+### Violation
 ```xml
 <!-- Targets interface -- intercepts ALL implementations including internal ones -->
 <type name="Magento\Quote\Api\CartRepositoryInterface">
@@ -165,7 +161,7 @@ Plugins must target the concrete class, not the interface, unless multi-implemen
 </type>
 ```
 
-### Pass (good)
+### Pass
 ```xml
 <!-- Targets concrete class -- precise, predictable interception -->
 <type name="Magento\Quote\Model\QuoteRepository">
@@ -174,20 +170,21 @@ Plugins must target the concrete class, not the interface, unless multi-implemen
 ```
 
 ### Enforcement
-ENF-PRE-003 (seam justification must declare why interface vs concrete and which implementations are covered). Per-slice findings table (ENF-POST-006).
+ENF-PRE-003 (seam justification must declare why interface vs concrete and which implementations are covered).
 
 ### Rationale
 Interface-level plugins intercept all implementations, which may include internal or framework classes not intended for interception. Concrete-class targeting provides precise, predictable interception scope.
-<!-- RULE END: FW-M2-004 -->
 
+<!-- RULE END: FW-M2-004 -->
 ---
 
 <!-- RULE START: FW-M2-005 -->
-## Rule FW-M2-005: Totals Collector Idempotency and State Reset
+## Rule FW-M2-005
 
 **Domain**: Frameworks / Magento 2
 **Severity**: Critical
-**Scope**: entity
+**Scope**: Entity
+**Mandatory**: false
 
 ### Trigger
 When writing or modifying a custom totals collector class (extends `AbstractTotal` or implements `collect()` in the quote totals pipeline).
@@ -195,7 +192,7 @@ When writing or modifying a custom totals collector class (extends `AbstractTota
 ### Statement
 Every custom totals collector's `collect()` method must be fully idempotent. Calling `collect()` twice must produce identical results. Calling `collect()` after eligibility changes must clear all prior values.
 
-### Violation (bad)
+### Violation
 ```php
 public function collect(
     Quote $quote,
@@ -212,7 +209,7 @@ public function collect(
 // Second call DOUBLES the discount. Ineligibility leaves stale extension attribute.
 ```
 
-### Pass (good)
+### Pass
 ```php
 public function collect(
     Quote $quote,
@@ -241,31 +238,22 @@ public function collect(
 }
 ```
 
-### Idempotency checklist
-Before writing any totals collector, list every piece of state it writes and confirm each is zeroed at the top of `collect()`:
-1. **Zero owned total amounts first**: `parent::collect()` + explicit zero of additional amounts
-2. **Clear owned extension attributes**: Set to null/empty before eligibility check
-3. **Clear on ineligibility**: Return after cleanup, not before
-4. **No additive accumulation**: Use `setTotalAmount`, never `addTotalAmount` without prior zero
-5. **Implement `_resetState()`**: Clear instance-level arrays, caches, flags; re-set collector code
-
-Reference pattern: `Magento\SalesRule\Model\Quote\Discount::collect()` -- explicitly clears `discountDescription` and `discounts` extension attribute before processing.
-
 ### Enforcement
-ENF-PRE-002 (domain invariant -- idempotency checklist). Per-slice findings table (ENF-POST-006). ENF-POST-004 (tests must cover collect-twice scenario and eligibility-change scenario).
+ENF-PRE-002 (domain invariant -- idempotency checklist). ENF-POST-004 (tests must cover collect-twice scenario and eligibility-change scenario).
 
 ### Rationale
 Totals collectors run multiple times per request (item add, address change, shipping change, payment change). Without idempotent reset, stale values persist from prior cycles -- causing discounts that don't reverse, double-application on re-collection, and ghost line items in REST/GraphQL responses. This is the #1 source of totals-related bugs in custom Magento modules.
-<!-- RULE END: FW-M2-005 -->
 
+<!-- RULE END: FW-M2-005 -->
 ---
 
 <!-- RULE START: FW-M2-006 -->
-## Rule FW-M2-006: CartTotalRepository Does Not Call collectTotals for Non-Virtual Quotes
+## Rule FW-M2-006
 
 **Domain**: Frameworks / Magento 2
 **Severity**: High
-**Scope**: component
+**Scope**: Component
+**Mandatory**: false
 
 ### Trigger
 When implementing a feature that depends on fresh totals being available via `GET /V1/carts/mine/totals` (REST) for non-virtual quotes.
@@ -273,7 +261,7 @@ When implementing a feature that depends on fresh totals being available via `GE
 ### Statement
 `CartTotalRepository::get()` only calls `$quote->collectTotals()` for virtual quotes. For non-virtual quotes, it reads previously-collected totals directly. Do not assume REST totals endpoints trigger fresh collection for all quote types.
 
-### Violation (bad)
+### Violation
 ```
 // Design assumption -- WRONG for non-virtual quotes:
 "The custom discount will be visible when the frontend calls GET /V1/carts/mine/totals.
@@ -281,7 +269,7 @@ The totals endpoint triggers collectTotals(), which runs our collector."
 // FALSE -- for non-virtual quotes, collectTotals is NOT called.
 ```
 
-### Pass (good)
+### Pass
 ```
 // Design correctly documents the limitation:
 "The custom discount is computed during collectTotals(), triggered by saveAddressInformation
@@ -291,14 +279,10 @@ If the frontend needs guaranteed freshness, it must call saveAddressInformation 
 The collector's fetch() method returns stored amounts -- it does not recompute."
 ```
 
-### Key behaviors
-- REST `GET /V1/carts/mine/totals` for non-virtual quotes returns **previously collected** totals, not freshly computed ones.
-- Custom collector output is visible only if `collectTotals()` was called by a prior operation (e.g., `saveAddressInformation`, item update).
-- The `fetch()` method reads from the `Total` object's stored amounts, not re-computing.
-
 ### Enforcement
-Phase A call-path declaration must document which operation triggers collection. Per-slice findings table (ENF-POST-006).
+Self-enforced via code review.
 
 ### Rationale
 Assuming `collectTotals()` runs in all REST paths leads to implementations that appear to work in testing (where mutations precede totals retrieval) but fail in production when totals are fetched without a preceding mutation.
+
 <!-- RULE END: FW-M2-006 -->

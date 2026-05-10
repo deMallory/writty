@@ -135,6 +135,8 @@ def _parse_rule_block(rule_id: str, block: str) -> dict | None:
             result["scope"] = value.lower()
         elif key == "mandatory":
             result["mandatory"] = value.lower() == "true"
+        elif key == "mechanical_enforcement_path" or key == "mechanicalenforcementpath":
+            result["mechanical_enforcement_path"] = value
 
     # Extract sections by heading.
     for field_name, heading_prefix in SECTION_HEADERS.items():

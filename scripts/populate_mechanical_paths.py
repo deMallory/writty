@@ -30,31 +30,21 @@ NEO4J_PASSWORD = "writdevpass"
 # Citations from docs/mandatory-rule-audit.md. Each entry is the shortest
 # useful reference the auditor verified.
 PATHS: dict[str, str] = {
-    # has-path rules
-    "ENF-GATE-001":    ".claude/hooks/validate-exit-plan.sh:15-120 (ExitPlanMode deny)",
-    "ENF-GATE-002":    "bin/lib/writ-session.py:1372-1523 (advance-phase state machine, Phase B gate)",
-    "ENF-GATE-003":    "bin/lib/writ-session.py:1372-1523 (advance-phase state machine, Phase C gate)",
-    "ENF-GATE-005":    ".claude/hooks/validate-exit-plan.sh (Phase D output gate)",
-    "ENF-GATE-007":    "bin/lib/writ-session.py:1125-1370 (can_write test-skeleton gate)",
-    "ENF-GATE-FINAL":  ".claude/hooks/enforce-final-gate.sh",
-    "ENF-POST-001":    ".claude/hooks/enforce-final-gate.sh (completion matrix)",
-    "ENF-POST-002":    ".claude/hooks/enforce-final-gate.sh (completion matrix)",
-    "ENF-POST-003":    "bin/run-analysis.sh (PHPStan level 8)",
-    "ENF-POST-004":    "bin/lib/writ-session.py:1125-1370 (test-skeleton gate)",
-    "ENF-POST-007":    ".claude/hooks/enforce-final-gate.sh (PHPCS/PHPStan integration)",
-    "ENF-PRE-001":     "bin/lib/writ-session.py:1372-1523 (Phase A gate state machine)",
-    "ENF-PRE-002":     "bin/lib/writ-session.py:1372-1523 (Phase B gate state machine)",
-    "ENF-PRE-003":     "bin/lib/writ-session.py:1372-1523 (Phase C gate state machine)",
-    "ENF-PRE-004":     "bin/lib/writ-session.py:1372-1523 (Phase C API-safety state machine)",
+    # Only rules whose mechanical enforcement path is not already declared in
+    # bible/methodology. These map mandatory ENF-* rules to their real
+    # enforcement entry points in the v2 system.
     "ENF-CTX-003":     "bin/run-analysis.sh (PHPCS lint)",
-    "ENF-CTX-004":     ".claude/hooks/enforce-final-gate.sh (gate-final.approved check)",
+    "ENF-GATE-007":    "bin/lib/writ-session.py:1125-1370 (can_write test-skeleton gate)",
+    "ENF-POST-003":    "bin/run-analysis.sh (PHPStan level 8)",
+    "ENF-POST-007":    "bin/run-analysis.sh (PHPStan level 8)",
     "ENF-SEC-001":     "bin/run-analysis.sh:78 (PHPStan ownership check)",
-    "ENF-SYS-001":     ".claude/hooks/enforce-final-gate.sh (concurrency-model completion matrix)",
-    "ENF-SYS-004":     ".claude/hooks/enforce-final-gate.sh (hardcoded-values completion matrix)",
-    "ENF-SYS-005":     "bin/lib/writ-session.py:1125-1370 (integration-test-stubs gate)",
-    # could-have-path rules — hypothetical hook is Phase 2.5 work
-    "ENF-GATE-006":    "Phase 2.5 candidate: hook that parses diff and flags multi-layer changes requiring per-slice approval",
-    "ENF-POST-005":    "Phase 2.5 candidate: test-file-review hook validates review-comment engagement",
+    # Removed in the 2026-05-10 cleanup (rules deleted as tied to the dead
+    # Phase A-D / completion-matrix workflow):
+    #   ENF-GATE-001..006, ENF-GATE-FINAL, ENF-POST-001/002/006/008,
+    #   ENF-CTX-001/002/004, ENF-SYS-001/004, ENF-ROUTE-001
+    # Demoted to advisory in the same cleanup (no real mechanical path):
+    #   ENF-PRE-001..004, ENF-POST-004/005, ENF-SYS-002/003/005/006,
+    #   ENF-OPS-001/002, ENF-SEC-002
 }
 
 

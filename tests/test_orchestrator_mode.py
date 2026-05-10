@@ -270,14 +270,9 @@ class TestOrchestratorSessionFlagRead:
         result = self.mod._read_cache(SESSION_ID)
         assert result["is_orchestrator"] is False
 
-    def test_writ_pretool_rag_references_is_orchestrator(self) -> None:
-        """writ-pretool-rag.sh contains an is_orchestrator check for early exit."""
-        hook = f"{SKILL_DIR}/.claude/hooks/writ-pretool-rag.sh"
-        with open(hook) as f:
-            source = f.read()
-        assert "is_orchestrator" in source, (
-            "writ-pretool-rag.sh must read is_orchestrator to decide early exit"
-        )
+    # writ-pretool-rag.sh was removed in the 2026-05-10 cleanup (superseded by
+    # writ-pre-write-dispatch.sh). The is_orchestrator early-exit check still
+    # lives in writ-rag-inject.sh and writ-posttool-rag.sh.
 
     def test_writ_posttool_rag_references_is_orchestrator(self) -> None:
         """writ-posttool-rag.sh contains an is_orchestrator check for early exit."""

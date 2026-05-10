@@ -2,52 +2,79 @@
 
 Rules in the Writ knowledge graph are governed by a structured authoring process. This document defines the workflow for adding, editing, and deprecating rules in a multi-author environment.
 
-## Adding a Rule
+## Adding a rule
 
 1. Run `writ add` to enter the interactive authoring flow.
+
 2. The tool runs these gate checks in order, refusing to continue on any hard failure:
-   - **ID collision**: `check_id_collision` queries Neo4j for the proposed `rule_id`. If it already exists, the flow aborts with `RuleIdCollisionError` (use `writ edit` instead, or pick a new ID). This runs before schema validation so re-used IDs fail fast and MERGE cannot silently overwrite an existing node.
-   - **Schema validation**: Pydantic model check against `writ.graph.schema.Rule`; malformed rules are rejected before any graph write.
-   - **Redundancy**: any existing rule with >= 0.95 cosine similarity is flagged. Advisory -- you may proceed, but consider whether the new rule adds distinct value.
-   - **Novelty / specificity**: covered by the redundancy threshold plus reviewer judgment on `trigger` specificity.
-   - **Conflict**: CONFLICTS_WITH edges to the new rule (via accepted relationships) are reported after edge creation.
-3. After the gate passes, the tool runs the new rule's text through the retrieval pipeline and presents relationship suggestions (top-5 similar rules as candidates for DEPENDS_ON, SUPPLEMENTS, or RELATED_TO edges).
+
+   - **ID collision.** `check_id_collision` queries Neo4j for the proposed `rule_id`. If it already exists, the flow aborts with `RuleIdCollisionError` (use `writ edit` instead, or pick a new ID). This runs before schema validation so re-used IDs fail fast and `MERGE` cannot silently overwrite an existing node.
+
+   - **Schema validation.** Pydantic check against `writ.graph.schema.Rule`. Malformed rules are rejected before any graph write.
+
+   - **Redundancy.** Any existing rule with at least 0.95 cosine similarity is flagged. This is advisory: you may proceed, but consider whether the new rule adds distinct value.
+
+   - **Novelty and specificity.** Covered by the redundancy threshold plus reviewer judgment on `trigger` specificity.
+
+   - **Conflict.** `CONFLICTS_WITH` edges to the new rule are reported after edge creation.
+
+3. After the gate passes, the tool runs the new rule's text through the retrieval pipeline and presents relationship suggestions: the top five similar rules, offered as candidates for `DEPENDS_ON`, `SUPPLEMENTS`, or `RELATED_TO` edges.
+
 4. Accept or reject each suggested relationship. No edges are created automatically.
+
 5. Submit a PR containing the `writ add` output and any edge decisions for review.
 
-## Editing a Rule
+## Editing a rule
 
 1. Run `writ edit <rule_id>` to load the current rule and modify fields.
 2. The same validation, redundancy, and conflict checks run on the updated text.
-3. Edits use MERGE (idempotent) -- running the same edit twice produces no change.
+3. Edits use `MERGE` (idempotent). Running the same edit twice produces no change.
 4. Submit a PR with the edit for review.
 
-## Deprecating a Rule
+## Deprecating a rule
 
-1. Do not delete rules. Instead, create a SUPERSEDES edge from the replacement rule to the deprecated rule.
+1. Do not delete rules. Instead, create a `SUPERSEDES` edge from the replacement rule to the deprecated rule.
 2. The deprecated rule remains in the graph for audit and historical reference.
-3. Run `writ add` for the replacement rule, then create the SUPERSEDES edge when prompted.
+3. Run `writ add` for the replacement rule, then create the `SUPERSEDES` edge when prompted.
 
-## Resolving Conflicts
+## Resolving conflicts
 
-CONFLICTS_WITH edges require human resolution. When two rules conflict:
+`CONFLICTS_WITH` edges require human resolution. When two rules conflict:
 
-1. Both rules remain in the graph with the CONFLICTS_WITH edge visible.
+1. Both rules remain in the graph with the `CONFLICTS_WITH` edge visible.
 2. The conflict appears in `writ validate` output and the `/conflicts` API endpoint.
-3. The domain owner for the conflicting rules is responsible for resolution: either one rule is deprecated (SUPERSEDES), one is amended, or the conflict is documented as intentional (e.g., domain-specific exceptions).
+3. The domain owner for the conflicting rules is responsible for resolution: deprecate one rule via `SUPERSEDES`, amend one rule, or document the conflict as intentional (for example, domain-specific exceptions).
 4. Automatic merge of conflicting rules is never performed.
 
-## Review Process
+## Review process
 
 - All rule additions and edits require PR review.
 - The PR should include the `writ add` or `writ edit` terminal output showing validation results, suggestions, and any warnings.
-- The reviewer verifies that relationship decisions are reasonable and that redundancy/conflict warnings were addressed.
+- The reviewer verifies that relationship decisions are reasonable and that redundancy or conflict warnings were addressed.
 - Domain-specific rules should be reviewed by someone familiar with that domain.
 
-## Monthly review (Phase 5)
+## AI proposed rules
 
-Run on the first Monday of each month. Goal: turn the friction log
-into actionable graduation, trim, and rubric-refinement decisions.
+When an AI agent (typically Claude during a Work mode session) discovers a recurring pattern that does not yet have a rule, it can submit a candidate via `POST /propose`. These rules go through the same structural gate as human additions, plus a few extra constraints:
+
+- Authority is force-set to `ai-provisional`. The proposer cannot bypass this.
+- Confidence is force-set to `speculative`.
+- If the rule is mandatory, it must declare a `mechanical_enforcement_path`. Otherwise it cannot be enforced and would just be advisory in disguise.
+
+Use `writ review` to triage AI proposed rules:
+
+- `writ review` (no argument) lists every rule with `authority = ai-provisional`.
+- `writ review <rule_id>` shows full detail plus the origin context (the task description and query that triggered the proposal).
+- `writ review <rule_id> --promote` moves the rule to `authority = ai-promoted` and `confidence = peer-reviewed`.
+- `writ review <rule_id> --reject` deletes the rule from the graph.
+- `writ review <rule_id> --downweight` pins confidence to `speculative`.
+- `writ review --stats` prints counts grouped by authority.
+
+Promotion is a deliberate human act. The system does not promote on its own; frequency tracking only changes the runtime ranking weight, not the stored authority.
+
+## Monthly review
+
+Run on the first Monday of each month. Goal: turn the friction log into actionable graduation, trim, and rubric-refinement decisions.
 
 ### Cadence
 
@@ -63,23 +90,29 @@ into actionable graduation, trim, and rubric-refinement decisions.
    ```
 
 2. Triage rule effectiveness:
-   - Stick rate < 50%: trigger too broad, rationalization unaddressed, or rule wrong. File an issue or revise the rule.
-   - Stick rate ≥ 85% with low rationalization: graduation candidate (Step 4).
+   - Stick rate below 50 percent: trigger too broad, rationalization unaddressed, or rule wrong. File an issue or revise the rule.
+   - Stick rate at 85 percent or higher with low rationalization: graduation candidate (Step 4).
 
 3. Process trim candidates:
-   - Rules with < 5 activations in 90 days and 0 denials: deprecate or consolidate.
-   - Skills with < 2 loads in 60 days: deprecate.
+   - Rules with fewer than 5 activations in 90 days and 0 denials: deprecate or consolidate.
+   - Skills with fewer than 2 loads in 60 days: deprecate.
    - Document the rationale on the issue.
 
 4. Process graduation candidates:
    - Promote eligible rules to canonical tier in the graph.
-   - Update authority / confidence fields via `writ edit`.
+   - Update authority and confidence fields via `writ edit`.
 
-5. Refine quality-judge rubrics:
-   - Override rate > 25% on any rubric: the rubric is a false-positive generator. Edit the rubric prose in `.claude/hooks/writ-quality-judge.sh`.
+5. Refine quality judge rubrics:
+   - Override rate above 25 percent on any rubric: the rubric is a false-positive generator. Edit the rubric prose in `.claude/hooks/writ-quality-judge.sh`.
 
 6. File the review notes in `docs/monthly-reviews/YYYY-MM.md` (copy from `TEMPLATE.md`).
 
 ### Why monthly
 
-Friction signal is noisy at the per-session level. A 30 / 60 / 90-day rolling window smooths over PSR runs, one-off pressure tests, and individual exploratory sessions. Acting on a week of data tunes against noise; acting on a month of data tunes against signal.
+Friction signal is noisy at the per-session level. A 30, 60, or 90 day rolling window smooths over pressure runs, one-off pressure tests, and individual exploratory sessions. Acting on a week of data tunes against noise; acting on a month of data tunes against signal.
+
+## Related documents
+
+- `HANDBOOK.md` covers the architecture and the structural gate in detail.
+- `docs/monthly-reviews/TEMPLATE.md` is the template for monthly review notes.
+- `docs/plan-format.md` describes the `plan.md` and `capabilities.md` artifact format used in Work mode.

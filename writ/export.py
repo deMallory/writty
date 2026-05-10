@@ -1,4 +1,4 @@
-"""Markdown export from graph -- generates bible/ as a derived view.
+"""Markdown export from graph: generates bible/ as a derived view.
 
 bible/ is a derived exported view of the canonical Neo4j graph, not a source
 of truth. The graph is canonical. Use `writ import-markdown` only for initial
@@ -8,8 +8,9 @@ Per ARCH-SSOT-001: the graph is the canonical source; exported Markdown is deriv
 Per ARCH-ORG-001: export is a separate concern from ingest and retrieval.
 
 The exported format must round-trip through ingest.py without field loss (INV-RT).
-Graph-only fields (mandatory, confidence, evidence, staleness_window, last_validated)
-are excluded from output -- they are re-derived on re-ingest.
+mandatory is written as a metadata line so it survives the round trip; the
+remaining graph-only fields (confidence, evidence, staleness_window,
+last_validated) are excluded from output and re-derived on re-ingest.
 """
 
 from __future__ import annotations
@@ -34,7 +35,11 @@ SECTION_HEADERS = {
     "rationale": "### Rationale",
 }
 # Fields that ingest re-derives; must not appear in exported Markdown.
-GRAPH_ONLY_FIELDS = {"mandatory", "confidence", "evidence", "staleness_window", "last_validated"}
+# Note: mandatory used to be in this set, but ingest's re-derivation logic
+# (the ENF- prefix convention) was removed on 2026-05-09. Until then, mandatory
+# was silently lost on export/import cycles. We now write it as a metadata
+# line so the round trip is lossless.
+GRAPH_ONLY_FIELDS = {"confidence", "evidence", "staleness_window", "last_validated"}
 METADATA_FIELDS = ("domain", "severity", "scope")
 
 
@@ -52,10 +57,15 @@ def rule_to_markdown(rule: dict) -> str:
     lines.append(f"## Rule {rule_id}")
     lines.append("")
 
-    # Metadata: Domain, Severity, Scope (title-cased values for readability).
+    # Metadata: Domain, Severity, Scope, Mandatory, and (when present) the
+    # mechanical enforcement path. Title-cased values for readability.
     lines.append(f"**Domain**: {rule.get('domain', '')}")
     lines.append(f"**Severity**: {str(rule.get('severity', '')).title()}")
     lines.append(f"**Scope**: {str(rule.get('scope', '')).title()}")
+    lines.append(f"**Mandatory**: {'true' if rule.get('mandatory', False) else 'false'}")
+    mech_path = rule.get('mechanical_enforcement_path')
+    if mech_path:
+        lines.append(f"**Mechanical_Enforcement_Path**: {mech_path}")
     lines.append("")
 
     # Content sections in canonical order.
