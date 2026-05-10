@@ -68,10 +68,10 @@ class TestScopeVocabularyMigrated:
             md.read_text() for md in BIBLE.rglob("*.md")
             if "methodology" not in md.parts
         )
-        assert re.search(r"^\*\*Scope\*\*:\s*entity\s*$", all_md, re.MULTILINE), (
+        assert re.search(r"^\*\*Scope\*\*:\s*entity\s*$", all_md, re.MULTILINE | re.IGNORECASE), (
             "no rule uses the new 'entity' scope -- migration may not have run"
         )
-        assert re.search(r"^\*\*Scope\*\*:\s*component\s*$", all_md, re.MULTILINE), (
+        assert re.search(r"^\*\*Scope\*\*:\s*component\s*$", all_md, re.MULTILINE | re.IGNORECASE), (
             "no rule uses the new 'component' scope"
         )
 

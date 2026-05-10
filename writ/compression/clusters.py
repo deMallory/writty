@@ -190,7 +190,10 @@ def _find_centroid_nearest(
         member_indices = [rid_to_idx[rid] for rid in members]
         member_embeds = embeddings[member_indices]
         centroid = member_embeds.mean(axis=0)
-        # Find member closest to centroid via cosine distance.
+        # Find member closest to centroid via Euclidean distance. Embeddings
+        # are L2-normalized (see embeddings.py:114-121), so for unit vectors
+        # argmin(Euclidean) == argmin(cosine distance). The metrics agree on
+        # which member is centroid-nearest.
         dists = np.linalg.norm(member_embeds - centroid, axis=1)
         nearest_local = int(np.argmin(dists))
         centroid_indices[cid] = member_indices[nearest_local]

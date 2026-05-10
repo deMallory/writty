@@ -322,6 +322,8 @@ class Neo4jConnection:
             "CREATE CONSTRAINT rule_id_unique IF NOT EXISTS FOR (r:Rule) REQUIRE r.rule_id IS UNIQUE",
             "CREATE INDEX rule_domain IF NOT EXISTS FOR (r:Rule) ON (r.domain)",
             "CREATE INDEX rule_mandatory IF NOT EXISTS FOR (r:Rule) ON (r.mandatory)",
+            "CREATE CONSTRAINT abstraction_id_unique IF NOT EXISTS FOR (a:Abstraction) REQUIRE a.abstraction_id IS UNIQUE",
+            "CREATE INDEX abstraction_domain IF NOT EXISTS FOR (a:Abstraction) ON (a.domain)",
         ]
         # Phase 1 uniqueness constraints per methodology label. Each label has its
         # own *_id primary key per docs/phase-0-schema-proposal.md decision 2.

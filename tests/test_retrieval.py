@@ -103,10 +103,17 @@ class TestPipeline:
         assert result["latency_ms"] > 0
 
     def test_mandatory_excluded(self, pipeline) -> None:
+        """Pipeline must not return rules with mandatory=true; those load via /always-on."""
+        # The pre-2026-05-10 prefix-based check (assume every ENF-* is mandatory)
+        # is no longer correct: after the cleanup, several ENF-* rules are advisory.
+        # Check the actual mandatory flag from pipeline metadata.
         result = pipeline.query("gate approval phase enforcement")
-        rule_ids = [r["rule_id"] for r in result["rules"]]
-        for rid in rule_ids:
-            assert not rid.startswith("ENF-"), f"Mandatory rule {rid} in query results"
+        for r in result["rules"]:
+            rid = r["rule_id"]
+            meta = pipeline._metadata.get(rid, {})
+            assert not meta.get("mandatory", False), (
+                f"Mandatory rule {rid} surfaced via retrieval; should be /always-on only"
+            )
 
     def test_domain_filter(self, pipeline) -> None:
         result = pipeline.query("SQL query", domain="Database")

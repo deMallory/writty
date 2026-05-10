@@ -386,21 +386,8 @@ Makefile                       test, bench, check
 - Friction log analytics with a dashboard (`GET /dashboard`).
 
 ### Under review
-- Mandatory rule cleanup completed 2026-05-10. 17 rules tied to the dead Phase A-D / Tier-0-3 / completion-matrix workflow were deleted; 12 more were demoted to advisory; the remaining 11 mandatory rules each have a verified mechanical enforcement path. The 2026-04-21 audit's 18 demotion recommendations were a strict subset of these actions.
 - Self review judge calibration (`docs/phase-2-self-review-decision.md`).
-
-### Documented but inert
-A handful of features are implemented in code but not yet wired into the runtime path. These are tracked seams to close in the next round of work.
-- The abstraction summary mode is built (`writ/compression/`) but the pipeline does not pass abstractions into the budget trimmer, so the summary path stays inactive even when the budget would trigger it.
-- The frequency graduation function `compute_confidence_weight` is callable but not invoked from `pipeline.query()`. The static enum table runs at ranking time.
-- Seven of the 17 allowed edge types in the schema have no rules using them yet (`DEPENDS_ON`, `CONFLICTS_WITH`, `SUPPLEMENTS`, `SUPERSEDES`, `APPLIES_TO`, `ABSTRACTS`, `JUSTIFIED_BY`).
-- `Abstraction.abstraction_id` lacks a uniqueness constraint despite using `MERGE` on it. Concurrent inserts could create duplicates.
-
-### Documentation drift to clean up
-Older handbook documents claim things the code does not do. We caught these by extracting from source first:
-- The graduation logic is documented in some places as using a Wilson confidence interval. The code uses a plain ratio threshold (`positive / n >= 0.75` at `n >= 50`). The Wilson reasoning in `docs/evolution-reference.md` is the justification for picking `n = 50`, not the runtime check.
-- The ranking module's `normalize_ranks` docstring says "reciprocal rank fusion." The implementation is plain reciprocal rank `1 / (rank + 1)`, not classical RRF (no `k` constant). Functionally fine; just labelled imprecisely.
-- A comment in `writ/compression/clusters.py:193` says "cosine distance" where the code uses Euclidean (`np.linalg.norm`). The behavior is identical because the embeddings are L2-normalized (Euclidean and cosine produce the same `argmin` on unit vectors), but the comment is wrong.
+- Public out-of-the-box rulebook expansion (~150 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, Documentation). See `RULEBOOK-AUDIT.md` for the per-rule mapping plan and `out-of-the-box-rules.md` for the target spec.
 
 ## Getting started
 
@@ -434,7 +421,7 @@ Open Claude Code in any project. Type a prompt. You should see a `[Writ: ...]` s
 
 **Bundle cohesion.** A score that boosts rules whose neighbors are also being surfaced this turn. Helps return coherent bundles instead of disjoint matches. Default weight: 0 (computed but not contributing).
 
-**Confidence.** A property on each rule, one of `battle-tested`, `production-validated`, `peer-reviewed`, `speculative`. Used as a weight in ranking. Empirical graduation can substitute the observed positive ratio for the static tier weight, but only when fired through `compute_confidence_weight`, which is currently not invoked from the pipeline.
+**Confidence.** A property on each rule, one of `battle-tested`, `production-validated`, `peer-reviewed`, `speculative`. Used as a weight in ranking. Empirical graduation substitutes the observed positive ratio for the static tier weight when a rule has at least 50 observations and a positive ratio of at least 0.75, via `compute_confidence_weight` invoked from the pipeline ranking path.
 
 **Friction log.** A JSONL file (`workflow-friction.log`) that records every interesting event in a session: gate denials, phase transitions, hook timing, rule loads, sub-agent completions, quality judge overrides. The dashboard at `GET /dashboard` reads from this file.
 

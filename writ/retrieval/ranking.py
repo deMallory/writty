@@ -141,8 +141,16 @@ def compute_score(
     graph_proximity: float = 0.0,
     bundle_cohesion: float = 0.0,
     weights: RankingWeights | None = None,
+    times_seen_positive: int = 0,
+    times_seen_negative: int = 0,
 ) -> float:
     """Compute final ranking score for a single rule candidate.
+
+    Confidence weight uses compute_confidence_weight: when a rule has
+    sufficient frequency data (positive + negative >= 50) and a passing
+    positive ratio (>= 0.75), the empirical ratio replaces the static
+    confidence-tier weight. With default counters (0, 0) the behavior
+    reduces to the static enum lookup, preserving prior semantics.
 
     Phase 1 adds bundle_cohesion: a normalized (0..1) score expressing how many
     other high-ranked candidates are within the candidate's bundle (reachable
@@ -153,7 +161,7 @@ def compute_score(
         weights = RankingWeights()
 
     sev_w = SEVERITY_WEIGHTS.get(severity, 0.5)
-    conf_w = CONFIDENCE_WEIGHTS.get(confidence, 0.8)
+    conf_w = compute_confidence_weight(confidence, times_seen_positive, times_seen_negative)
 
     return (
         weights.w_bm25 * bm25_norm
@@ -166,9 +174,13 @@ def compute_score(
 
 
 def normalize_ranks(scores: list[float]) -> list[float]:
-    """Normalize a list of scores to [0, 1] range via reciprocal rank fusion.
+    """Normalize a list of scores via reciprocal rank: 1 / (rank + 1) where rank is descending by score.
 
-    Higher original score -> higher normalized score.
+    Output is in (0, 1] with the top-scoring item at 1.0 and lower-ranked
+    items decaying as 1/2, 1/3, .... This is plain reciprocal rank, not
+    classical Reciprocal Rank Fusion (which would use 1/(k+rank) with a
+    constant k, typically 60). Weighted linear fusion of the resulting
+    normalized ranks happens in compute_score().
     """
     if not scores:
         return []
