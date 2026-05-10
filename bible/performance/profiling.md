@@ -11,7 +11,7 @@ This document defines **performance principles and optimization guidelines** for
 
 **Domain**: Performance
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing a loop that iterates over a collection, or when nesting loops, or when calling a method inside a loop that itself iterates over a collection.
@@ -57,7 +57,7 @@ A seemingly simple nested loop can bring production systems to a halt. O(n^2) on
 
 **Domain**: Performance
 **Severity**: Medium
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When the AI proposes a performance optimization (caching, query rewrite, algorithm change, raw SQL instead of repository) without evidence that the current code is a measured bottleneck.
@@ -94,7 +94,7 @@ Premature optimization leads to complex, hard-to-maintain code that bypasses ser
 
 **Domain**: Performance
 **Severity**: Medium
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When a constructor or early method eagerly loads data (DB query, API call, file read) that may not be used by every code path through the class.
@@ -140,7 +140,7 @@ Eager loading of unused resources wastes memory and CPU. A class injected into 1
 
 **Domain**: Performance
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 When requirements specify a DB query budget (e.g., "must not add more than N queries per request"), or when a feature involves repository or collection calls inside a loop.
@@ -187,7 +187,7 @@ Repository and service contract abstractions hide query complexity. A single `ge
 
 **Domain**: Performance
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
 
 ### Trigger
 Any blocking I/O call (file read, network request, DB query) in a function reachable from a request handler or time-critical code path.

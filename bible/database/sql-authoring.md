@@ -11,7 +11,7 @@ This document defines **SQL authoring standards** to ensure queries are readable
 
 **Domain**: Database / SQL
 **Severity**: High
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing a raw SQL query string that includes parameter placeholders.
@@ -47,7 +47,7 @@ Named binds are self-documenting and reduce errors when modifying queries with m
 
 **Domain**: Database / SQL
 **Severity**: Medium
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When a raw SQL query is constructed using string concatenation (`.` operator in PHP) across more than 2 fragments without conditional logic requiring the split.
@@ -89,7 +89,7 @@ Fragmented SQL is harder to read, copy for debugging, and audit for security iss
 
 **Domain**: Database / SQL
 **Severity**: Medium
-**Scope**: file
+**Scope**: entity
 
 ### Trigger
 When writing any SQL query longer than one line.

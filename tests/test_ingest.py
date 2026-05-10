@@ -338,9 +338,13 @@ class TestMarkdownParser:
         assert rule["staleness_window"] == 365
         assert "last_validated" in rule
 
-    def test_mandatory_derived_from_enf_prefix(self, tmp_enf_file: Path) -> None:
+    def test_enf_prefix_no_longer_implies_mandatory(self, tmp_enf_file: Path) -> None:
+        """Per writ-evolution.md Section 2.2 (applied 2026-05-09): ENF-
+        prefix no longer auto-defaults mandatory to True. The fixture
+        omits the explicit **Mandatory** field, so the parser must
+        return False (default), not True (old convention)."""
         rules = parse_rules_from_file(tmp_enf_file)
-        assert rules[0]["mandatory"] is True
+        assert rules[0]["mandatory"] is False
 
     def test_non_enf_not_mandatory(self, tmp_rule_file: Path) -> None:
         rules = parse_rules_from_file(tmp_rule_file)
@@ -370,9 +374,11 @@ class TestMandatoryParsing:
         assert rules[0]["mandatory"] is False
         assert rules[0]["rule_id"].startswith("ENF-")
 
-    def test_absent_mandatory_enf_defaults_true(self, tmp_enf_file: Path) -> None:
+    def test_absent_mandatory_enf_defaults_false(self, tmp_enf_file: Path) -> None:
+        """Per writ-evolution.md Section 2.2: defaults to False, not
+        True-on-ENF-prefix. Convention removed 2026-05-09."""
         rules = parse_rules_from_file(tmp_enf_file)
-        assert rules[0]["mandatory"] is True
+        assert rules[0]["mandatory"] is False
 
     def test_absent_mandatory_non_enf_defaults_false(self, tmp_rule_file: Path) -> None:
         rules = parse_rules_from_file(tmp_rule_file)

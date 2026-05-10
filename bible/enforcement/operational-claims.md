@@ -11,7 +11,8 @@ This document defines **mandatory operational reasoning** the AI must satisfy wh
 
 **Domain**: Operations
 **Severity**: Critical
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 When the AI makes any claim about performance, throughput, scalability, or reliability in design docs, code comments, or plan.md (e.g., "handles 1000 reservations/minute", "scales horizontally", "resilient to failures").
@@ -68,7 +69,8 @@ Performance claims create expectations that influence architecture decisions, ca
 
 **Domain**: Operations
 **Severity**: High
-**Scope**: module
+**Scope**: component
+**Mandatory**: true
 
 ### Trigger
 When implementing any feature that uses message queues (publishing messages, consuming messages, or configuring queue infrastructure).

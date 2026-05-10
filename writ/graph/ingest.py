@@ -142,10 +142,12 @@ def _parse_rule_block(rule_id: str, block: str) -> dict | None:
         if content:
             result[field_name] = content
 
-    # Phase 1b: explicit Mandatory field overrides convention.
-    # Convention fallback: ENF-* rules default to mandatory, others do not.
+    # Mandatory must be declared explicitly via the **Mandatory** field
+    # (writ-evolution.md Section 2.2). The earlier rule_id.startswith("ENF-")
+    # convention was removed 2026-05-09: ENF-prefixed rules can be advisory
+    # too, and non-ENF rules can be mandatory if explicitly declared.
     if "mandatory" not in result:
-        result["mandatory"] = rule_id.startswith("ENF-")
+        result["mandatory"] = False
     result["confidence"] = "production-validated"
     result["authority"] = "human"
     result["times_seen_positive"] = 0
