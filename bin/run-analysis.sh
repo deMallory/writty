@@ -897,6 +897,63 @@ for i, line in enumerate(lines):
 PYEOF
 }
 
+# ── Scaling stateless scan ───────────────────────────────────────────────────
+# Phase 4 2026-05-10. Detects module-level mutable globals whose names
+# suggest user/session/cart state (SCALE-STATELESS-001). Conservative:
+# only flags names that strongly imply per-request mutable state.
+analyze_scaling_stateless() {
+  local file="$1"
+  local lang="$2"
+
+  python3 - <<'PYEOF' "$file" "$lang"
+import json, os, re, sys
+file_path = sys.argv[1]
+lang = sys.argv[2]
+basename = os.path.basename(file_path)
+if basename.startswith("seed_") and basename.endswith(".py"):
+    sys.exit(0)
+try:
+    with open(file_path, encoding="utf-8", errors="replace") as f:
+        src = f.read()
+except OSError:
+    sys.exit(0)
+
+lines = src.splitlines()
+
+def emit(line_no, rule, tool, message, severity="warning"):
+    print(json.dumps({
+        "file": file_path,
+        "line": line_no,
+        "severity": severity,
+        "rule": rule,
+        "tool": "writ-scale-scan/" + tool,
+        "message": message,
+    }))
+
+# Module-level (indent == 0) mutable global with a state-suggesting name.
+STATE_NAME = re.compile(
+    r"^([A-Z_]*(?:USER|SESSION|CART|LOGIN|TOKEN|AUTH|CACHE|STORE|STATE)[A-Z_]*"
+    r"|_?(?:user_?cache|session_?store|user_?carts|sessions|carts|active_users|user_state))\s*"
+    r"(?::\s*[^=]+)?\s*=\s*(\{|\[|set\(\)|dict\(\)|list\(\)|defaultdict|OrderedDict|deque)",
+    re.IGNORECASE,
+)
+
+for line_no, line in enumerate(lines, start=1):
+    # Module-level only -- no leading whitespace.
+    if line[:1] in (" ", "\t"):
+        continue
+    stripped = line.lstrip()
+    if stripped.startswith(("#", "//", "*")):
+        continue
+    m = STATE_NAME.match(line)
+    if m:
+        emit(line_no, "SCALE-STATELESS-001", "module-state-global",
+             f"Module-level mutable global '{m.group(1)}' suggests in-process user/session state; "
+             f"move to external store (Redis, DB) for horizontal scaling.",
+             "warning")
+PYEOF
+}
+
 # ── Main loop ────────────────────────────────────────────────────────────────
 ALL_FINDINGS=""
 HAS_ERRORS=0
@@ -980,6 +1037,13 @@ print(json.dumps({
   perf_result=$(analyze_performance_n_plus_one "$file" "$lang")
   if [ -n "$perf_result" ]; then
     ALL_FINDINGS="${ALL_FINDINGS}${perf_result}"$'\n'
+  fi
+
+  # Stateless-process scan (SCALE-STATELESS-001 from the public rulebook,
+  # Phase 4 2026-05-10). Reports warnings; never blocks writes.
+  scale_result=$(analyze_scaling_stateless "$file" "$lang")
+  if [ -n "$scale_result" ]; then
+    ALL_FINDINGS="${ALL_FINDINGS}${scale_result}"$'\n'
   fi
 done
 
