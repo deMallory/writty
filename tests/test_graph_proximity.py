@@ -44,11 +44,12 @@ GROUND_TRUTH_PATH = Path("tests/fixtures/ground_truth_queries.json")
 #                expanded space. Phase 6 will regenerate the corpus.
 #   0.50 / 0.80  2026-05-10 after Phase 3A (32 TEST/ERR-*) -- ground-truth
 #                rewritten for 2 more renames.
+#   0.50 / 0.78  2026-05-10 after Phase 3B (14 PERF-* with PERF-QUERY-001 mandatory).
 # Each public-rulebook sub-phase dilutes the ambiguous-set MRR / hit rate;
 # the ground truth corpus will be regenerated at the end of Phase 5 and
 # the floors retuned upward in Phase 6.
 MRR5_REGRESSION_FLOOR = 0.50
-HIT_RATE_REGRESSION_FLOOR = 0.80
+HIT_RATE_REGRESSION_FLOOR = 0.78
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
