@@ -10,7 +10,7 @@ pass_example: "Agent writes tests/test_api.py with test_fetch_returns_json (cont
 enforcement: "validate-test-file.sh: on PreToolUse Write matching src/**/*.{py,js,ts,php}, find corresponding test file, check for lexical assertion markers (assert|expect|should|test_). Deny if missing."
 rationale: "Test-first discipline is what the skill teaches. Mechanical enforcement makes the discipline impossible to rationalize around."
 mandatory: true
-always_on: false
+always_on: true
 confidence: battle-tested
 authority: human
 last_validated: 2026-04-21
