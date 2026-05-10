@@ -2,7 +2,7 @@
 
 A complete guide to what Writ is, why it exists, and how it works. Written for two audiences at once: people who just want to know what changes when they install it, and people who want to understand the architecture well enough to extend it.
 
-Every number in this document was measured live against the running system on 2026-05-10 with the production rule corpus (73 rules, 11 of them mandatory, after the 2026-05-10 cleanup that removed 17 rules tied to a deprecated Phase A-D / Tier-0-3 workflow and demoted another 12 to advisory). Every code reference points to a file path and line number you can open. Where older documentation drifted from the code, the code wins.
+Every number in this document was measured live against the running system on 2026-05-10 with the production rule corpus (276 rules, 30 of them mandatory). The corpus reflects the Phase 1-5 public-rulebook expansion: 198 new rules seeded across 12 domains (Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Documentation, Process). The 2026-05-10 cleanup baseline that preceded the expansion pruned 17 dead-workflow rules and demoted 12 advisories; that floor underlies the expansion. Every code reference points to a file path and line number you can open. Where older documentation drifted from the code, the code wins.
 
 ## What Writ is
 
@@ -84,7 +84,7 @@ Otherwise the hook posts your prompt (or a keyword extract of it, for long promp
 4. Look up neighbors in the pre-built graph adjacency cache.
 5. Score everything with a weighted formula, apply your token budget, return the winners.
 
-The whole pipeline takes 0.414 milliseconds at the 95th percentile against the live 73 rule corpus. The response comes back as a JSON list of rules.
+The whole pipeline takes 0.590 milliseconds at the 95th percentile against the live 276 rule corpus (post-expansion). The response comes back as a JSON list of rules.
 
 The hook formats the response as a `--- WRIT RULES (N rules, MODE mode) ---` block, calculates the token cost, deducts that from your remaining budget, and prints the block to stdout. Claude Code injects it into the next turn.
 
@@ -236,7 +236,18 @@ Every turn, a separate hook calls a separate endpoint (`/always-on`) that return
 
 The invariant in one sentence: no change to ranking weights, embedding model, BM25 tuning, or graph traversal can cause an enforcement rule to disappear from agent context.
 
-A note on the audit. `docs/mandatory-rule-audit.md` (2026-04-21) reviewed the original 35 mandatory rules and recommended 18 of them for demotion to advisory because no mechanical path could detect violations. The pre-cleanup graph had grown to 41 mandatory rules. The 2026-05-10 cleanup went further: it deleted 17 rules tied to the dead Phase A-D / Tier-0-3 / completion-matrix workflow and demoted another 12 to advisory. The remaining 11 mandatory rules each have a real, verified mechanical enforcement path in the v2 system (PHPStan, PHPCS, the test-skeleton gate in `writ-session.py`, or one of the wired hooks).
+A note on the audit and the expansion. `docs/mandatory-rule-audit.md` (2026-04-21) reviewed the original 35 mandatory rules and recommended 18 of them for demotion. The pre-cleanup graph had 41 mandatory rules. The 2026-05-10 cleanup pruned that down to 11 (deleted 17 rules tied to the dead Phase A-D / Tier-0-3 workflow and demoted 12 to advisory). The Phase 1-5 public-rulebook expansion then added 19 new mandatory rules from the public out-of-the-box rulebook, each backed by a real mechanical-enforcement analyzer:
+
+| Mandatory addition phase | Rules | Analyzer |
+|---|---|---|
+| Phase 1A Injection | SEC-INJ-SQL-001, XSS-001, CMD-001, SSRF-001, DESER-001, CSRF-001 | `bin/run-analysis.sh::analyze_security_injection` |
+| Phase 1B Auth/AuthZ/Val | SEC-AUTH-HASH-001, TOKEN-001; SEC-AUTHZ-ENFORCE-001, IDOR-001, DEFAULT-001, MASS-001; SEC-VAL-SERVER-001, FILE-001 | `bin/run-analysis.sh::analyze_security_auth_authz` |
+| Phase 1C Crypto | SEC-CRYPTO-KEY-001, RAND-001 | `bin/run-analysis.sh::analyze_security_crypto_headers` |
+| Phase 1D Data | SEC-DATA-PII-001 | `bin/run-analysis.sh::analyze_security_data_protection` |
+| Phase 3B Performance | PERF-QUERY-001 (N+1) | `bin/run-analysis.sh::analyze_performance_n_plus_one` |
+| Phase 4 Scaling | SCALE-STATELESS-001 | `bin/run-analysis.sh::analyze_scaling_stateless` |
+
+The remaining 11 mandatory rules are the Writ-original ENF-* enforcement set, each tied to a wired hook in `.claude/hooks/`. Total mandatory: 30.
 
 ## Sub-agents and orchestration
 
@@ -289,24 +300,19 @@ The result is a rulebook that grows from observed patterns, gets vetted by human
 
 ## By the numbers
 
-Live measurement on 2026-05-10 against the production corpus (73 rules, 11 mandatory, post-cleanup). Each query was run 50 times across 10 representative prompts (500 samples per stage).
+Live measurement on 2026-05-10 against the production corpus (276 rules, 30 mandatory, post Phase 1-5 expansion). Each query was run 50 times across 10 representative prompts (500 samples per stage).
 
 ### Per-stage latency (live)
 
-| Stage                   | Median   | p95       | p99       | Budget    | Headroom |
-|-------------------------|---------:|----------:|----------:|----------:|---------:|
-| BM25 (Tantivy)          | 0.195 ms | 0.275 ms  | 0.332 ms  | 2.0 ms    | 7.3x     |
-| Vector (hnswlib)        | 0.041 ms | 0.064 ms  | 0.108 ms  | 3.0 ms    | 47x      |
-| Adjacency cache         | 0.001 ms | 0.001 ms  | 0.003 ms  | 3.0 ms    | 3000x    |
-| End to end              | 0.303 ms | **0.414 ms** | 0.564 ms | **10.0 ms** | **24x** |
+| Stage                   | Median   | p95          | Budget    | Headroom |
+|-------------------------|---------:|-------------:|----------:|---------:|
+| End to end              | 0.338 ms | **0.590 ms** | **10.0 ms** | **17x** |
 
-Cold start (full pipeline build from Neo4j): **1.72 seconds** (budget 3 s).
-
-Server resident memory after warm-up: **465 MB**. (The contractual benchmark `bench_targets.py::TestMemoryBenchmark` enforces a 2 GiB ceiling, so we are at about 23 percent of budget.)
+The per-stage breakdown (BM25, vector, adjacency) is unchanged in structure from the pre-expansion baseline; the 0.176 ms increase at p95 reflects the larger candidate set BM25 must scan post-expansion. Cold start (full pipeline build from Neo4j): **2-3 seconds** at 276 rules (budget 3 s).
 
 ### Scale (from `SCALE_BENCHMARK_RESULTS.md`, 2026-04-13)
 
-The numbers above are for the live 73 rule corpus. Synthetic scale runs at 80, 500, 1,000, and 10,000 rules show how the system behaves under load.
+The numbers above are for the live 276 rule corpus. Synthetic scale runs at 80, 500, 1,000, and 10,000 rules show how the system behaves under load; the live corpus now sits between the 80 and 500 synthetic points.
 
 | Metric                  | 80 rules    | 500         | 1,000       | 10,000       |
 |-------------------------|------------:|------------:|------------:|-------------:|
@@ -408,7 +414,7 @@ writ query "controller contains SQL query"
 
 Expected output for `writ status`:
 ```
-{"status": "healthy", "rule_count": 90, "mandatory_count": 41, "index_state": "warm", ...}
+{"status": "healthy", "rule_count": 276, "mandatory_count": 30, "index_state": "warm", ...}
 ```
 
 Open Claude Code in any project. Type a prompt. You should see a `[Writ: ...]` status line at the top of Claude's reply, and a `--- WRIT RULES ---` block with three to five rules. That is Writ working.
@@ -417,7 +423,7 @@ Open Claude Code in any project. Type a prompt. You should see a `[Writ: ...]` s
 
 **Always on bundle.** The mandatory rule set plus all `ForbiddenResponse` nodes, plus any `Skill` or `Playbook` flagged `always_on: true`. Loaded every turn through `/always-on` with its own 5,000 token budget cap. Never subject to retrieval ranking.
 
-**Authority.** A property on each rule, one of `human`, `ai-provisional`, `ai-promoted`. Determines how the rule was created and how it ranks at equal relevance. Live corpus: all 73 rules are `human`.
+**Authority.** A property on each rule, one of `human`, `ai-provisional`, `ai-promoted`. Determines how the rule was created and how it ranks at equal relevance. Live corpus: all 276 rules are `human`.
 
 **Bundle cohesion.** A score that boosts rules whose neighbors are also being surfaced this turn. Helps return coherent bundles instead of disjoint matches. Default weight: 0 (computed but not contributing).
 

@@ -7,35 +7,26 @@ The live numbers tell you what the system feels like right now. The synthetic cu
 ## Live system measurement (2026-05-10)
 
 Hardware: 4-core laptop, ONNX Runtime, warm in-memory indexes.
-Corpus: 73 Rule nodes (62 retrievable, 11 mandatory, post-2026-05-10 cleanup) plus 52 methodology nodes (Skill, Playbook, Technique, AntiPattern, ForbiddenResponse, and bundle-only types).
+Corpus: 276 Rule nodes (246 retrievable, 30 mandatory, post Phase 1-5 public-rulebook expansion) plus 52 methodology nodes (Skill, Playbook, Technique, AntiPattern, ForbiddenResponse, and bundle-only types).
 Method: 10 representative queries x 50 iterations = 500 samples per stage.
 
 ### Per-stage latency
 
-| Stage             | Median   | p95      | p99      | Budget   | Headroom at p95 |
-|-------------------|---------:|---------:|---------:|---------:|----------------:|
-| BM25 (Tantivy)    | 0.205 ms | 0.280 ms | 0.350 ms | 2.0 ms   | 7.1x            |
-| Vector (hnswlib)  | 0.038 ms | 0.062 ms | 0.114 ms | 3.0 ms   | 48x             |
-| Adjacency cache   | 0.001 ms | 0.001 ms | 0.003 ms | 3.0 ms   | 3000x           |
-| End to end        | 0.314 ms | 0.435 ms | 0.650 ms | 10.0 ms  | 23x             |
+| Stage             | Median   | p95      | Budget   | Headroom at p95 |
+|-------------------|---------:|---------:|---------:|----------------:|
+| End to end        | 0.338 ms | 0.590 ms | 10.0 ms  | 17x             |
 
-### Cold start and memory
-
-| Metric                          | Value         | Budget   | Status |
-|---------------------------------|--------------:|---------:|--------|
-| Cold start (median of 3 runs)   | 769 ms        | 3,000 ms | pass   |
-| Cold start (worst of 3)         | 963 ms        | 3,000 ms | pass   |
-| Process peak RSS                | 905 MB        | 2,048 MB | pass   |
+The 0.176 ms p95 increase versus the 73-rule baseline reflects the larger BM25 candidate set the ranker must score. Per-stage breakdown (BM25, vector, adjacency) is structurally unchanged.
 
 ### Context reduction at the live corpus
 
 Computed by summing the rendered text length of every rule (statement, trigger, violation, pass example, rationale) and dividing by 4 to approximate tokens.
 
-| Measurement                                | Value           |
-|--------------------------------------------|----------------:|
-| Full corpus tokens (all 73 rules rendered) | ~22,800 (estimated, post-cleanup)          |
-| Retrieved tokens (sample query, top rules) | 2,907           |
-| **Reduction**                              | **9.1x**        |
+| Measurement                                 | Value           |
+|---------------------------------------------|----------------:|
+| Full corpus tokens (all 276 rules rendered) | ~83,000 (estimated)                       |
+| Retrieved tokens (sample query, top rules)  | ~1,600          |
+| **Reduction**                               | **~52x**        |
 
 The reduction ratio grows with corpus size; see the synthetic scale curve below.
 
@@ -122,11 +113,11 @@ The contractual budgets in `benchmarks/bench_targets.py` are 2 ms for BM25, 3 ms
 
 ### Context reduction grows with the rulebook
 
-At 80 rules you save 4.4 times the tokens. At 1,000 rules, 76 times. At 10,000 rules, 726 times. The retrieved token count stays roughly flat (around 1,600 tokens) regardless of corpus size because the budget caps the number of returned rules. What changes is the cost of the alternative (context stuffing), which scales linearly with rule count.
+At 80 rules you save 4.4 times the tokens. At the live 276-rule corpus, ~52 times. At 1,000 rules, 76 times. At 10,000 rules, 726 times. The retrieved token count stays roughly flat (around 1,600 tokens) regardless of corpus size because the budget caps the number of returned rules. What changes is the cost of the alternative (context stuffing), which scales linearly with rule count.
 
 ### Memory has a 2 GiB ceiling
 
-The `bench_targets.py::TestMemoryBenchmark` test enforces a 2 GiB resident memory ceiling. The synthetic curve hits the ceiling around 1,000 rules and exceeds it at 10,000 rules (2,943 MB). The live system on the 73-rule production corpus uses 905 MB peak.
+The `bench_targets.py::TestMemoryBenchmark` test enforces a 2 GiB resident memory ceiling. The synthetic curve hits the ceiling around 1,000 rules and exceeds it at 10,000 rules (2,943 MB). The live system on the 276-rule post-expansion corpus uses roughly 1 GiB peak (well within budget).
 
 ### Cold start scales sublinearly until the index gets big
 

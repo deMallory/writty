@@ -498,6 +498,498 @@
       "set": "ambiguous",
       "query": "the queue keeps reprocessing the same order",
       "expected_rule_id": "FW-M2-RT-005"
+    },
+    {
+      "id": "Q86",
+      "set": "keyword",
+      "query": "user input rendered as raw HTML in template",
+      "expected_rule_id": "SEC-INJ-XSS-001"
+    },
+    {
+      "id": "Q87",
+      "set": "keyword",
+      "query": "subprocess shell true command injection",
+      "expected_rule_id": "SEC-INJ-CMD-001"
+    },
+    {
+      "id": "Q88",
+      "set": "keyword",
+      "query": "deserialize untrusted pickle yaml",
+      "expected_rule_id": "SEC-INJ-DESER-001"
+    },
+    {
+      "id": "Q89",
+      "set": "keyword",
+      "query": "open redirect from request parameter",
+      "expected_rule_id": "SEC-INJ-REDIR-001"
+    },
+    {
+      "id": "Q90",
+      "set": "keyword",
+      "query": "CSRF token missing on POST",
+      "expected_rule_id": "SEC-INJ-CSRF-001"
+    },
+    {
+      "id": "Q91",
+      "set": "keyword",
+      "query": "SSRF allowlist outbound URLs",
+      "expected_rule_id": "SEC-INJ-SSRF-001"
+    },
+    {
+      "id": "Q92",
+      "set": "keyword",
+      "query": "path traversal directory escape",
+      "expected_rule_id": "SEC-INJ-PATH-001"
+    },
+    {
+      "id": "Q93",
+      "set": "keyword",
+      "query": "regex denial of service ReDoS",
+      "expected_rule_id": "SEC-INJ-REGEX-001"
+    },
+    {
+      "id": "Q94",
+      "set": "keyword",
+      "query": "password hash MD5 SHA256 bcrypt",
+      "expected_rule_id": "SEC-AUTH-HASH-001"
+    },
+    {
+      "id": "Q95",
+      "set": "keyword",
+      "query": "session token CSPRNG random secure",
+      "expected_rule_id": "SEC-AUTH-TOKEN-001"
+    },
+    {
+      "id": "Q96",
+      "set": "keyword",
+      "query": "rate limit login brute force",
+      "expected_rule_id": "SEC-AUTH-BRUTE-001"
+    },
+    {
+      "id": "Q97",
+      "set": "keyword",
+      "query": "constant time comparison timing attack",
+      "expected_rule_id": "SEC-AUTH-TIMING-001"
+    },
+    {
+      "id": "Q98",
+      "set": "keyword",
+      "query": "object access ownership check IDOR",
+      "expected_rule_id": "SEC-AUTHZ-IDOR-001"
+    },
+    {
+      "id": "Q99",
+      "set": "keyword",
+      "query": "endpoint missing authorization decorator",
+      "expected_rule_id": "SEC-AUTHZ-ENFORCE-001"
+    },
+    {
+      "id": "Q100",
+      "set": "keyword",
+      "query": "mass assignment from request body",
+      "expected_rule_id": "SEC-AUTHZ-MASS-001"
+    },
+    {
+      "id": "Q101",
+      "set": "keyword",
+      "query": "multi-tenant data filter at data layer",
+      "expected_rule_id": "SEC-AUTHZ-TENANT-001"
+    },
+    {
+      "id": "Q102",
+      "set": "keyword",
+      "query": "deny by default new endpoint",
+      "expected_rule_id": "SEC-AUTHZ-DEFAULT-001"
+    },
+    {
+      "id": "Q103",
+      "set": "keyword",
+      "query": "server-side input validation client-side UX only",
+      "expected_rule_id": "SEC-VAL-SERVER-001"
+    },
+    {
+      "id": "Q104",
+      "set": "keyword",
+      "query": "pydantic schema typed payload",
+      "expected_rule_id": "SEC-VAL-TYPE-001"
+    },
+    {
+      "id": "Q105",
+      "set": "keyword",
+      "query": "file upload magic bytes content type",
+      "expected_rule_id": "SEC-VAL-FILE-001"
+    },
+    {
+      "id": "Q106",
+      "set": "keyword",
+      "query": "allowlist over blocklist validation",
+      "expected_rule_id": "SEC-VAL-ALLOW-001"
+    },
+    {
+      "id": "Q107",
+      "set": "keyword",
+      "query": "hardcoded API key secret in source",
+      "expected_rule_id": "SEC-CRYPTO-KEY-001"
+    },
+    {
+      "id": "Q108",
+      "set": "keyword",
+      "query": "AES ECB mode weak cipher",
+      "expected_rule_id": "SEC-CRYPTO-ALGO-001"
+    },
+    {
+      "id": "Q109",
+      "set": "keyword",
+      "query": "nonce IV reuse GCM encryption",
+      "expected_rule_id": "SEC-CRYPTO-IV-001"
+    },
+    {
+      "id": "Q110",
+      "set": "keyword",
+      "query": "verify false TLS certificate disabled",
+      "expected_rule_id": "SEC-CRYPTO-CERT-001"
+    },
+    {
+      "id": "Q111",
+      "set": "keyword",
+      "query": "TLS 1.2 minimum cipher suite",
+      "expected_rule_id": "SEC-CRYPTO-TLS-001"
+    },
+    {
+      "id": "Q112",
+      "set": "keyword",
+      "query": "CORS wildcard credentials origin",
+      "expected_rule_id": "SEC-HDR-CORS-001"
+    },
+    {
+      "id": "Q113",
+      "set": "keyword",
+      "query": "Content Security Policy header CSP",
+      "expected_rule_id": "SEC-HDR-CSP-001"
+    },
+    {
+      "id": "Q114",
+      "set": "keyword",
+      "query": "HSTS strict transport security max-age",
+      "expected_rule_id": "SEC-HDR-HSTS-001"
+    },
+    {
+      "id": "Q115",
+      "set": "keyword",
+      "query": "API rate limiting per identity",
+      "expected_rule_id": "SEC-RATE-API-001"
+    },
+    {
+      "id": "Q116",
+      "set": "keyword",
+      "query": "PII email phone logged plaintext",
+      "expected_rule_id": "SEC-DATA-PII-001"
+    },
+    {
+      "id": "Q117",
+      "set": "keyword",
+      "query": "API response field allowlist over-fetching",
+      "expected_rule_id": "SEC-DATA-PII-002"
+    },
+    {
+      "id": "Q118",
+      "set": "keyword",
+      "query": "dependency CVE audit lockfile",
+      "expected_rule_id": "SEC-DEP-AUDIT-001"
+    },
+    {
+      "id": "Q119",
+      "set": "keyword",
+      "query": "function 50 lines too long",
+      "expected_rule_id": "CLEAN-FUNC-002"
+    },
+    {
+      "id": "Q120",
+      "set": "keyword",
+      "query": "magic number named constant",
+      "expected_rule_id": "CLEAN-MAGIC-001"
+    },
+    {
+      "id": "Q121",
+      "set": "keyword",
+      "query": "empty except catch swallow exception",
+      "expected_rule_id": "CLEAN-ERR-001"
+    },
+    {
+      "id": "Q122",
+      "set": "keyword",
+      "query": "specific exception type bare except",
+      "expected_rule_id": "CLEAN-ERR-002"
+    },
+    {
+      "id": "Q123",
+      "set": "keyword",
+      "query": "structured logging JSON levels",
+      "expected_rule_id": "CLEAN-LOG-001"
+    },
+    {
+      "id": "Q124",
+      "set": "keyword",
+      "query": "correlation id request trace",
+      "expected_rule_id": "CLEAN-LOG-002"
+    },
+    {
+      "id": "Q125",
+      "set": "keyword",
+      "query": "deeply nested code early return",
+      "expected_rule_id": "CLEAN-NEST-001"
+    },
+    {
+      "id": "Q126",
+      "set": "keyword",
+      "query": "duplicate logic extract shared function",
+      "expected_rule_id": "DRY-DUP-001"
+    },
+    {
+      "id": "Q127",
+      "set": "keyword",
+      "query": "single source of truth config",
+      "expected_rule_id": "DRY-CONFIG-001"
+    },
+    {
+      "id": "Q128",
+      "set": "keyword",
+      "query": "single responsibility class layer",
+      "expected_rule_id": "SOLID-SRP-001"
+    },
+    {
+      "id": "Q129",
+      "set": "keyword",
+      "query": "controller delegates service layer",
+      "expected_rule_id": "SOLID-SRP-002"
+    },
+    {
+      "id": "Q130",
+      "set": "keyword",
+      "query": "polymorphism switch type extensibility",
+      "expected_rule_id": "SOLID-OCP-002"
+    },
+    {
+      "id": "Q131",
+      "set": "keyword",
+      "query": "constructor inject abstraction protocol",
+      "expected_rule_id": "SOLID-DIP-002"
+    },
+    {
+      "id": "Q132",
+      "set": "keyword",
+      "query": "domain model framework imports",
+      "expected_rule_id": "ARCH-LAYER-002"
+    },
+    {
+      "id": "Q133",
+      "set": "keyword",
+      "query": "adapter external service HTTP client",
+      "expected_rule_id": "ARCH-BOUNDARY-001"
+    },
+    {
+      "id": "Q134",
+      "set": "keyword",
+      "query": "idempotency key write endpoint retry",
+      "expected_rule_id": "ARCH-IDEMPOTENT-001"
+    },
+    {
+      "id": "Q135",
+      "set": "keyword",
+      "query": "DTO dataclass typed transfer",
+      "expected_rule_id": "ARCH-DTO-001"
+    },
+    {
+      "id": "Q136",
+      "set": "keyword",
+      "query": "versioned migration backwards compatible",
+      "expected_rule_id": "ARCH-MIGRATION-001"
+    },
+    {
+      "id": "Q137",
+      "set": "keyword",
+      "query": "feature flag expiration sunset date",
+      "expected_rule_id": "ARCH-FEATURE-001"
+    },
+    {
+      "id": "Q138",
+      "set": "keyword",
+      "query": "test every public function happy path",
+      "expected_rule_id": "TEST-EXIST-001"
+    },
+    {
+      "id": "Q139",
+      "set": "keyword",
+      "query": "test names describe scenario outcome",
+      "expected_rule_id": "TEST-NAME-001"
+    },
+    {
+      "id": "Q140",
+      "set": "keyword",
+      "query": "test error path edge invalid input",
+      "expected_rule_id": "TEST-EDGE-001"
+    },
+    {
+      "id": "Q141",
+      "set": "keyword",
+      "query": "regression test bug fix accompanies",
+      "expected_rule_id": "TEST-REGRESSION-001"
+    },
+    {
+      "id": "Q142",
+      "set": "keyword",
+      "query": "mock verify behavior call arguments",
+      "expected_rule_id": "TEST-MOCK-001"
+    },
+    {
+      "id": "Q143",
+      "set": "keyword",
+      "query": "exponential backoff jitter retry",
+      "expected_rule_id": "ERR-RETRY-001"
+    },
+    {
+      "id": "Q144",
+      "set": "keyword",
+      "query": "circuit breaker repeated failure",
+      "expected_rule_id": "ERR-CIRCUIT-001"
+    },
+    {
+      "id": "Q145",
+      "set": "keyword",
+      "query": "timeout external call unbounded wait",
+      "expected_rule_id": "ERR-TIMEOUT-001"
+    },
+    {
+      "id": "Q146",
+      "set": "keyword",
+      "query": "graceful shutdown SIGTERM drain",
+      "expected_rule_id": "ERR-GRACEFUL-001"
+    },
+    {
+      "id": "Q147",
+      "set": "keyword",
+      "query": "structured validation error field code",
+      "expected_rule_id": "ERR-VALIDATION-001"
+    },
+    {
+      "id": "Q148",
+      "set": "keyword",
+      "query": "N+1 query eager loading join",
+      "expected_rule_id": "PERF-QUERY-001"
+    },
+    {
+      "id": "Q149",
+      "set": "keyword",
+      "query": "WHERE join column index",
+      "expected_rule_id": "PERF-QUERY-002"
+    },
+    {
+      "id": "Q150",
+      "set": "keyword",
+      "query": "cache key user tenant parameter",
+      "expected_rule_id": "PERF-CACHE-001"
+    },
+    {
+      "id": "Q151",
+      "set": "keyword",
+      "query": "cache TTL explicit invalidation",
+      "expected_rule_id": "PERF-CACHE-002"
+    },
+    {
+      "id": "Q152",
+      "set": "keyword",
+      "query": "streaming chunked read large dataset",
+      "expected_rule_id": "PERF-MEM-001"
+    },
+    {
+      "id": "Q153",
+      "set": "keyword",
+      "query": "parallel async gather Promise all",
+      "expected_rule_id": "PERF-BATCH-001"
+    },
+    {
+      "id": "Q154",
+      "set": "keyword",
+      "query": "stateless process Redis session",
+      "expected_rule_id": "SCALE-STATELESS-001"
+    },
+    {
+      "id": "Q155",
+      "set": "keyword",
+      "query": "background queue long running operation",
+      "expected_rule_id": "SCALE-QUEUE-001"
+    },
+    {
+      "id": "Q156",
+      "set": "keyword",
+      "query": "connection pool database size limit",
+      "expected_rule_id": "SCALE-DB-001"
+    },
+    {
+      "id": "Q157",
+      "set": "keyword",
+      "query": "health check readiness DB dependency",
+      "expected_rule_id": "SCALE-HEALTH-001"
+    },
+    {
+      "id": "Q158",
+      "set": "keyword",
+      "query": "rolling deploy backwards compatible schema",
+      "expected_rule_id": "SCALE-MIGRATE-001"
+    },
+    {
+      "id": "Q159",
+      "set": "keyword",
+      "query": "HTTP method GET POST PUT DELETE semantics",
+      "expected_rule_id": "API-REST-001"
+    },
+    {
+      "id": "Q160",
+      "set": "keyword",
+      "query": "status code 422 validation 5xx server",
+      "expected_rule_id": "API-STATUS-001"
+    },
+    {
+      "id": "Q161",
+      "set": "keyword",
+      "query": "OpenAPI spec generated documentation",
+      "expected_rule_id": "API-CONTRACT-001"
+    },
+    {
+      "id": "Q162",
+      "set": "keyword",
+      "query": "type annotations public function return",
+      "expected_rule_id": "DOC-TYPE-001"
+    },
+    {
+      "id": "Q163",
+      "set": "keyword",
+      "query": "README setup clean machine prerequisites",
+      "expected_rule_id": "DOC-README-001"
+    },
+    {
+      "id": "Q164",
+      "set": "keyword",
+      "query": "ADR architecture decision record",
+      "expected_rule_id": "DOC-ARCH-001"
+    },
+    {
+      "id": "Q165",
+      "set": "keyword",
+      "query": "rollback canary blue-green deploy",
+      "expected_rule_id": "PROC-ROLLBACK-001"
+    },
+    {
+      "id": "Q166",
+      "set": "keyword",
+      "query": "post-incident review action items owners",
+      "expected_rule_id": "PROC-INCIDENT-001"
+    },
+    {
+      "id": "Q167",
+      "set": "keyword",
+      "query": "credential never share chat ticket",
+      "expected_rule_id": "PROC-ENV-001"
     }
   ]
 }
