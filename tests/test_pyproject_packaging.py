@@ -72,6 +72,30 @@ class TestPyprojectInstallContract:
         # Must use a real PEP 517 backend, not be empty.
         assert bs["build-backend"], "build-system.build-backend is empty"
 
+    def test_license_declared(self, pyproject: dict) -> None:
+        """PEP 639 / SPDX-style license field. Required for a clean
+        `pip install` and for downstream consumers to know the
+        license without parsing the LICENSE file by hand."""
+        license_field = pyproject.get("project", {}).get("license")
+        assert license_field, "pyproject.toml [project].license is missing"
+        # Either an SPDX string ("MIT") or a {file = "LICENSE"} table.
+        if isinstance(license_field, str):
+            assert license_field, "license string is empty"
+        elif isinstance(license_field, dict):
+            assert license_field.get("file") or license_field.get("text"), (
+                "license table must have file or text key"
+            )
+        else:
+            pytest.fail(f"license field has unexpected type: {type(license_field)}")
+
+    def test_license_files_includes_LICENSE(self, pyproject: dict) -> None:
+        """LICENSE file must be in license-files so sdist/wheel builds
+        bundle it. Required for MIT redistribution compliance."""
+        files = pyproject.get("project", {}).get("license-files", [])
+        assert any("LICENSE" in pat for pat in files), (
+            "pyproject.toml [project].license-files must include LICENSE"
+        )
+
     def test_python_version_floor_supported(self, pyproject: dict) -> None:
         """Soft sanity: the floor must be a real released CPython that
         the dependencies (FastAPI, Pydantic v2, neo4j) all support."""
@@ -84,6 +108,30 @@ class TestPyprojectInstallContract:
             f"requires-python floor {floor} is below 3.11; "
             f"writ uses pattern matching + tomllib that need 3.11+."
         )
+
+
+class TestLicenseAndAttribution:
+    """LICENSE + NOTICE files exist and the NOTICE attributes the
+    methodology absorption (per the pinned commit metadata each
+    bible/methodology/*.md file carries)."""
+
+    def test_license_file_present(self) -> None:
+        license_path = SKILL_DIR / "LICENSE"
+        assert license_path.is_file(), "LICENSE file is missing at repo root"
+        body = license_path.read_text()
+        assert "MIT License" in body, "LICENSE does not appear to be the MIT text"
+
+    def test_notice_file_present_and_attributes_methodology(self) -> None:
+        notice_path = SKILL_DIR / "NOTICE"
+        assert notice_path.is_file(), "NOTICE file is missing at repo root"
+        body = notice_path.read_text()
+        # Methodology attribution must appear (the methodology corpus
+        # carries source_attribution: "writ-methodology@1.0" on every node).
+        assert "Methodology" in body, "NOTICE does not attribute Methodology"
+        assert "writ-methodology@1.0" in body or "5.0.7" in body, (
+            "NOTICE does not pin the Methodology version"
+        )
+        assert "MIT" in body, "NOTICE does not state the Methodology license"
 
 
 class TestInstalledConsoleScript:
