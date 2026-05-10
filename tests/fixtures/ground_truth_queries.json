@@ -101,13 +101,13 @@
       "id": "Q17",
       "set": "keyword",
       "query": "test isolation shared state",
-      "expected_rule_id": "TEST-ISO-001"
+      "expected_rule_id": "TEST-ISOLATE-001"
     },
     {
       "id": "Q18",
       "set": "keyword",
       "query": "test first before implementation",
-      "expected_rule_id": "TEST-TDD-001"
+      "expected_rule_id": "TEST-EXIST-001"
     },
     {
       "id": "Q19",
@@ -335,7 +335,7 @@
       "id": "Q57",
       "set": "symptom",
       "query": "test passes alone but fails with other tests",
-      "expected_rule_id": "TEST-ISO-001"
+      "expected_rule_id": "TEST-ISOLATE-001"
     },
     {
       "id": "Q58",
@@ -467,7 +467,7 @@
       "id": "Q80",
       "set": "ambiguous",
       "query": "the test only works if you run it after the other test",
-      "expected_rule_id": "TEST-ISO-001"
+      "expected_rule_id": "TEST-ISOLATE-001"
     },
     {
       "id": "Q81",
