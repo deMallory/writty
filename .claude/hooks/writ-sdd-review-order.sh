@@ -21,13 +21,27 @@ SESSION_ID=$(detect_session_id "$PARSED")
 
 is_work_mode "$SESSION_ID" || exit 0
 
-DENY=$(python3 <<PY
-import json, sys
+# Pass $PARSED to Python via env var rather than heredoc substitution.
+# Heredoc substitution preserves raw control characters (newlines/tabs
+# embedded in tool_input fields), which Python's triple-quoted string
+# accepts but json.loads rejects -- causing the SDD review-order gate
+# to fall open silently with a non-blocking traceback. PSR-008 surfaced
+# this on every subagent dispatch. Same bug class as commit db58ec1.
+DENY=$(WRIT_PARSED_ENVELOPE="$PARSED" python3 <<PY
+import json, os, sys
 sys.path.insert(0, "$WRIT_DIR/bin/lib")
 from importlib import util
 spec = util.spec_from_file_location('writ_session', "$SESSION_HELPER")
 mod = util.module_from_spec(spec); spec.loader.exec_module(mod)
-parsed = json.loads('''$PARSED''')
+raw = os.environ.get("WRIT_PARSED_ENVELOPE", "")
+try:
+    parsed = json.loads(raw)
+except (json.JSONDecodeError, ValueError) as _e:
+    sys.stderr.write(
+        f'[writ-hook json.loads recovery] WRIT_PARSED_ENVELOPE in writ-sdd-review-order.sh: {_e}\\n'
+        f'  len={len(raw)} sample={raw[:200]!r}\\n'
+    )
+    sys.exit(0)
 ti = parsed.get("tool_input") or {}
 agent_type = (ti.get("subagent_type") or "").lower()
 if "code-review" not in agent_type and agent_type != "writ-code-reviewer":
@@ -42,13 +56,15 @@ PY
 )
 
 if [ -n "$DENY" ]; then
-    python3 -c "
-import json
+    # Same env-var pattern as above: avoid heredoc substitution that
+    # breaks on quotes/specials in $DENY.
+    WRIT_DENY_REASON="$DENY" python3 -c "
+import json, os
 print(json.dumps({
     'hookSpecificOutput': {
         'hookEventName': 'PreToolUse',
         'permissionDecision': 'deny',
-        'permissionDecisionReason': '''$DENY'''
+        'permissionDecisionReason': os.environ.get('WRIT_DENY_REASON', ''),
     }
 }))"
 fi
