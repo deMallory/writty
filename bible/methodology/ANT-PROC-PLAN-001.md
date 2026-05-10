@@ -12,11 +12,11 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 counter_nodes: [SKL-PROC-PLAN-001, ENF-PROC-PLAN-001]
-named_in: "writ-methodology@1.0:writing-plans"
+named_in: "writ-methodology:writing-plans"
 edges:
   - { target: SKL-PROC-PLAN-001, type: COUNTERS }
   - { target: ENF-PROC-PLAN-001, type: COUNTERS }

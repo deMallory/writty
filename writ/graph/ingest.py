@@ -304,7 +304,7 @@ def _parse_node_block(node_type: str, node_id: str, block: str) -> dict | None:
     result.setdefault("times_seen_positive", 0)
     result.setdefault("times_seen_negative", 0)
     result.setdefault("last_seen", None)
-    result.setdefault("evidence", EVIDENCE_DEFAULT if node_type == "Rule" else "doc:methodology")
+    result.setdefault("evidence", EVIDENCE_DEFAULT if node_type == "Rule" else "peer-reviewed")
     result.setdefault("staleness_window", STALENESS_WINDOW_DEFAULT)
     result.setdefault("last_validated", date.today().isoformat())
 

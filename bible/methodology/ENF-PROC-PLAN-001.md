@@ -15,7 +15,7 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: ".claude/hooks/validate-exit-plan.sh (Tier 1) + writ-quality-judge.sh (Tier 2)"
 rationalization_counters:
   - { thought: "Engineer can figure this out.", counter: "Plan is the contract. Figuring out is interpretation, which drifts from user intent." }
@@ -26,7 +26,7 @@ red_flag_thoughts:
   - "TODO — fill in"
   - "Add appropriate X"
 tags: [enforcement, placeholder, planning, process, quality-gate]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 body: "Standalone Rationalization nodes attached via ATTACHED_TO edges complement the inline rationalization_counters field per schema proposal."
 edges:

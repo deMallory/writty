@@ -33,7 +33,7 @@ All new node models inherit from a shared base (implementation choice for Phase 
 | `authority`            | `str`                | no       | `"human"`                 | Existing validator |
 | `last_validated`       | `date`               | yes      | —                         | Matches Rule convention |
 | `staleness_window`     | `int`                | no       | `365`                     | Matches Rule convention |
-| `evidence`             | `str`                | no       | `"doc:methodology"`       | Non-retrievable types may default `"structural"` |
+| `evidence`             | `str`                | no       | `"doc:prior-art"`       | Non-retrievable types may default `"structural"` |
 | `times_seen_positive`  | `int`                | no       | `0`                       | Telemetry; retrievable types |
 | `times_seen_negative`  | `int`                | no       | `0`                       | Telemetry; retrievable types |
 | `last_seen`            | `str \| None`        | no       | `None`                    | Telemetry; retrievable types |
@@ -99,7 +99,7 @@ Inherits base only. Techniques are reusable subprocedures — shorter than Skill
 | Field                | Type                | Required | Notes |
 | -------------------- | ------------------- | -------- | ----- |
 | `counter_nodes`      | `list[str]`         | yes      | Skill/Playbook/Rule IDs that counter this anti-pattern |
-| `named_in`           | `str \| None`       | no       | Source that introduced the name (e.g., "writ-methodology@1.0:testing-anti-patterns") |
+| `named_in`           | `str \| None`       | no       | Source that introduced the name (e.g., "writ-methodology:testing-anti-patterns") |
 
 **Retrievable:** yes.
 

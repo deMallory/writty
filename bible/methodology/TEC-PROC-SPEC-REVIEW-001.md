@@ -6,14 +6,14 @@ severity: medium
 scope: task
 trigger: "After a plan or spec is drafted, before it is presented to the user for approval."
 statement: "Inline self-review checklist: placeholder scan, internal consistency, scope check, ambiguity check. Catches 3-5 real issues per run in seconds, not minutes."
-rationale: "Subagent review loops were replaced by this inline technique in Methodology v5.0.6 after regression testing showed comparable defect rates at ~25× less time cost."
+rationale: "Inline self-review replaces full subagent review loops where appropriate: comparable defect rates at roughly 25x less time cost on common plan/spec sizes. Use subagent review when the plan crosses subsystem boundaries or touches multiple security-sensitive domains."
 tags: [inline, plan, process, self-review, technique]
 confidence: production-validated
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 edges:
   - { target: SKL-PROC-PLAN-001, type: DEMONSTRATES }

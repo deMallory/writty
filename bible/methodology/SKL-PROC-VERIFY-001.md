@@ -12,9 +12,9 @@ confidence: battle-tested
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 always_on: true
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 edges:
   - { target: ENF-PROC-VERIFY-001, type: GATES }

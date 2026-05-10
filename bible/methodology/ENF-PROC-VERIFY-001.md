@@ -15,7 +15,7 @@ confidence: battle-tested
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: ".claude/hooks/writ-verify-before-claim.sh"
 rationalization_counters:
   - { thought: "I ran it earlier in the session, still counts.", counter: "Stale evidence. Code may have changed since. Run fresh." }
@@ -26,7 +26,7 @@ red_flag_thoughts:
   - "Probably works"
   - "Looks right"
 tags: [always-on, completion, enforcement, process, verification]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 body: "Always-on rule — injected in universal bundle per plan Section 3.4."
 edges:

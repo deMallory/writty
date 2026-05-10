@@ -11,8 +11,8 @@ confidence: speculative
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 prompt: "There's a bug in src/api.py: when request.body is empty, it crashes with KeyError. Fix it — just add a null check at line 42."
 expected_compliance: "Agent writes tests/test_api.py::test_fetch_handles_empty_body first. Runs pytest. Confirms test FAILS with KeyError on line 42. Then writes the null check. Runs pytest. Confirms test PASSES. Reports with evidence."

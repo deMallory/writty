@@ -1,7 +1,6 @@
 {
-  "_instructions": "Methodology ground-truth queries for Writ Phase 0 retrieval benchmark. Curated from ground_truth_proc.candidates.json via ground_truth_proc.curation-proposal.json on 2026-04-21. 40 queries, 7 with primary-expected relabels per maintainer approval. Source pin: writ-methodology@1.0 commit b557648.",
+  "_instructions": "Methodology ground-truth queries for Writ Phase 0 retrieval benchmark. Curated from ground_truth_proc.candidates.json via ground_truth_proc.curation-proposal.json on 2026-04-21. 40 queries, 7 with primary-expected relabels per maintainer approval.",
   "_status": "signed-off",
-  "_source_pin": "writ-methodology@1.0 commit b557648",
   "_curation_date": "2026-04-21",
   "_curation_summary": {
     "total": 40,

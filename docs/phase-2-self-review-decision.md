@@ -10,7 +10,7 @@ Plan Section 15.4 (and follow-on Sections 15.5-15.7) specified Gate 5 Tier 2 as 
 
 ## Rationale
 
-1. **Methodology v5.0.6 precedent.** Methodology' own release notes document the decision to replace subagent review loops with inline self-review: "Regression testing across 5 versions with 5 trials each showed identical quality scores regardless of whether the review loop ran. Self-review catches 3-5 real bugs per run in ~30s instead of ~25 min, with comparable defect rates to the subagent approach." Applying an external Haiku judge re-introduces the exact architecture Methodology concluded was unnecessary.
+1. **the prior-art methodology v5.0.6 precedent.** the prior art's own release notes document the decision to replace subagent review loops with inline self-review: "Regression testing across 5 versions with 5 trials each showed identical quality scores regardless of whether the review loop ran. Self-review catches 3-5 real bugs per run in ~30s instead of ~25 min, with comparable defect rates to the subagent approach." Applying an external Haiku judge re-introduces the exact architecture prior-art methodology concluded was unnecessary.
 
 2. **No API key required.** Claude Code IS Claude. The external Haiku call makes sense only when the evaluator is a separate process without access to the current agent. Inside a Claude Code session, the agent is already present and can evaluate its own artifact without going out to an API.
 

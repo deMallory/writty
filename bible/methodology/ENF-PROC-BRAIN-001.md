@@ -15,7 +15,7 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: ".claude/hooks/validate-exit-plan.sh + writ-session.py phase state machine"
 rationalization_counters:
   - { thought: "This task is obviously simple.", counter: "Every project goes through brainstorm. 'Obvious' is your read, not the user's." }
@@ -28,7 +28,7 @@ red_flag_thoughts:
   - "Just this once"
   - "Let me start and adjust"
 tags: [approval-gate, brainstorming, enforcement, process, work-mode]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 body: "Rationalization counters are also represented as standalone Rationalization nodes (RAT-BRAIN-001 through RAT-BRAIN-004) attached via ATTACHED_TO edges — the graph representation is canonical; the inline rationalization_counters field above is a render convenience for always-on summary injection per schema proposal rationalization-representation section."
 edges:

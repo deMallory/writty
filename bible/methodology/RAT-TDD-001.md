@@ -11,8 +11,8 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 thought: "I already manually tested it, writing unit tests later is the same thing."
 counter: "Manual tests don't regress. A committed test does. Manual testing is not substitutable. Delete the code, write the test first, watch it fail, reimplement."

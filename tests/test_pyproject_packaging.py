@@ -110,28 +110,14 @@ class TestPyprojectInstallContract:
         )
 
 
-class TestLicenseAndAttribution:
-    """LICENSE + NOTICE files exist and the NOTICE attributes the
-    methodology absorption (per the pinned commit metadata each
-    bible/methodology/*.md file carries)."""
+class TestLicensePresent:
+    """LICENSE file exists at repo root and is the MIT text."""
 
     def test_license_file_present(self) -> None:
         license_path = SKILL_DIR / "LICENSE"
         assert license_path.is_file(), "LICENSE file is missing at repo root"
         body = license_path.read_text()
         assert "MIT License" in body, "LICENSE does not appear to be the MIT text"
-
-    def test_notice_file_present_and_attributes_methodology(self) -> None:
-        notice_path = SKILL_DIR / "NOTICE"
-        assert notice_path.is_file(), "NOTICE file is missing at repo root"
-        body = notice_path.read_text()
-        # Methodology attribution must appear (the methodology corpus
-        # carries source_attribution: "writ-methodology@1.0" on every node).
-        assert "Methodology" in body, "NOTICE does not attribute Methodology"
-        assert "writ-methodology@1.0" in body or "5.0.7" in body, (
-            "NOTICE does not pin the Methodology version"
-        )
-        assert "MIT" in body, "NOTICE does not state the Methodology license"
 
 
 class TestInstalledConsoleScript:

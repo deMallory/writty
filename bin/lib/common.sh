@@ -36,40 +36,9 @@ parsed_bool() {
     [ "$val" = "True" ]
 }
 
-# ── Phase 2 feature flag check ──────────────────────────────────────────────
-# Returns success (exit 0) if enforcement.methodology_absorb.enabled=true in
-# writ.toml. Plan Section 7.1 deliverable 10: all new Phase 2 hooks MUST early-
-# exit when the flag is false, preserving pre-Phase-2 session behavior.
-# Usage: if ! is_methodology_absorb_enabled; then exit 0; fi
-is_methodology_absorb_enabled() {
-    local writ_root="${WRIT_DIR:-}"
-    if [ -z "$writ_root" ]; then
-        local hook_dir
-        hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        writ_root="$(cd "$hook_dir/.." && pwd)"
-    fi
-    local toml="$writ_root/writ.toml"
-    [ -f "$toml" ] || return 1
-    python3 -c "
-import sys
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib
-    except ImportError:
-        sys.exit(1)
-try:
-    with open('$toml', 'rb') as f:
-        data = tomllib.load(f)
-    enforcement = data.get('enforcement', {})
-    absorb = enforcement.get('methodology_absorb', {})
-    enabled = absorb.get('enabled', False)
-    sys.exit(0 if enabled else 1)
-except Exception:
-    sys.exit(1)
-" 2>/dev/null
-}
+# Phase 2 feature flag check was removed 2026-04-21 in favor of
+# settings.json hook registration + mode-scope checks. Hooks should
+# not reference any feature-flag function.
 
 # Phase 2 mode-scope check. Phase 1 Section 0.4 decision 1: methodology
 # enforcement hooks fire only in Work mode. Non-work modes skip.

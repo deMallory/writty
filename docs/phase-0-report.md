@@ -24,14 +24,14 @@ Recommendation: proceed to Phase 1 schema / ingest / pipeline work. Scope A fall
 Phase 0 is read-only to the production Writ pipeline per plan Section 5.5. Deliverables produced:
 
 - `tests/fixtures/synthetic_methodology/` — 60 stand-in methodology nodes spanning all 11 planned node types.
-- `tests/fixtures/ground_truth_proc.candidates.json` — 40 candidate queries (drafted by Claude Code from Methodology pinned content).
+- `tests/fixtures/ground_truth_proc.candidates.json` — 40 candidate queries (drafted by Claude Code from prior-art methodology pinned content).
 - `tests/fixtures/ground_truth_proc.curation-proposal.json` — per-query decisions (33 keep, 7 relabel-primary) with rationale.
 - `tests/fixtures/ground_truth_proc.json` — curated final fixture (signed off 2026-04-21, all 40 queries survive).
 - `tests/fixtures/methodology_loader.py` — fixture parser + `MethodologyIndex` (Phase-0 tantivy BM25 with body indexing per plan Section 3.2).
 - `tests/test_methodology_retrieval.py` — pytest blocker tests (4 tests, one per blocker).
 - `benchmarks/methodology_bench.py` — standalone runner with summary / verbose / JSON modes.
 - `docs/phase-0-schema-proposal.md` — signed-off new-node-type schema design for Phase 1 Pydantic transcription.
-- Schema additions to `writ-absorbs-methodology-plan.md` (new Section 0 — Preconditions and source pin).
+- Schema additions to `the absorption plan (deleted 2026-05-09)` (new Section 0 — Preconditions and source pin).
 - `docs/phase-0-report.md` (this file).
 
 ## 3. Corpus composition
@@ -56,14 +56,14 @@ Every Section 12 content-map node ID exists. Two extensions beyond Section 12: `
 
 ## 4. Ground truth composition
 
-40 candidate queries authored by Claude Code from Methodology pinned content (`writ-methodology@1.0`, commit `b557648`). **Pending maintainer curation** — the candidates file is deliberately named `.candidates.` because human review is required per plan Section 5.1 deliverable 1 authorship standard.
+40 candidate queries authored by Claude Code from prior-art methodology pinned content (`writ-methodology@1.0`, commit `b557648`). **Pending maintainer curation** — the candidates file is deliberately named `.candidates.` because human review is required per plan Section 5.1 deliverable 1 authorship standard.
 
 Distribution:
 - By intent: 15 direct, 9 rationalization, 6 red_flag, 4 anti_pattern, 3 cross_skill, 3 forbidden.
-- By skill: 13 of 14 Methodology skills covered (`using-methodology` excluded — meta-skill, orthogonal to Writ's mode system; documented in fixture).
-- Source trace: every query has `source_trace` citing the Methodology file and approximate line range.
+- By skill: 13 of 14 prior-art methodology skills covered (`the meta-orientation skill` excluded — meta-skill, orthogonal to Writ's mode system; documented in fixture).
+- Source trace: every query has `source_trace` citing the prior-art file and approximate line range.
 
-**Limitation surfaced, flagged for Phase 5:** plan Section 5.6 risk mitigation called for half the queries to come from `workflow-friction.log` denial patterns. The log has only 280 entries from today's session — insufficient historical signal. All candidates sourced from Methodology content; denial-pattern queries deferred to Phase 5 once friction log accumulates.
+**Limitation surfaced, flagged for Phase 5:** plan Section 5.6 risk mitigation called for half the queries to come from `workflow-friction.log` denial patterns. The log has only 280 entries from today's session — insufficient historical signal. All candidates sourced from prior-art methodology content; denial-pattern queries deferred to Phase 5 once friction log accumulates.
 
 ## 5. Harness architecture
 
@@ -154,8 +154,8 @@ Per plan Section 5.1 deliverable 1 standard.
 
 | Artifact | Drafted by | Reviewed by | Status |
 | -------- | ---------- | ----------- | ------ |
-| `tests/fixtures/synthetic_methodology/*.md` (60 nodes) | Claude Code, from Methodology pinned commit | maintainer review pending before Phase 2 ingest | draft |
-| `tests/fixtures/ground_truth_proc.candidates.json` (40 candidate queries) | Claude Code, sourced from Methodology skill content | Lucio, 2026-04-21 (via curation proposal) | superseded by curated version |
+| `tests/fixtures/synthetic_methodology/*.md` (60 nodes) | Claude Code, from prior-art methodology pinned commit | maintainer review pending before Phase 2 ingest | draft |
+| `tests/fixtures/ground_truth_proc.candidates.json` (40 candidate queries) | Claude Code, sourced from prior-art methodology skill content | Lucio, 2026-04-21 (via curation proposal) | superseded by curated version |
 | `tests/fixtures/ground_truth_proc.curation-proposal.json` (curation decisions) | Claude Code | Lucio approved wholesale 2026-04-21 | signed off |
 | `tests/fixtures/ground_truth_proc.json` (final fixture, 40 queries, 7 relabels) | Claude Code from approved curation | Lucio, 2026-04-21 | signed off |
 | `docs/phase-0-schema-proposal.md` | Claude Code | Lucio, 2026-04-21 (6 open questions + rationalization duality resolved) | signed off |
@@ -167,7 +167,7 @@ Authorship standard met per plan Section 5.1: AI-drafted queries flowed through 
 ## 9. Open items for maintainer review
 
 1. ~~Curate `ground_truth_proc.candidates.json` → `ground_truth_proc.json`.~~ **Complete 2026-04-21.** All 40 queries survived; 7 relabel-primary applied per approved proposal.
-2. Line-review the 60 synthetic nodes. Spot-check content against the pinned Methodology source. **Not a Phase 0 blocker** — these are stand-ins replaced by real content in Phase 2. Can defer to Phase 2 start.
+2. Line-review the 60 synthetic nodes. Spot-check content against the pinned prior-art methodology source. **Not a Phase 0 blocker** — these are stand-ins replaced by real content in Phase 2. Can defer to Phase 2 start.
 3. ~~Review `docs/phase-0-schema-proposal.md` resolved-decisions section.~~ **Complete 2026-04-21.**
 
 ## 10. Phase 1 readiness checklist

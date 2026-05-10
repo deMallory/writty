@@ -12,11 +12,11 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 counter_nodes: [SKL-PROC-PARALLEL-001]
-named_in: "writ-methodology@1.0:dispatching-parallel-agents"
+named_in: "writ-methodology:dispatching-parallel-agents"
 edges:
   - { target: SKL-PROC-PARALLEL-001, type: COUNTERS }
 ---

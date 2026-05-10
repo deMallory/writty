@@ -12,11 +12,11 @@ confidence: battle-tested
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 counter_nodes: [PBK-PROC-TDD-001, ENF-PROC-TDD-001]
-named_in: "writ-methodology@1.0:test-driven-development"
+named_in: "writ-methodology:test-driven-development"
 edges:
   - { target: PBK-PROC-TDD-001, type: COUNTERS }
   - { target: ENF-PROC-TDD-001, type: COUNTERS }

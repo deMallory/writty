@@ -15,7 +15,7 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: "writ/authoring.py: warn on add/edit if node lacks linked PressureScenario."
 rationalization_counters:
   - { thought: "Testing a skill is overkill.", counter: "Untested skill = unvalidated hypothesis about agent behavior." }
@@ -23,7 +23,7 @@ red_flag_thoughts:
   - "Skill is obviously correct"
   - "Testing is overkill"
 tags: [meta, pressure-testing, skill-authoring, tdd-for-docs]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 body: "Applies TDD for docs: RED (baseline scenario), GREEN (skill addresses it), REFACTOR (close loopholes). See PBK-PROC-TDD-001 for the underlying discipline."
 edges:

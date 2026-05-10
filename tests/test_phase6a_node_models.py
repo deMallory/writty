@@ -223,7 +223,7 @@ class TestAntiPatternModel:
         ap = AntiPattern(
             **base_kwargs(), antipattern_id="ANT-PROC-TDD-001",
             counter_nodes=["SKL-PROC-TDD-001"],
-            named_in="writ-methodology@1.0:testing-anti-patterns",
+            named_in="writ-methodology:testing-anti-patterns",
         )
         _round_trip(ap)
 

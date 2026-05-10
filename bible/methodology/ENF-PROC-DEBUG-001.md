@@ -15,7 +15,7 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: null
 rationalization_counters:
   - { thought: "Quick fix now, investigate later.", counter: "Fix without cause is patching symptoms. Later never comes." }
@@ -25,7 +25,7 @@ red_flag_thoughts:
   - "Quick fix"
   - "Probably it"
 tags: [advisory, always-on, debug-mode, debugging, process]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 body: "Always-on in debug mode only. Empty mechanical_enforcement_path per plan Section 2.1 advisory-vs-mandatory distinction."
 edges:

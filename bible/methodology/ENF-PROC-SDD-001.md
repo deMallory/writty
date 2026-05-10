@@ -15,7 +15,7 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: ".claude/hooks/writ-sdd-review-order.sh"
 rationalization_counters:
   - { thought: "Code-quality review is fast, let me start in parallel.", counter: "Parallel + out-of-order = polishing unknown correctness. Sequential, spec first." }
@@ -24,7 +24,7 @@ red_flag_thoughts:
   - "Save time by parallel reviews"
   - "Skip spec review, it looks right"
 tags: [enforcement, process, review-order, sdd]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 body: ""
 edges:

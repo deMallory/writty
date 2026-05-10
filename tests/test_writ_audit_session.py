@@ -1,10 +1,9 @@
 """writ audit-session <sid>: per-session timeline.
 
-Closes the auditability gap with methodology' Skill-tool-call transcript
-visibility. Methodology exposes "what skills the agent invoked" via
-explicit Skill(X) tool calls in the transcript. Writ already has richer
-event capture in workflow-friction.log, but no CLI surface to ask
-"what happened in session X?" -- this command provides that view.
+Provides a CLI surface for "what happened in session X?" by filtering
+workflow-friction.log to a single session and emitting a structured
+summary. Friction-log capture is already comprehensive; this command
+makes per-session retrieval ergonomic.
 
 The contract:
 - `writ audit-session <sid>` reads the friction log, filters to one

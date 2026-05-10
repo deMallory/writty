@@ -12,7 +12,7 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-05-09
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 always_on: false
 source_attribution: "writ-native"
 source_commit: null
@@ -104,13 +104,13 @@ Single commit including:
 - Migration: don't commit Neo4j state; commit only the source markdown
 - Tests: if the node has a mechanical enforcement path, commit the hook + tests for it in the same change
 
-## Why this is BETTER than methodology' writing-skills
+## Why this approach is auditable
 
-Methodology' `writing-skills` describes RED-GREEN-REFACTOR-for-docs as a discipline. This playbook makes it auditable:
+Prose-only RED-GREEN-REFACTOR-for-docs descriptions teach the discipline; this playbook makes it auditable end-to-end:
 
 - Step 1 has a concrete file path (`PSC-<DOMAIN>-<NAME>-001.md`) and a node_type. The scenario lives in the graph, not in prose.
 - Step 6 enforces the link via a graph edge that `META-AUTH-002` lints against. Untested skills surface in `analyze-friction --trim-candidates` (zero linked scenarios = candidate for review).
-- Step 4's GREEN signal is measurable: `analyze-friction --skill-usage --since N` shows whether the node is being retrieved at all post-deployment. Methodology has no equivalent measurement.
+- Step 4's GREEN signal is measurable: `analyze-friction --skill-usage --since N` shows whether the node is being retrieved at all post-deployment.
 - The output of Step 7 is a single auditable artifact: scenario + node + transcript + tests + edges. The PSR directory layout proves the discipline ran.
 
 ## Anti-patterns

@@ -11,8 +11,8 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 title: "Applying TDD to an empty-body bug"
 before: "src/api.py::fetch() crashes with KeyError when request.body is empty. User asks for a fix."

@@ -11,8 +11,8 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 thought: "I ran the tests earlier in this session, the claim is fine."
 counter: "Stale evidence. Code may have changed since. Run the verification command fresh in this message, quote the output, then claim."

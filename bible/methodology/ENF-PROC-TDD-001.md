@@ -15,7 +15,7 @@ confidence: battle-tested
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: ".claude/hooks/validate-test-file.sh"
 rationalization_counters:
   - { thought: "I'll write the test after confirming the fix works.", counter: "After-confirm is test-after, see ANT-PROC-TDD-005. Delete code, write test first." }
@@ -26,7 +26,7 @@ red_flag_thoughts:
   - "Manual test is faster"
   - "Already spent X hours"
 tags: [enforcement, process, tdd, test-first, work-mode]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 body: "Prototype mode (session.mode == 'prototype', manual trigger per Section 0.4 decision 2) bypasses this gate. All other modes deny."
 edges:

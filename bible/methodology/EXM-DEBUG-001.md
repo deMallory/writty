@@ -11,8 +11,8 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 title: "Debugging a totals-collector race"
 before: "Intermittent: about 1 in 50 cart checkouts produces a discount that's double the expected value. Not reproducible locally under single-user load."

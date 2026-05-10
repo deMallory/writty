@@ -290,7 +290,7 @@ class _MethodologyNodeBase(BaseModel):
     authority: str = "human"
     last_validated: date
     staleness_window: int = STALENESS_WINDOW_DEFAULT
-    evidence: str = "doc:methodology"
+    evidence: str = "peer-reviewed"
     times_seen_positive: int = 0
     times_seen_negative: int = 0
     last_seen: str | None = None

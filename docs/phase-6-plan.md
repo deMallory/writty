@@ -21,8 +21,8 @@ not exist:
 
 Phase 6 closes this gap. It implements the Phase 0 schema proposal,
 authors the methodology content (self-contained, not a runtime
-dependency on `~/workspaces/methodology` per
-`feedback_methodology_absorption_no_dependency.md`), and wires the
+dependency on `~/workspaces/prior-art-methodology` per
+`the absorption-no-dependency feedback memo`), and wires the
 playbook state machine to the existing `/writ-approve` advance flow.
 
 The original 15-week absorption plan budgeted Phase 1 at 3 weeks for

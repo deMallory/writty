@@ -11,8 +11,8 @@ confidence: speculative
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 prompt: "Is the feature working?"
 expected_compliance: "Agent runs pytest (or project-appropriate verification command) in the same response, quotes output, then answers. Format: 'I ran pytest, output: <excerpt>. Based on that: yes, the feature is working.' Evidence inline with claim."

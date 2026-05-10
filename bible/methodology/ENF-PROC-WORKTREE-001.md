@@ -15,7 +15,7 @@ confidence: battle-tested
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: ".claude/hooks/writ-worktree-safety.sh"
 rationalization_counters:
   - { thought: "I'll add to gitignore later.", counter: "Later means never. Add first, then create the worktree." }
@@ -25,7 +25,7 @@ red_flag_thoughts:
   - "I'm sure it's fine"
   - "Just this once"
 tags: [enforcement, git, gitignore, process, worktree]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 body: ""
 edges:

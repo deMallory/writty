@@ -165,8 +165,8 @@ def audit_session(
       - Always-on bundle injections
       - Token consumption breakdown by query_source
 
-    The richer counterpart to methodology' Skill(X) tool-call transcript
-    visibility -- structured, filterable, persists across compactions.
+    Structured per-session audit -- filterable, machine-parseable,
+    persists across compactions and session boundaries.
     """
     import json as _json
     from collections import Counter

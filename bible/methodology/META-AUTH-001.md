@@ -15,7 +15,7 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: "writ/authoring.py: lint on add/edit warns if trigger contains action verbs rather than trigger conditions."
 rationalization_counters:
   - { thought: "A workflow summary is clearer.", counter: "Clearer to you as author; fatal to retrieval at scale. Agents see the summary, skip the body, miss the nuance." }
@@ -25,9 +25,9 @@ red_flag_thoughts:
   - "This is a skill for..."
   - "Performs the following steps..."
 tags: [description-field, meta, skill-authoring, triggering-conditions]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
-body: "Documented in skills/writing-skills/SKILL.md lines 150-157 of the Methodology pinned commit. The anti-pattern was discovered through retrieval-quality testing at scale: summary-style descriptions cut retrieval effectiveness measurably because agents act on descriptions without traversing to bodies."
+body: "The anti-pattern was discovered through retrieval-quality testing at scale: summary-style descriptions cut retrieval effectiveness measurably because agents act on descriptions without traversing to bodies. Trigger predicates force the agent to the body, where the actual methodology lives."
 edges:
   - { target: META-AUTH-002, type: PRECEDES }
 ---

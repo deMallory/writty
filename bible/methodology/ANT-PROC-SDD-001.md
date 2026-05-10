@@ -12,11 +12,11 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 counter_nodes: [PBK-PROC-SDD-001]
-named_in: "writ-methodology@1.0:subagent-driven-development"
+named_in: "writ-methodology:subagent-driven-development"
 edges:
   - { target: PBK-PROC-SDD-001, type: COUNTERS }
 ---

@@ -12,11 +12,11 @@ confidence: battle-tested
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
-source_attribution: "writ-methodology@1.0"
+evidence: peer-reviewed
+source_attribution: "writ-native"
 source_commit: null
 counter_nodes: [SKL-PROC-VERIFY-001, ENF-PROC-VERIFY-001]
-named_in: "writ-methodology@1.0:verification-before-completion"
+named_in: "writ-methodology:verification-before-completion"
 edges:
   - { target: SKL-PROC-VERIFY-001, type: COUNTERS }
   - { target: ENF-PROC-VERIFY-001, type: COUNTERS }

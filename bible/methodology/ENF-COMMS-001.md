@@ -15,7 +15,7 @@ confidence: peer-reviewed
 authority: human
 last_validated: 2026-04-21
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 mechanical_enforcement_path: null
 rationalization_counters:
   - { thought: "Being polite is professional.", counter: "Verified agreement is professional. Performative agreement is reflex, not evaluation." }
@@ -24,7 +24,7 @@ red_flag_thoughts:
   - "You're right"
   - "Thanks for"
 tags: [advisory, always-on, communication, forbidden-phrases]
-source_attribution: "writ-methodology@1.0"
+source_attribution: "writ-native"
 source_commit: null
 body: "Always-on advisory. Empty mechanical_enforcement_path per plan Section 2.1 — the blocklist is subject to false positives in legitimate contexts."
 edges:

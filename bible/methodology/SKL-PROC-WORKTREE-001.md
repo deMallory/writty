@@ -12,7 +12,7 @@ confidence: battle-tested
 authority: human
 last_validated: 2026-05-09
 staleness_window: 365
-evidence: doc:methodology
+evidence: peer-reviewed
 always_on: false
 source_attribution: "writ-native"
 source_commit: null

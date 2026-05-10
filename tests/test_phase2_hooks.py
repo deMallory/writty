@@ -128,11 +128,7 @@ class TestHookSyntaxAndExecutability:
         assert proc.returncode == 0, f"{hook} syntax error: {proc.stderr}"
 
 
-class TestNoFeatureFlagReferences:
-    """The flag-free architecture: no hook should mention the removed flag."""
-
-    @pytest.mark.parametrize("hook", PHASE2_HOOKS)
-    def test_no_flag_check(self, hook: str) -> None:
-        content = (HOOKS / hook).read_text()
-        assert "is_methodology_absorb_enabled" not in content
-        assert "methodology_absorb.enabled" not in content
+# TestNoFeatureFlagReferences was removed 2026-05-09. It guarded
+# against re-introduction of a feature-flag function that was deleted
+# 2026-04-21; the codebase has been clean for long enough that the
+# defensive test no longer pays for itself.
