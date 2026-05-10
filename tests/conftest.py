@@ -6,79 +6,45 @@ import pytest
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Re-migrate rules after test suite completes so CLI queries work immediately."""
-    import asyncio
+    """Re-migrate rules after test suite completes so CLI queries work
+    immediately.
+
+    Pre-2026-05-09 this hook had inline migration logic gated on
+    `if count == 0`. That gate skipped re-migration whenever ANY test
+    re-loaded core rules (most do), leaving methodology nodes
+    (Skill / Playbook / etc.) missing post-suite -- the symptom was
+    `/always-on?mode=work` returning empty after `pytest -q`.
+
+    New approach: shell out to scripts/migrate.py unconditionally.
+    The script is MERGE-only (idempotent), runs in <2s, and is the
+    canonical migration path used in production. Single source of
+    truth -- the inline duplicate is gone.
+    """
+    import os
+    import subprocess
+    import sys
     from pathlib import Path
 
+    skill_dir = Path(__file__).resolve().parent.parent
+    migrate = skill_dir / "scripts" / "migrate.py"
+    methodology = skill_dir / "bible" / "methodology"
+    if not migrate.exists() or not methodology.exists():
+        return  # not a writ checkout; nothing to restore.
+
     try:
-        from writ.config import get_neo4j_uri, get_neo4j_user, get_neo4j_password
-        from writ.graph.db import Neo4jConnection
-        from writ.graph.ingest import (
-            NODE_ID_FIELDS,
-            discover_rule_files,
-            parse_edges_from_file,
-            parse_nodes_from_file,
-            parse_rules_from_file,
-            validate_parsed_node,
-            validate_parsed_rule,
+        subprocess.run(
+            [sys.executable, str(migrate),
+             "--methodology-dir", str(methodology)],
+            cwd=str(skill_dir),
+            capture_output=True,
+            timeout=60,
+            check=False,
         )
-    except (ImportError, ModuleNotFoundError):
-        return  # neo4j driver or other deps not installed; skip re-migration.
-
-    async def _remigrate():
-        bible = Path("bible/")
-        methodology = Path("bible/methodology")
-        if not bible.exists():
-            return
-        try:
-            db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
-            count = await db.count_rules()
-            if count == 0:
-                # Re-ingest the core coding-rule corpus from bible/.
-                for f in discover_rule_files(bible):
-                    for rd in parse_rules_from_file(f):
-                        try:
-                            validate_parsed_rule(rd)
-                            clean = {k: v for k, v in rd.items() if not k.startswith("_")}
-                            await db.create_rule(clean)
-                        except ValueError:
-                            pass
-                # Re-ingest the Phase 1 methodology corpus so methodology
-                # retrieval doesn't break after graph wipes. Nodes that
-                # already exist MERGE cleanly.
-                if methodology.exists():
-                    edges_to_create = []
-                    for f in sorted(methodology.glob("*.md")):
-                        try:
-                            for node in parse_nodes_from_file(f):
-                                try:
-                                    validate_parsed_node(node)
-                                except ValueError:
-                                    continue
-                                node_type = node.get("node_type", "Rule")
-                                clean = {
-                                    k: v for k, v in node.items()
-                                    if k != "node_type" and not k.startswith("_") and k != "edges"
-                                }
-                                if node_type == "Rule":
-                                    await db.create_rule(clean)
-                                else:
-                                    await db.create_methodology_node(node_type, clean)
-                            edges_to_create.extend(parse_edges_from_file(f))
-                        except Exception:
-                            continue
-                    for e in edges_to_create:
-                        try:
-                            await db.create_edge(e["type"], e["source"], e["target"])
-                        except Exception:
-                            pass
-            await db.close()
-        except Exception:
-            pass  # Neo4j may not be running; silently skip.
-
-    try:
-        asyncio.run(_remigrate())
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
+        # Neo4j may not be running, migrate.py may have changed
+        # signature, etc. End-of-suite is best-effort -- we don't
+        # raise out of pytest_sessionfinish because doing so flips
+        # exitstatus and masks the actual test results.
         pass
 
 
