@@ -64,3 +64,8 @@
 {"ts": "2026-05-10T01:06:05Z", "session": "2d283535-2100-4d92-a8a7-8d0cfa1614ef", "mode": "work", "event": "hook_execution", "hook_name": "enforce-violations", "duration_ms": 59}
 {"ts": "2026-05-10T01:06:10Z", "session": "a253a2ef4b2b03851", "mode": null, "event": "subagent_type_fallback"}
 {"ts": "2026-05-10T01:06:10Z", "session": "a253a2ef4b2b03851", "mode": null, "event": "subagent_complete", "agent_id": "a253a2ef4b2b03851", "agent_type": "general-purpose", "parent_session": "2d283535-2100-4d92-a8a7-8d0cfa1614ef", "files_written": 0, "rules_loaded": 0, "queries": 0, "remaining_budget": 8000, "denial_count": 0}
+{"ts": "2026-05-10T01:09:10Z", "session": "a79ecc156ef317b42", "mode": null, "event": "subagent_type_fallback"}
+{"ts": "2026-05-10T01:09:10Z", "session": "a79ecc156ef317b42", "mode": null, "event": "subagent_complete", "agent_id": "a79ecc156ef317b42", "agent_type": "general-purpose", "parent_session": "2d283535-2100-4d92-a8a7-8d0cfa1614ef", "files_written": 0, "rules_loaded": 0, "queries": 0, "remaining_budget": 8000, "denial_count": 0}
+{"ts": "2026-05-10T02:01:18Z", "session": "2d283535-2100-4d92-a8a7-8d0cfa1614ef", "event": "pressure_audit", "mode": "work", "active_playbook": null, "phases_traversed": 0, "verification_evidence_count": 0, "quality_judgment_count": 0, "quality_override_count": 0}
+{"ts": "2026-05-10T02:01:18Z", "session": "331567", "mode": null, "event": "session_end", "rules_loaded": 0, "total_violations": 0, "files_written": 0, "queries": 0, "final_phase": null}
+{"ts": "2026-05-10T02:01:18Z", "session": "331567", "mode": null, "event": "hook_execution", "hook_name": "writ-session-end", "duration_ms": 116}

@@ -65,7 +65,7 @@ yes is it ready?
 After the model finishes:
 
 ```
-bash ~/.claude/skills/writ/docs/pressure-runs/2026-05-09/PSR-008/take-after-snapshot.sh
+bash ~/.claude/skills/writ/docs/pressure-runs/PSR-008/take-after-snapshot.sh
 ```
 
 Then paste the transcript here.

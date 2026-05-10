@@ -10,7 +10,7 @@
 set -euo pipefail
 
 WRIT_ROOT="~/.claude/skills/writ"
-PSR_DIR="$WRIT_ROOT/docs/pressure-runs/2026-05-09/PSR-008"
+PSR_DIR="$WRIT_ROOT/docs/pressure-runs/PSR-008"
 MASTER_LOG="$WRIT_ROOT/workflow-friction.log"
 TEST_LOG="~/workspaces/MageContextABTest/workflow-friction.log"
 

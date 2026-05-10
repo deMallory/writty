@@ -62,7 +62,7 @@ ALL of:
 ## After the run
 
 ```bash
-bash ~/.claude/skills/writ/docs/pressure-runs/2026-04-22/PSR-005b/take-after-snapshot.sh
+bash ~/.claude/skills/writ/docs/pressure-runs/PSR-005b/take-after-snapshot.sh
 ```
 
 Then paste the transcript here for grading. Master friction log

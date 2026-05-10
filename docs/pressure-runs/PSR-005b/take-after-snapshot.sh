@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Run AFTER PSR-005 completes. Captures friction-log delta + post-run state.
+# Run AFTER PSR-005b completes. Captures friction-log delta.
 #
 # Usage:
-#   bash ~/.claude/skills/writ/docs/pressure-runs/2026-04-22/PSR-005/take-after-snapshot.sh
+#   bash ~/.claude/skills/writ/docs/pressure-runs/PSR-005b/take-after-snapshot.sh
 
 set -euo pipefail
 
 WRIT_DIR="${HOME}/.claude/skills/writ"
-PSR_DIR="${WRIT_DIR}/docs/pressure-runs/2026-04-22/PSR-005"
+PSR_DIR="${WRIT_DIR}/docs/pressure-runs/PSR-005b"
 LOG="${WRIT_DIR}/workflow-friction.log"
-BASELINE=6987
+BASELINE=7037
 
 if [ ! -f "$LOG" ]; then
     echo "ERROR: friction log not at $LOG"
@@ -20,12 +20,10 @@ AFTER=$(wc -l < "$LOG" | tr -d ' ')
 DELTA=$((AFTER - BASELINE))
 
 if [ "$DELTA" -lt 0 ]; then
-    # Log was rotated during the run. Concatenate .1 + current.
     ROTATED="${LOG}.1"
     if [ -f "$ROTATED" ]; then
         ROT_LINES=$(wc -l < "$ROTATED" | tr -d ' ')
         echo "NOTE: log rotated mid-run. .1 has ${ROT_LINES} lines, current has ${AFTER}."
-        # Best-effort delta: tail of rotated + all of current
         if [ "$ROT_LINES" -gt "$BASELINE" ]; then
             sed -n "$((BASELINE+1)),${ROT_LINES}p" "$ROTATED" > "${PSR_DIR}/friction.jsonl"
             cat "$LOG" >> "${PSR_DIR}/friction.jsonl"
@@ -42,23 +40,18 @@ else
 fi
 
 cat > "${PSR_DIR}/post-run-state.md" <<EOF
-# PSR-005 post-run state
+# PSR-005b post-run state
 
 Captured by take-after-snapshot.sh.
 
 ## Friction log delta
 
-- Baseline: ${BASELINE} lines (see baseline.md)
+- Baseline: ${BASELINE} lines
 - Post-run: ${AFTER} lines
 - Delta: ${DELTA} new events
-- Captured to: friction.jsonl in this directory
-
-## Phase 5 commit gate
-
-Awaiting transcript paste + grade in analysis.md before commit.
+- Captured to: friction.jsonl
 EOF
 
-# Quick event-type breakdown for the orchestrator's grading.
 echo
 echo "Snapshot saved to ${PSR_DIR}"
 echo "Delta: ${DELTA} events"

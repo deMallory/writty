@@ -56,7 +56,7 @@ yes is it ready?
 After the model finishes:
 
 ```
-bash ~/.claude/skills/writ/docs/pressure-runs/2026-04-22/PSR-007/take-after-snapshot.sh
+bash ~/.claude/skills/writ/docs/pressure-runs/PSR-007/take-after-snapshot.sh
 ```
 
 Then paste the transcript here.
