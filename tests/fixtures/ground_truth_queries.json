@@ -11,7 +11,7 @@
       "id": "Q2",
       "set": "keyword",
       "query": "dependency injection constructor",
-      "expected_rule_id": "ARCH-DI-001"
+      "expected_rule_id": "SOLID-DIP-002"
     },
     {
       "id": "Q3",
@@ -167,7 +167,7 @@
       "id": "Q28",
       "set": "keyword",
       "query": "extend vendor class without modifying",
-      "expected_rule_id": "ARCH-EXT-001"
+      "expected_rule_id": "SOLID-OCP-001"
     },
     {
       "id": "Q29",
@@ -281,7 +281,7 @@
       "id": "Q47",
       "set": "keyword",
       "query": "composer update vendor override",
-      "expected_rule_id": "ARCH-EXT-001"
+      "expected_rule_id": "SOLID-OCP-001"
     },
     {
       "id": "Q48",
@@ -419,7 +419,7 @@
       "id": "Q72",
       "set": "ambiguous",
       "query": "I wrote a class that handles validation and saves to DB",
-      "expected_rule_id": "ARCH-ORG-001"
+      "expected_rule_id": "ARCH-LAYER-001"
     },
     {
       "id": "Q73",
@@ -473,7 +473,7 @@
       "id": "Q81",
       "set": "ambiguous",
       "query": "I am newing up services inside my controller",
-      "expected_rule_id": "ARCH-DI-001"
+      "expected_rule_id": "SOLID-DIP-002"
     },
     {
       "id": "Q82",
