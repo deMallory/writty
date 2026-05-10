@@ -135,25 +135,6 @@ class TestCorpusParsesAfterRename:
             )
 
 
-class TestMasterPlanReflectsClosure:
-    """docs/phase-6-plan.md must mark 6e/6f/6g as shipped/verified
-    after this commit."""
-
-    def test_master_plan_marks_6efg_shipped(self) -> None:
-        plan_path = WRIT_ROOT / "docs" / "phase-6-plan.md"
-        text = plan_path.read_text()
-        # Look for "6e" row + a "shipped" or "verified" status nearby.
-        # Heuristic: each sub-phase ID followed (within ~200 chars) by
-        # a status indicator.
-        for sub_phase in ("6e", "6f", "6g"):
-            idx = text.find(f"| {sub_phase} ")
-            if idx == -1:
-                idx = text.find(f"| **{sub_phase}**")
-            assert idx != -1, (
-                f"docs/phase-6-plan.md is missing a row for sub-phase {sub_phase}"
-            )
-            window = text[idx: idx + 400].lower()
-            assert "shipped" in window or "verified" in window, (
-                f"docs/phase-6-plan.md sub-phase {sub_phase} row does not "
-                f"contain 'shipped' or 'verified' status. Window: {window[:300]!r}"
-            )
+# TestMasterPlanReflectsClosure removed 2026-05-10: docs/phase-6-plan.md
+# was deleted as a stale planning artifact (methodology absorption shipped;
+# the corpus and code in this very test file are the verified outcome).

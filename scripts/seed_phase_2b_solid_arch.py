@@ -12,7 +12,7 @@ project-specific rules are retained as Writ extensions.
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md sections 4, 5.
+Per the public rulebook source: out-of-the-box-rules.md sections 4, 5.
 """
 
 from __future__ import annotations

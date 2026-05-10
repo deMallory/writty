@@ -14,7 +14,7 @@ extensions (different scope from the public set):
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md section 8.
+Per the public rulebook source: out-of-the-box-rules.md section 8.
 """
 
 from __future__ import annotations

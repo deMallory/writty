@@ -203,14 +203,11 @@ Same as context stuffing, but worse: it pollutes the system prompt where it is h
 - Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`).
 - ONNX-optimized embedding inference verified identical to PyTorch.
 - HNSW persistence with corpus-hash invalidation.
-- 90 test files, 12 contractual benchmark targets.
+- 1,442 tests, 12 contractual benchmark targets.
 - Friction log analytics with a dashboard (`GET /dashboard`).
+- Public out-of-the-box rulebook seeded: 198 new universal rules across 12 domains; 19 new mandatory rules each with a cross-language analyzer.
 
-**Under review:**
-- Self-review judge calibration (`docs/phase-2-self-review-decision.md`).
-- Public out-of-the-box rulebook expansion: ~150 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, Documentation. See `RULEBOOK-AUDIT.md` for the mapping plan.
-
-**Roadmap:** complete the public rulebook expansion (Phases 1 through 6 in `RULEBOOK-AUDIT.md`); complete the multi-query session simulation work; consider a Qdrant-backed vector store for corpora over 100K rules; consider an optional remote-graph mode and distributed sub-agent dispatch.
+**Roadmap:** ground-truth corpus refresh and retrieval-floor retune (Phase 6 lowered MRR@5 to 0.45 and hit-rate to 0.75 under the expanded corpus; next step is corpus regeneration to recover precision); multi-query session simulation work; consider a Qdrant-backed vector store for corpora over 100K rules; consider an optional remote-graph mode and distributed sub-agent dispatch.
 
 ## TL;DR by audience
 

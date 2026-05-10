@@ -5,7 +5,7 @@ SCALE-STATELESS-001) and renames the legacy ARCH-TYPE-001 -> DOC-TYPE-001.
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md sections 9, 10, 12.
+Per the public rulebook source: out-of-the-box-rules.md sections 9, 10, 12.
 """
 
 from __future__ import annotations

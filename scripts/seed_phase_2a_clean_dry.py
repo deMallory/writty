@@ -14,7 +14,7 @@ of CLEAN-NEST-001 (it covers class hierarchies rather than control-flow nesting)
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md sections 2, 3.
+Per the public rulebook source: out-of-the-box-rules.md sections 2, 3.
 """
 
 from __future__ import annotations

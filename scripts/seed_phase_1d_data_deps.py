@@ -6,7 +6,7 @@ phrasing), and deletes ENF-SEC-002 as a duplicate of SEC-DATA-PII-002.
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md sections 1H, 1I.
+Per the public rulebook source: out-of-the-box-rules.md sections 1H, 1I.
 """
 
 from __future__ import annotations

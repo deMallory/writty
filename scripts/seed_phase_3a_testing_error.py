@@ -13,7 +13,7 @@ language extensions of the language-agnostic ERR-* rules.
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md sections 6, 7.
+Per the public rulebook source: out-of-the-box-rules.md sections 6, 7.
 """
 
 from __future__ import annotations

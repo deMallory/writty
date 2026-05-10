@@ -115,4 +115,4 @@ Friction signal is noisy at the per-session level. A 30, 60, or 90 day rolling w
 
 - `HANDBOOK.md` covers the architecture and the structural gate in detail.
 - `docs/monthly-reviews/TEMPLATE.md` is the template for monthly review notes.
-- `docs/plan-format.md` describes the `plan.md` and `capabilities.md` artifact format used in Work mode.
+- `plan.md` format requirements are validated by `.claude/hooks/validate-exit-plan.sh` on `/plan` exit: required sections are `## Files`, `## Analysis`, `## Rules Applied`, `## Capabilities`.

@@ -2,7 +2,7 @@
   "_instructions": "CANDIDATE methodology ground-truth queries for Writ Phase 0 retrieval benchmark. Drafted by Claude Code from absorbed methodology content; human review required before merging into ground_truth_proc.json. Format mirrors ground_truth_queries.json (coding-rule fixture) with expected_node_ids (ranked, multi-hit) supporting MRR@5 and bundle-completeness measurement per plan Section 5.1. Each entry's source_trace cites the absorbed methodology file it was derived from, pinned to writ-methodology@1.0.",
   "_status": "draft-candidate",
   "_source_pin": "writ-methodology@1.0 (2026-04-21)",
-  "_review_protocol": "Maintainer reads each query, either keeps/rewrites/discards. Target: >=30 survive into ground_truth_proc.json. Queries that don't survive should be recorded (with reason) in docs/phase-0-report.md authorship-provenance section.",
+  "_review_protocol": "Maintainer reads each query, either keeps/rewrites/discards. Target: >=30 survive into ground_truth_proc.json.",
   "_node_id_legend": {
     "SKL-PROC-*": "Skill (retrievable)",
     "PBK-PROC-*": "Playbook (retrievable)",

@@ -230,7 +230,7 @@ When loaded as a plugin, `scripts/ensure-server.sh` starts Neo4j (Docker) and th
 - Gate categories: `bin/lib/gate-categories.json` (language and framework file patterns).
 - Checklists: `bin/lib/checklists.json` (phase exit criteria).
 - Static analysis: `bin/run-analysis.sh` (multi-language router).
-- Verification: `bin/verify-matrix.sh` (capabilities completion), `bin/verify-files.sh` (batch existence).
+- Verification: `bin/verify-files.sh` (batch file-existence checks).
 - Hooks: `.claude/hooks/` (30 hooks, all wired; see inventory above).
 - Plugin manifest: `.claude-plugin/plugin.json` (auto-discovery, lifecycle hooks).
 - Lifecycle: `scripts/ensure-server.sh`, `scripts/stop-server.sh`.

@@ -116,8 +116,8 @@ class Rule(BaseModel):
     evidence: str = EVIDENCE_DEFAULT
     staleness_window: int = STALENESS_WINDOW_DEFAULT
     last_validated: date
-    # Phase 1 additions per plan Section 6.1 and docs/phase-0-schema-proposal.md.
-    # All default to not-set so existing 80 rules remain valid without migration.
+    # Methodology absorption schema additions (signed off 2026-04-21).
+    # All default to not-set so pre-absorption rules remain valid without migration.
     rationalization_counters: list[dict[str, str]] = Field(default_factory=list)
     red_flag_thoughts: list[str] = Field(default_factory=list)
     always_on: bool = False
@@ -255,19 +255,18 @@ class JustifiedBy(BaseModel):
     evidence_id: str
 
 
-# --- Phase 1: Methodology node types per plan Section 6.1 ---
-# Schema design signed off in docs/phase-0-schema-proposal.md. Ingest parser
-# (Phase 1 deliverable 2) populates these from <!-- NODE START type=X id=Y -->
-# markers in markdown fixtures. Neo4j migration (deliverable 3) creates a label
-# per node_type and a relationship type per new edge class.
+# --- Methodology node types (signed off 2026-04-21) ---
+# Ingest parser populates these from <!-- NODE START type=X id=Y --> markers
+# in markdown fixtures. Neo4j migration creates a label per node_type and a
+# relationship type per new edge class.
 
 
 def _normalize_tags(v: list[str]) -> list[str]:
     """Deterministic tag canonicalization: lowercase, deduplicate, sort.
 
-    Per docs/phase-0-schema-proposal.md resolved-decision 6: prevents BM25 index
-    inconsistency ("TDD" vs "tdd" as distinct terms). Applied at the Pydantic
-    boundary which is the ingest boundary for fixtures and API payloads.
+    Prevents BM25 index inconsistency ("TDD" vs "tdd" as distinct terms).
+    Applied at the Pydantic boundary which is the ingest boundary for
+    fixtures and API payloads.
     """
     return sorted({t.lower() for t in v})
 
@@ -356,11 +355,10 @@ def _validate_node_id(field_name: str, expected_prefix: str | None = None):
     """Factory for per-type node_id validators using the shared RULE_ID_PATTERN.
 
     If expected_prefix is provided (e.g., "SKL-"), the validator also rejects
-    IDs that match the format but use the wrong type prefix. Per
-    docs/phase-0-schema-proposal.md, each node type has a fixed prefix
-    (SKL- Skill, PBK- Playbook, TEC- Technique, ANT- AntiPattern,
-    FRB- ForbiddenResponse, PHA- Phase, RAT- Rationalization,
-    PSC- PressureScenario, EXM- WorkedExample, ROL- SubagentRole).
+    IDs that match the format but use the wrong type prefix. Each node type
+    has a fixed prefix: SKL- Skill, PBK- Playbook, TEC- Technique,
+    ANT- AntiPattern, FRB- ForbiddenResponse, PHA- Phase, RAT- Rationalization,
+    PSC- PressureScenario, EXM- WorkedExample, ROL- SubagentRole.
     """
 
     def _validator(cls, v: str) -> str:

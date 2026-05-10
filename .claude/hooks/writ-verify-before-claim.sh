@@ -45,8 +45,8 @@ for t in todos:
         print(f"ENF-PROC-VERIFY-001: completion claim for '{tid}' has no verification_evidence. Run the check, then POST /session/{{sid}}/verification-evidence before marking completed.")
         break
     # Check 2: any artifact with a Gate 5 quality judgment below 3 blocks
-    # completion unless explicitly overridden (Gate 5 Tier 2 — see
-    # docs/phase-2-self-review-decision.md).
+    # completion unless explicitly overridden (hook-directive self-review;
+    # the judge POSTs its score to /session/{sid}/quality-judgment).
     failing_artifacts = [
         path for path, j in judgments.items()
         if isinstance(j, dict) and j.get("score", 5) < 3 and not j.get("overridden")
