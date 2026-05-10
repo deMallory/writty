@@ -5,7 +5,7 @@ Seeds 19 new SEC-CRYPTO-*, SEC-HDR-*, and SEC-RATE-* rules into Neo4j
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md sections 1E, 1F, 1G.
+Per the public rulebook source: out-of-the-box-rules.md sections 1E, 1F, 1G.
 """
 
 from __future__ import annotations

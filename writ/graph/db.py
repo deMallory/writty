@@ -325,8 +325,8 @@ class Neo4jConnection:
             "CREATE CONSTRAINT abstraction_id_unique IF NOT EXISTS FOR (a:Abstraction) REQUIRE a.abstraction_id IS UNIQUE",
             "CREATE INDEX abstraction_domain IF NOT EXISTS FOR (a:Abstraction) ON (a.domain)",
         ]
-        # Phase 1 uniqueness constraints per methodology label. Each label has its
-        # own *_id primary key per docs/phase-0-schema-proposal.md decision 2.
+        # Phase 1 uniqueness constraints per methodology label. Each label has
+        # its own *_id primary key (methodology absorption schema decision).
         for label, id_field in METHODOLOGY_NODE_ID_FIELDS.items():
             constraint_name = f"{label.lower()}_{id_field}_unique"
             statements.append(

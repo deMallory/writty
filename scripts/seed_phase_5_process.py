@@ -9,7 +9,7 @@ new PROC rules document the WHY at the public-rulebook level.
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md section 11.
+Per the public rulebook source: out-of-the-box-rules.md section 11.
 """
 
 from __future__ import annotations

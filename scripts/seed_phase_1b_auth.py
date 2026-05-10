@@ -8,7 +8,7 @@ Seeds 25 new SEC-AUTH-*, SEC-AUTHZ-*, and SEC-VAL-* rules into Neo4j
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md sections 1B, 1C, 1D.
+Per the public rulebook source: out-of-the-box-rules.md sections 1B, 1C, 1D.
 """
 
 from __future__ import annotations

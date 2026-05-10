@@ -7,8 +7,7 @@
 # /session/{sid}/quality-judgment. The existing writ-verify-before-claim.sh
 # hook enforces the recorded score on completion claims.
 #
-# No external LLM call. See docs/phase-2-self-review-decision.md.
-# Feature-flag gated.
+# No external LLM call. Feature-flag gated.
 set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"

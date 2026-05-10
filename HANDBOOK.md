@@ -236,7 +236,7 @@ Every turn, a separate hook calls a separate endpoint (`/always-on`) that return
 
 The invariant in one sentence: no change to ranking weights, embedding model, BM25 tuning, or graph traversal can cause an enforcement rule to disappear from agent context.
 
-A note on the audit and the expansion. `docs/mandatory-rule-audit.md` (2026-04-21) reviewed the original 35 mandatory rules and recommended 18 of them for demotion. The pre-cleanup graph had 41 mandatory rules. The 2026-05-10 cleanup pruned that down to 11 (deleted 17 rules tied to the dead Phase A-D / Tier-0-3 workflow and demoted 12 to advisory). The Phase 1-5 public-rulebook expansion then added 19 new mandatory rules from the public out-of-the-box rulebook, each backed by a real mechanical-enforcement analyzer:
+A note on the audit and the expansion. A 2026-04-21 audit reviewed the original 35 mandatory rules and recommended 18 of them for demotion. The pre-cleanup graph had 41 mandatory rules. The 2026-05-10 cleanup pruned that down to 11 (deleted 17 rules tied to the dead Phase A-D / Tier-0-3 workflow and demoted 12 to advisory). The Phase 1-5 public-rulebook expansion then added 19 new mandatory rules from the public out-of-the-box rulebook, each backed by a real mechanical-enforcement analyzer:
 
 | Mandatory addition phase | Rules | Analyzer |
 |---|---|---|
@@ -349,8 +349,8 @@ writ/                          The Python package (the librarian)
   config.py, dashboard.py, export.py, gate.py, authoring.py, frequency.py, origin_context.py
 
 bin/lib/writ-session.py        The state machine (the process keeper, ~2,000 lines)
-bin/                           Verification helpers (check-gates, run-analysis, scan-deps,
-                               verify-files, verify-matrix)
+bin/                           Verification helpers (check-gates, run-analysis,
+                               scan-deps, verify-files)
 
 .claude/hooks/                 30 scripts, all wired into Claude Code events
                                (3 legacy hooks removed 2026-05-10:
@@ -388,12 +388,12 @@ Makefile                       test, bench, check
 - Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`).
 - ONNX-optimized embedding inference with verified ranking parity against PyTorch.
 - HNSW persistence with corpus-hash invalidation.
-- 90 test files, 12 contractual benchmark targets.
+- 1,442 tests, 12 contractual benchmark targets.
 - Friction log analytics with a dashboard (`GET /dashboard`).
+- Public out-of-the-box rulebook seeded: 198 new rules across 12 domains (Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, Documentation) per Phases 1-5; see `out-of-the-box-rules.md` for the canonical rule list.
 
 ### Under review
-- Self review judge calibration (`docs/phase-2-self-review-decision.md`).
-- Public out-of-the-box rulebook expansion (~150 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, Documentation). See `RULEBOOK-AUDIT.md` for the per-rule mapping plan and `out-of-the-box-rules.md` for the target spec.
+- Self review judge calibration (the hook-directive design is in place; see `.claude/hooks/writ-quality-judge.sh`).
 
 ## Getting started
 

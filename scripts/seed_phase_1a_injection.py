@@ -5,7 +5,7 @@ DB-SQL-001 (rename + broaden) into SEC-INJ-SQL-001.
 
 Idempotent. Re-runs MERGE existing rules with the same rule_id.
 
-Per RULEBOOK-AUDIT.md and out-of-the-box-rules.md section 1A.
+Per the public rulebook source: out-of-the-box-rules.md section 1A.
 """
 
 from __future__ import annotations

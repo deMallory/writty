@@ -123,8 +123,7 @@ def _check_mechanical_enforcement(candidate: dict) -> list[str]:
     mechanical enforcement path (hook file + matcher + deny condition).
     Rules that can't be mechanically enforced must be declared advisory
     (`mandatory: false`, severity may remain high/critical). This keeps the
-    advisory-vs-mandatory distinction honest. Retroactive audit of the
-    existing 35 mandatory rules lives in docs/mandatory-rule-audit.md.
+    advisory-vs-mandatory distinction honest.
     """
     mandatory = candidate.get("mandatory", False)
     if not mandatory:

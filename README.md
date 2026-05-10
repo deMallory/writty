@@ -204,9 +204,9 @@ The benchmark suite has four files:
 
 ## Status
 
-**Production ready.** All five retrieval stages with budget headroom at every level. Mode and gate enforcement. AI rule proposal with the 5-check structural gate. Frequency-driven graduation logic. Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`). ONNX-optimized embedding inference verified identical to PyTorch on every test query. HNSW persistence with corpus-hash invalidation. 90 test files. Friction log analytics with a dashboard.
+**Production ready.** All five retrieval stages with budget headroom at every level. Mode and gate enforcement. AI rule proposal with the 5-check structural gate. Frequency-driven graduation logic. Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`). ONNX-optimized embedding inference verified identical to PyTorch on every test query. HNSW persistence with corpus-hash invalidation. 1,442 tests. Friction log analytics with a dashboard.
 
-**Under review.** Public out-of-the-box rulebook expansion: ~150 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, Documentation. See `RULEBOOK-AUDIT.md` for the per-rule mapping plan and `out-of-the-box-rules.md` for the target spec.
+**Public out-of-the-box rulebook seeded.** 198 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, and Documentation, plus 19 new mandatory rules each backed by a cross-language regex analyzer in `bin/run-analysis.sh`. See `out-of-the-box-rules.md` for the canonical rule list.
 
 ## Related documents
 

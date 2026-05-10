@@ -1,17 +1,15 @@
 """Phase 6a: Pydantic node models for methodology types.
 
-Tests the 10 new Pydantic models defined in
-docs/phase-0-schema-proposal.md:
+Tests the 10 Pydantic methodology models:
   Retrievable: Skill, Playbook, Technique, AntiPattern,
                ForbiddenResponse
   Non-retrievable: Phase, Rationalization, PressureScenario,
                    WorkedExample, SubagentRole
 
 Each model inherits from MethodologyNode (the shared base with the
-17 common fields per the proposal's "Common base fields" table).
-Each test class covers: instantiation with required fields, ID
-prefix validation, ID format validation, defaults applied, JSON
-round-trip.
+17 common fields). Each test class covers: instantiation with required
+fields, ID prefix validation, ID format validation, defaults applied,
+JSON round-trip.
 """
 from __future__ import annotations
 
