@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Writ CLI shim: forward all args to `.venv/bin/python -m writ.cli`.
+#
+# Why: `python3 -m writ.cli` works only when invoked under the writ skill's
+# .venv (where the writ package is installed). Outside that venv the system
+# python errors with ModuleNotFoundError. This shim resolves the venv-python
+# from the skill directory regardless of caller cwd, fixing the PSR-008
+# Finding 3 footgun.
+#
+# Usage (from any cwd, once on PATH or via symlink):
+#   writ analyze-friction --skill-usage --since 60
+#   writ analyze-friction --playbook-compliance --since 30
+#   ...etc
+#
+# Install (optional): symlink into your PATH:
+#   ln -s "$(realpath bin/writ)" ~/.local/bin/writ
+#
+# Idempotent: this shim has no side effects; it only execs the venv python.
+
+set -euo pipefail
+
+# Resolve the skill directory from this script's own location, following
+# any symlink the user might have created in PATH.
+SCRIPT_PATH="$(readlink -f "$0")"
+SKILL_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+VENV_PY="$SKILL_DIR/.venv/bin/python3"
+
+if [ ! -x "$VENV_PY" ]; then
+    echo "writ: venv python not found at $VENV_PY" >&2
+    echo "writ: run scripts/bootstrap.sh from the writ skill directory first" >&2
+    exit 1
+fi
+
+exec "$VENV_PY" -m writ.cli "$@"

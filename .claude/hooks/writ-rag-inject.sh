@@ -206,7 +206,7 @@ except Exception:
 " 2>/dev/null || echo "false")
 
 if [ "$IS_ORCHESTRATOR" = "true" ]; then
-    debug "orchestrator mode: skipping /query, emitting status line"
+    debug "orchestrator mode: skipping broad /query, firing methodology companion + status line"
     # Still emit mode-classification directive if no mode set
     if [ -z "$CURRENT_MODE" ]; then
         cat << MODE_DIRECTIVE
@@ -233,6 +233,106 @@ except Exception:
     print('[Writ: orchestrator mode active]')
 " 2>/dev/null)
     echo "$STATUS_LINE"
+
+    # PSR-008 Finding 1: orchestrator master must still surface
+    # methodology context (skills, playbooks). The broad coding-rule
+    # RAG is intentionally suppressed -- workers cover that domain --
+    # but methodology nodes guide workflow decisions the orchestrator
+    # itself owns. Fires when CURRENT_MODE=work AND prompt is non-trivial.
+    ORCH_REMAINING_BUDGET=$(echo "$CACHE_DATA" | python3 -c "import sys,json; print(json.load(sys.stdin).get('remaining_budget',8000))" 2>/dev/null || echo '8000')
+    ORCH_LOADED_RULE_IDS=$(echo "$CACHE_DATA" | python3 -c "
+import sys, json
+cache = json.load(sys.stdin)
+by_phase = cache.get('loaded_rule_ids_by_phase', {})
+current_phase = cache.get('current_phase', '')
+if by_phase and current_phase:
+    print(json.dumps(by_phase.get(current_phase, [])))
+else:
+    print(json.dumps(cache.get('loaded_rule_ids', [])))
+" 2>/dev/null || echo '[]')
+
+    if [ "${CURRENT_MODE:-}" = "work" ] && [ "${ORCH_REMAINING_BUDGET:-0}" -gt 600 ] && [ ${#PROMPT} -ge $MIN_QUERY_LENGTH ]; then
+        ORCH_METHOD_REQUEST=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'query': sys.argv[1],
+    'budget_tokens': 600,
+    'exclude_rule_ids': json.loads(sys.argv[2]),
+    'node_types': ['Skill', 'Playbook'],
+}))
+" "$PROMPT" "$ORCH_LOADED_RULE_IDS" 2>/dev/null)
+
+        if [ -n "$ORCH_METHOD_REQUEST" ]; then
+            ORCH_METHOD_RESPONSE=$(curl -s --connect-timeout 0.5 --max-time 2 \
+                -X POST "$WRIT_URL" \
+                -H "Content-Type: application/json" \
+                -d "$ORCH_METHOD_REQUEST" 2>/dev/null) || true
+
+            if [ -n "$ORCH_METHOD_RESPONSE" ]; then
+                ORCH_METHOD_FORMAT=$(echo "$ORCH_METHOD_RESPONSE" | _writ_session format 2>/dev/null) || true
+                ORCH_METHOD_TEXT=""
+                ORCH_METHOD_META=""
+                if [ -n "$ORCH_METHOD_FORMAT" ]; then
+                    ORCH_METHOD_TEXT=$(echo "$ORCH_METHOD_FORMAT" | grep -v "^WRIT_META:")
+                    ORCH_METHOD_META=$(echo "$ORCH_METHOD_FORMAT" | grep "^WRIT_META:" | head -1)
+                fi
+
+                if [ -n "$ORCH_METHOD_TEXT" ]; then
+                    echo ""
+                    echo "[Writ: methodology companion]"
+                    echo "$ORCH_METHOD_TEXT"
+                fi
+
+                if [ -n "$ORCH_METHOD_META" ]; then
+                    ORCH_METHOD_META_JSON="${ORCH_METHOD_META#WRIT_META:}"
+                    ORCH_METHOD_RULE_IDS=$(echo "$ORCH_METHOD_META_JSON" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('rule_ids',[])))" 2>/dev/null || echo '[]')
+                    ORCH_METHOD_COST=$(echo "$ORCH_METHOD_META_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cost',0))" 2>/dev/null || echo '0')
+
+                    if [ "$ORCH_METHOD_RULE_IDS" != "[]" ]; then
+                        _writ_session update "$SESSION_ID" \
+                            --add-rules "$ORCH_METHOD_RULE_IDS" \
+                            --cost "$ORCH_METHOD_COST" \
+                            --inc-queries 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
+                    fi
+
+                    python3 -c "
+import json, sys, os
+from datetime import datetime, timezone
+try:
+    rule_ids = json.loads(sys.argv[4])
+except (json.JSONDecodeError, ValueError) as _e:
+    sys.stderr.write(
+        f'[writ-hook json.loads recovery] argv[4] (ORCH_METHOD_RULE_IDS) in writ-rag-inject.sh orchestrator methodology emit: {_e}\\n'
+        f'  len={len(sys.argv[4])} sample={sys.argv[4][:200]!r}\\n'
+    )
+    rule_ids = []
+entry = json.dumps({
+    'ts': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'session': sys.argv[1],
+    'mode': sys.argv[2] if sys.argv[2] else None,
+    'event': 'rag_query',
+    'query_source': 'methodology',
+    'tokens_injected': int(sys.argv[3]),
+    'rules_returned_count': len(rule_ids),
+    'rule_ids': rule_ids,
+})
+markers = ['composer.json','package.json','Cargo.toml','go.mod','pyproject.toml','.git']
+path = os.getcwd()
+while path != '/':
+    if any(os.path.exists(os.path.join(path, m)) for m in markers):
+        try:
+            with open(os.path.join(path, 'workflow-friction.log'), 'a') as f:
+                f.write(entry + '\n')
+        except OSError:
+            pass
+        break
+    path = os.path.dirname(path)
+" "$SESSION_ID" "${CURRENT_MODE:-}" "$ORCH_METHOD_COST" "$ORCH_METHOD_RULE_IDS" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
+                fi
+            fi
+        fi
+    fi
+
     exit 0
 fi
 
