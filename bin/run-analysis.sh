@@ -821,6 +821,82 @@ for line_no, line in enumerate(lines, start=1):
 PYEOF
 }
 
+# ── Performance N+1 scan (cross-language) ────────────────────────────────────
+# Phase 3B 2026-05-10. Detects probable N+1 query patterns: a loop body
+# that contains an ORM/DB access referencing the loop variable. Heuristic;
+# false positives accepted, reported as warning rather than error.
+analyze_performance_n_plus_one() {
+  local file="$1"
+  local lang="$2"
+
+  python3 - <<'PYEOF' "$file" "$lang"
+import json, os, re, sys
+file_path = sys.argv[1]
+lang = sys.argv[2]
+basename = os.path.basename(file_path)
+if basename.startswith("seed_") and basename.endswith(".py"):
+    sys.exit(0)
+try:
+    with open(file_path, encoding="utf-8", errors="replace") as f:
+        src = f.read()
+except OSError:
+    sys.exit(0)
+
+lines = src.splitlines()
+
+def emit(line_no, rule, tool, message, severity="warning"):
+    print(json.dumps({
+        "file": file_path,
+        "line": line_no,
+        "severity": severity,
+        "rule": rule,
+        "tool": "writ-perf-scan/" + tool,
+        "message": message,
+    }))
+
+# Loop headers across languages.
+FOR_LOOP = re.compile(
+    r"\bfor\s+(\w+)\s+in\s+|"
+    r"\bforeach\s*\(\s*\$\w+\s+as\s+\$(\w+)\s*\)|"
+    r"\.forEach\s*\(\s*(?:\(?\s*(\w+)|function\s*\(\s*(\w+))|"
+    r"\.map\s*\(\s*(?:\(?\s*(\w+)|function\s*\(\s*(\w+))"
+)
+# ORM/DB access methods that suggest a query.
+DB_ACCESS = re.compile(
+    r"\.(query|filter|filter_by|get|first|find|where|raw|execute|fetch|fetchall|fetchone|"
+    r"objects\.get|objects\.filter|select|update|find_one|find_by_id|"
+    r"findOne|findById|findOneBy)\s*\("
+)
+
+for i, line in enumerate(lines):
+    stripped = line.lstrip()
+    if stripped.startswith(("#", "//", "*")):
+        continue
+    m = FOR_LOOP.search(line)
+    if not m:
+        continue
+    loop_var = next((g for g in m.groups() if g), None)
+    if not loop_var:
+        continue
+    # Inspect next 10 lines for DB access that references the loop variable.
+    indent = len(line) - len(line.lstrip())
+    for j in range(i + 1, min(len(lines), i + 12)):
+        body_line = lines[j]
+        if not body_line.strip():
+            continue
+        # Stop if dedented out of the loop body.
+        body_indent = len(body_line) - len(body_line.lstrip())
+        if body_indent <= indent and body_line.strip():
+            break
+        if DB_ACCESS.search(body_line) and re.search(rf"\b{re.escape(loop_var)}\b", body_line):
+            emit(j + 1, "PERF-QUERY-001", "loop-with-db-access",
+                 f"Possible N+1: loop variable '{loop_var}' used in DB call inside loop body. "
+                 f"Consider joins, eager loading, or batch fetching.",
+                 "warning")
+            break
+PYEOF
+}
+
 # ── Main loop ────────────────────────────────────────────────────────────────
 ALL_FINDINGS=""
 HAS_ERRORS=0
@@ -897,6 +973,13 @@ print(json.dumps({
     if echo "$data_result" | grep -q '"severity": "error"'; then
       HAS_ERRORS=1
     fi
+  fi
+
+  # Cross-language N+1 scan (PERF-QUERY-001 from the public rulebook,
+  # Phase 3B 2026-05-10). Reports warnings; never blocks writes.
+  perf_result=$(analyze_performance_n_plus_one "$file" "$lang")
+  if [ -n "$perf_result" ]; then
+    ALL_FINDINGS="${ALL_FINDINGS}${perf_result}"$'\n'
   fi
 done
 
