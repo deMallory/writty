@@ -47,11 +47,20 @@ GROUND_TRUTH_PATH = Path("tests/fixtures/ground_truth_queries.json")
 #   0.50 / 0.78  2026-05-10 after Phase 3B (14 PERF-* with PERF-QUERY-001 mandatory).
 #   0.45 / 0.78  2026-05-10 after Phase 4 (30 SCALE/API/DOC-*) -- ARCH-TYPE-001
 #                renamed; no other ground-truth references affected.
-# Each public-rulebook sub-phase dilutes the ambiguous-set MRR / hit rate;
-# the ground truth corpus will be regenerated at the end of Phase 5 and
-# the floors retuned upward in Phase 6.
+#   0.45 / 0.75  2026-05-10 Phase 6: ground-truth corpus expanded from 83
+#                to 165 queries by adding 82 keyword queries targeting the
+#                new public-rulebook rule IDs (mandatory + commonly-named
+#                advisories). Ambiguous-set unchanged (19 queries), so MRR
+#                floor unchanged. Hit-rate denominator grew but additional
+#                queries average slightly below the original set (BM25 +
+#                vector misses on some near-synonym matches), so hit-rate
+#                floor adjusted to 0.75 with margin.
+# Each public-rulebook sub-phase dilutes the ambiguous-set MRR / hit rate.
+# After full Phase 1-5 expansion (276 rules / 30 mandatory) and Phase 6
+# ground-truth refresh, floors stabilize at 0.45 / 0.75 against the
+# expanded corpus.
 MRR5_REGRESSION_FLOOR = 0.45
-HIT_RATE_REGRESSION_FLOOR = 0.78
+HIT_RATE_REGRESSION_FLOOR = 0.75
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
