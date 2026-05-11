@@ -1,12 +1,38 @@
 [project]
-name = "writ"
+name = "claude-writ"
 version = "2.0.0"
-description = "Hybrid RAG knowledge retrieval service for AI coding rule enforcement"
+description = "Hybrid RAG rule retrieval and session-aware workflow enforcement for Claude Code: a five-stage hybrid pipeline (BM25 + ANN + graph + RRF) over a Neo4j knowledge graph, wired into Claude Code via 30 hook scripts and a state machine."
+readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
     { name = "Lucio Saldivar" },
+]
+keywords = [
+    "claude-code",
+    "rag",
+    "rules",
+    "enforcement",
+    "neo4j",
+    "fastapi",
+    "hooks",
+    "workflow",
+    "code-quality",
+    "ai-tooling",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
     "fastapi>=0.115,<1",
@@ -20,6 +46,13 @@ dependencies = [
     "typer>=0.13,<1",
     "rich>=13,<14",
 ]
+
+[project.urls]
+Homepage = "https://github.com/infinri/Writ"
+Repository = "https://github.com/infinri/Writ"
+Issues = "https://github.com/infinri/Writ/issues"
+Changelog = "https://github.com/infinri/Writ/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/infinri/Writ#readme"
 
 [project.optional-dependencies]
 dev = [
