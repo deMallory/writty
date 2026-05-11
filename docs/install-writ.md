@@ -1,6 +1,6 @@
 # Installing Writ
 
-> **New in v1.0.1**: Writ is now distributable as a Claude Code plugin.
+> Writ is distributable as a Claude Code plugin.
 > See the README "Install as a Claude Code plugin" section for the
 > plugin install path. The instructions below cover the standalone-skill
 > install at `~/.claude/skills/writ/`, which remains supported.
