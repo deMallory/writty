@@ -1,3 +1,3 @@
-"""Writ -- Hybrid RAG knowledge retrieval service for AI coding rule enforcement."""
+"""Writ: Hybrid RAG knowledge retrieval service for AI coding rule enforcement."""
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

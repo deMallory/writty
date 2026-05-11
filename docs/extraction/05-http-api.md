@@ -252,7 +252,7 @@ Public: `render_dashboard() -> str`. Constants: `REFRESH_SECONDS = 60`. Helpers:
 ## Files Read
 
 - `writ/server.py` (1181 lines)
-- `writ/__init__.py` (2 lines, version `0.1.0`)
+- `writ/__init__.py` (3 lines, version `1.0.0` as of the v1 release)
 - `writ/config.py` (73 lines)
 - `writ/dashboard.py` (163 lines)
 

@@ -146,7 +146,7 @@ db_path = "~/.cache/writ/origin_context.db"
 | Key | Value |
 |---|---|
 | `name` | `writ` |
-| `version` | `0.1.0` |
+| `version` | `1.0.0` |
 | `description` | `Hybrid RAG knowledge retrieval service for AI coding rule enforcement` |
 | `requires-python` | `>=3.11` |
 | `license` | `MIT` |
@@ -206,7 +206,7 @@ No `[tool.ruff]`, `[tool.black]`, `[tool.mypy]`, or `[tool.pytest.ini_options]` 
 }
 ```
 
-Plugin version `2.0.0` is distinct from `pyproject.toml`'s package version `0.1.0`.
+Plugin manifest version `2.0.0` (a Claude Code plugin-format version) is distinct from `pyproject.toml`'s package version `1.0.0`.
 
 ## D. `docker-compose.yml`
 

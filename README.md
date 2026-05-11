@@ -1,8 +1,12 @@
 # Writ
 
+**v1.0.0** | MIT-licensed | Authored by Lucio Saldivar
+
 A Claude Code harness that gives every coding session two helpers: a fast librarian that picks the rules that fit the current task, and a process keeper that blocks risky writes until you have approved a plan and tests.
 
 At the live 276-rule production corpus (post Phase 1-5 public-rulebook expansion), the librarian returns ranked results in **0.590 ms at the 95th percentile**. At the 10,000-rule synthetic scale, it still holds at 0.557 ms while reducing context tokens by **726 times** versus loading the whole rulebook every turn.
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the v1.0.0 release notes and the full set of capabilities shipped.
 
 ## The problem
 
@@ -204,7 +208,7 @@ The benchmark suite has four files:
 
 ## Status
 
-**Production ready.** All five retrieval stages with budget headroom at every level. Mode and gate enforcement. AI rule proposal with the 5-check structural gate. Frequency-driven graduation logic. Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`). ONNX-optimized embedding inference verified identical to PyTorch on every test query. HNSW persistence with corpus-hash invalidation. 1,442 tests. Friction log analytics with a dashboard.
+**Released as v1.0.0 on 2026-05-10.** All five retrieval stages with budget headroom at every level. Mode and gate enforcement. AI rule proposal with the 5-check structural gate. Frequency-driven graduation logic. Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`). ONNX-optimized embedding inference verified identical to PyTorch on every test query. HNSW persistence with corpus-hash invalidation. 1,441 tests. Friction log analytics with a dashboard.
 
 **Public out-of-the-box rulebook seeded.** 198 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, and Documentation, plus 19 new mandatory rules each backed by a cross-language regex analyzer in `bin/run-analysis.sh`. See `out-of-the-box-rules.md` for the canonical rule list.
 
