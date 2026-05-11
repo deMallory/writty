@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "writ",
+  "owner": {
+    "name": "infinri",
+    "url": "https://github.com/infinri"
+  },
+  "description": "Writ — hybrid-RAG rule retrieval plus session-aware workflow enforcement for Claude Code",
+  "metadata": {
+    "version": "2.0.0"
+  },
+  "plugins": [
+    {
+      "name": "writ",
+      "source": "./",
+      "description": "Hybrid RAG rule retrieval (5-stage pipeline over Neo4j) plus mode-based workflow gates (30 hook scripts + session state machine)",
+      "version": "2.0.0",
+      "category": "tooling",
+      "tags": ["rag", "rules", "enforcement", "hooks", "neo4j", "workflow"],
+      "strict": true,
+      "author": {
+        "name": "Lucio Saldivar",
+        "url": "https://github.com/infinri"
+      },
+      "homepage": "https://github.com/infinri/Writ",
+      "repository": "https://github.com/infinri/Writ",
+      "license": "MIT"
+    }
+  ]
+}

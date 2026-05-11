@@ -46,3 +46,7 @@ workflow-friction.log
 # Per-Work-cycle workflow artifacts (overwritten each cycle)
 plan.md
 capabilities.md
+
+# Plugin distribution: never ship
+.claude/settings.local.json
+writ.egg-info/

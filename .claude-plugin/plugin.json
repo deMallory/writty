@@ -1,11 +1,14 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "writ",
   "version": "2.0.0",
-  "description": "Hybrid RAG rule retrieval + enforcement layer. Injects relevant coding rules via a 5-stage pipeline (BM25 + vector + graph traversal + RRF ranking) and enforces mode-based workflow gates.",
-  "permissions": ["read"],
-  "defaultEnabled": true,
-  "lifecycle": {
-    "Init": ["./scripts/ensure-server.sh"],
-    "Shutdown": ["./scripts/stop-server.sh"]
-  }
+  "description": "Hybrid RAG rule retrieval + session-aware workflow enforcement. Injects relevant coding rules via a 5-stage pipeline (BM25 + vector + graph traversal + RRF ranking) and enforces mode-based workflow gates (plan -> tests -> implementation).",
+  "author": {
+    "name": "Lucio Saldivar",
+    "url": "https://github.com/infinri"
+  },
+  "homepage": "https://github.com/infinri/Writ",
+  "repository": "https://github.com/infinri/Writ",
+  "license": "MIT",
+  "keywords": ["claude-code", "rag", "rules", "enforcement", "neo4j", "fastapi", "hooks", "workflow"]
 }
