@@ -5,8 +5,14 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WRIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"
+    VENV_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv"
+else
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    WRIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    VENV_DIR="$WRIT_DIR/.venv"
+fi
 
 WRIT_HOST="${WRIT_HOST:-localhost}"
 WRIT_PORT="${WRIT_PORT:-8765}"
@@ -51,8 +57,8 @@ if writ_running; then
 fi
 
 # Activate venv if present
-if [ -f "$WRIT_DIR/.venv/bin/activate" ]; then
-    source "$WRIT_DIR/.venv/bin/activate"
+if [ -f "$VENV_DIR/bin/activate" ]; then
+    source "$VENV_DIR/bin/activate"
 fi
 
 # Start Writ server in background

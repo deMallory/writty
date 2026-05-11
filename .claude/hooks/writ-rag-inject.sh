@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# Writ RAG Bridge -- UserPromptSubmit hook
-#
-# Fires at the start of every user turn. Queries Writ for relevant rules
-# and injects them into Claude's context via stdout.
-#
-# Hook type: UserPromptSubmit
-# Exit: always 0 (never block user prompt)
-
+# Writ RAG Bridge -- UserPromptSubmit hook. Fires at the start of every
+# user turn; queries Writ for relevant rules and injects them via stdout.
+# Hook type: UserPromptSubmit. Exit: always 0 (never block user prompt).
 set -euo pipefail
-
-HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
-WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
+# Plugin-mode overrides: prefer ${CLAUDE_PLUGIN_ROOT} when set, else
+# fall back to the dirname walk that standalone installs rely on.
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"
+  VENV_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv"
+else
+  HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+  WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
+  VENV_DIR="$WRIT_DIR/.venv"
+fi
 SESSION_HELPER="$WRIT_DIR/bin/lib/writ-session.py"
 source "$WRIT_DIR/bin/lib/common.sh"
 
@@ -52,10 +54,10 @@ if ! curl -sf --connect-timeout 0.2 "$WRIT_HEALTH_URL" >/dev/null 2>&1; then
         fi
 
         # Start Writ server in background
-        if [ -f "$WRIT_DIR/.venv/bin/python3" ]; then
+        if [ -f "$VENV_DIR/bin/python3" ]; then
             (
                 cd "$WRIT_DIR"
-                nohup .venv/bin/python3 -m uvicorn writ.server:app --host 0.0.0.0 --port "$WRIT_PORT" >>/tmp/writ-server.log 2>&1 &
+                nohup "$VENV_DIR/bin/python3" -m uvicorn writ.server:app --host 0.0.0.0 --port "$WRIT_PORT" >>/tmp/writ-server.log 2>&1 &
             )
             # Wait up to 5s for Writ health endpoint
             for _i in $(seq 1 10); do
