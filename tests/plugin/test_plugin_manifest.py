@@ -58,9 +58,9 @@ class TestPluginManifestSchema:
         )
 
     def test_plugin_json_metadata_fields(self, manifest: dict) -> None:
-        """plugin.json must have version '2.0.0', description, author.name, homepage, repository, license, keywords."""
-        assert manifest.get("version") == "2.0.0", (
-            f"plugin.json version must be '2.0.0', got '{manifest.get('version')}'"
+        """plugin.json must have version '1.0.1', description, author.name, homepage, repository, license, keywords."""
+        assert manifest.get("version") == "1.0.1", (
+            f"plugin.json version must be '1.0.1', got '{manifest.get('version')}'"
         )
         assert "description" in manifest and manifest["description"], (
             "plugin.json must have a non-empty description"

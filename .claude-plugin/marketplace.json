@@ -5,16 +5,16 @@
     "name": "infinri",
     "url": "https://github.com/infinri"
   },
-  "description": "Writ — hybrid-RAG rule retrieval plus session-aware workflow enforcement for Claude Code",
+  "description": "Writ: hybrid-RAG rule retrieval plus session-aware workflow enforcement for Claude Code",
   "metadata": {
-    "version": "2.0.0"
+    "version": "1.0.1"
   },
   "plugins": [
     {
       "name": "writ",
       "source": "./",
       "description": "Hybrid RAG rule retrieval (5-stage pipeline over Neo4j) plus mode-based workflow gates (30 hook scripts + session state machine)",
-      "version": "2.0.0",
+      "version": "1.0.1",
       "category": "tooling",
       "tags": ["rag", "rules", "enforcement", "hooks", "neo4j", "workflow"],
       "strict": true,

@@ -2,38 +2,33 @@
 
 All notable changes to Writ are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2026-05-11
+## [1.0.1] - 2026-05-11
 
-Plugin-distribution release. Writ is now installable as a Claude Code plugin published through a same-repo marketplace. The standalone skill install path at `~/.claude/skills/writ/` remains supported; behavior under that path is byte-identical to v1.0.0.
-
-### Breaking
-
-- Install path changes from a manual standalone skill checkout to a Claude Code plugin: `claude plugin marketplace add infinri/Writ` followed by `claude plugin install writ@writ`. The standalone path still works, but it is no longer the recommended install model.
-- `.claude-plugin/plugin.json` was rewritten to conform to the official plugin schema. The previously declared `permissions`, `defaultEnabled`, and `lifecycle` fields were never honored by Claude Code and have been dropped. The new manifest uses only spec-compliant fields.
+Patch release completing the v1 vision: Writ is now installable as a Claude Code plugin published through a same-repo marketplace. The standalone skill install path at `~/.claude/skills/writ/` is unchanged and continues to work byte-identically to v1.0.0; the plugin path is purely additive.
 
 ### Added
 
 - `.claude-plugin/marketplace.json` declaring a same-repo, single-plugin marketplace catalog (`name: writ`, owner `infinri`, plugin source `./`).
+- `.claude-plugin/plugin.json` rewritten to conform to the official plugin schema (`name`, `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords`, plus the four component-path fields `skills`/`commands`/`agents`/`hooks`). The previously declared `permissions`, `defaultEnabled`, and `lifecycle` fields were never honored by Claude Code and have been dropped.
 - `hooks/hooks.json` plugin auto-discovery manifest covering all 32 hook event registrations using `${CLAUDE_PLUGIN_ROOT}` paths so the plugin can be upgraded without rewiring hooks.
 - `hooks/scripts/session-start-bootstrap.sh`, a SessionStart probe that detects venv/Neo4j/daemon state on fresh plugin installs, prints actionable setup instructions when prerequisites are missing, and launches `writ serve` in the background when everything is in place. Always exits 0; never blocks the session.
 - `scripts/bootstrap-plugin.sh`, the plugin-aware one-time setup script. Creates the venv outside the plugin cache dir so it survives plugin upgrades, brings up Neo4j, ingests the rule bible, and starts the daemon. Idempotent.
 - `templates/settings.README.md` documenting the two install paths (plugin auto-discovery via `hooks/hooks.json` versus legacy standalone via `templates/settings.json` rendered into `~/.claude/settings.json`).
 - `docs/plugin-validation.md`, a maintainer reference for validating a Writ release (static `claude plugin validate`, pytest skeleton, fresh-install smoke test, rollback procedure).
+- `docs/SUBMISSION.md`, the Anthropic plugin marketplace submission packet (pre-submission checklist, listing copy, screenshots checklist, submission procedure).
+- `.github/workflows/publish.yml`, the tag-triggered GitHub Actions workflow that builds sdist + wheel and publishes to PyPI via Trusted Publisher OIDC.
 
 ### Changed
 
-- `.claude-plugin/plugin.json` now declares `name`, `version: "2.0.0"`, `description`, `author`, `homepage`, `repository`, `license`, `keywords`, plus the four component-path fields (`skills`, `commands`, `agents`, `hooks`) the plugin installer reads to auto-register the in-repo components.
+- `pyproject.toml` PyPI distribution name renamed from `writ` (taken by an unrelated package) to `claude-writ`. The Python module name (`import writ`) and the console script (`writ`) are unchanged. Standard PyPI metadata added: `readme`, `keywords`, `classifiers`, and `[project.urls]` (Homepage, Repository, Issues, Changelog, Documentation).
 - Plugin-mode venv lives at `${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv`, and the package is installed there via `pip install -e ${CLAUDE_PLUGIN_ROOT}`. Editable installs let plugin upgrades that rewrite the cache dir keep working without a venv rebuild. Standalone installs continue to use `${WRIT_DIR}/.venv`.
 - `scripts/ensure-server.sh`, `scripts/stop-server.sh`, and `.claude/hooks/writ-rag-inject.sh` learned dual-mode `${CLAUDE_PLUGIN_ROOT}` branches. When the env var is set by Claude Code, `WRIT_DIR` and the venv path resolve against the plugin install; when unset, the original `dirname` walk runs. Standalone behavior is byte-identical.
-- `pyproject.toml`, `SKILL.md` frontmatter, and the marketplace/plugin manifests all declare version `2.0.0`.
+- `pyproject.toml`, `SKILL.md` frontmatter, and the marketplace/plugin manifests all declare version `1.0.1`.
 
-### Deprecated
+### Notes
 
-- `templates/settings.json` for plugin installs. The plugin auto-discovers hooks via `hooks/hooks.json`; the rendered template is no longer the source of truth for plugin-mode sessions. The file is still required for the standalone install path and will be removed only after the official Anthropic marketplace submission lands.
-
-### Upgrade path
-
-See the README section "Upgrading from standalone v1.0.0" for the four-step migration (stop the standalone daemon, drop the symlinks, remove the rendered settings block, install the plugin). The Neo4j named volume `writ-neo4j-data` is shared between modes, so the rule corpus survives the migration.
+- `templates/settings.json` is still the source of truth for standalone installs. The plugin path uses `hooks/hooks.json` instead. Keep registrations in sync between the two if you edit either.
+- Existing standalone installs at `~/.claude/skills/writ/` continue working unchanged. See README "Switching from the standalone install to the plugin" if you'd rather move to the plugin path; the Neo4j named volume `writ-neo4j-data` is shared between modes, so the rule corpus survives the switch.
 
 ## [1.0.0] - 2026-05-10
 

@@ -1,6 +1,6 @@
 # Writ
 
-**v1.0.0** | MIT-licensed | Authored by Lucio Saldivar
+**v1.0.1** | MIT-licensed | Authored by Lucio Saldivar
 
 A Claude Code harness that gives every coding session two helpers: a fast librarian that picks the rules that fit the current task, and a process keeper that blocks risky writes until you have approved a plan and tests.
 
@@ -10,7 +10,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the v1.0.0 release notes and the full set
 
 ## Install as a Claude Code plugin
 
-Writ is published as a single-plugin marketplace in this repo. The installable shape described here is current as of v2.0.0.
+Writ is published as a single-plugin marketplace in this repo. The installable shape described here is current as of v1.0.1.
 
 **Prerequisites**
 
@@ -253,14 +253,14 @@ The benchmark suite has four files:
 - `CONTRIBUTING.md` for rule authoring workflow, monthly review cadence, and AI proposal triage.
 - `PROMOTIONAL-BRIEF.md` for the pitch-oriented version of this document.
 
-## Upgrading from standalone v1.0.0
+## Switching from the standalone install to the plugin
 
-If Writ is currently installed as a standalone skill at `~/.claude/skills/writ/`:
+The standalone install at `~/.claude/skills/writ/` keeps working in v1.0.1; the plugin path is purely additive. If you'd rather move to the plugin path:
 
 1. Stop the existing daemon: `bash ~/.claude/skills/writ/scripts/stop-server.sh`
 2. Remove the symlinks the standalone bootstrap created: `rm -f ~/.claude/rules/writ-*.md ~/.claude/agents/writ-*.md`
 3. Remove the rendered hook block from `~/.claude/settings.json` (the `permissions.allow` and `hooks` sections that reference `$HOME/.claude/skills/writ/.claude/hooks/`). Back up the file first.
-4. Install the plugin as described in "Install as a Claude Code plugin" above. The Neo4j Docker volume (`writ-neo4j-data`) is shared between modes, so the rule corpus survives the migration.
+4. Install the plugin as described in "Install as a Claude Code plugin" above. The Neo4j Docker volume (`writ-neo4j-data`) is shared between modes, so the rule corpus survives the switch.
 
 The standalone-skill checkout itself can stay on disk; nothing in the plugin install path looks at it.
 

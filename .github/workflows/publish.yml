@@ -2,7 +2,7 @@ name: Publish to PyPI
 
 # Builds sdist + wheel and publishes to PyPI via OIDC Trusted Publisher.
 # Triggers on:
-#   - Pushing a tag matching v* (e.g. v2.0.0, v2.1.0-rc1)
+#   - Pushing a tag matching v* (e.g. v1.0.1, v1.1.0)
 #   - Publishing a GitHub release
 #
 # Trusted Publisher config (set once at https://pypi.org/manage/account/publishing/):

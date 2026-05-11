@@ -57,8 +57,8 @@ If a release fails validation:
 ```shell
 claude plugin uninstall writ@writ
 claude plugin marketplace remove writ
-git tag -d v2.0.0
-git push origin :refs/tags/v2.0.0  # if already pushed
+git tag -d v1.0.1
+git push origin :refs/tags/v1.0.1  # if already pushed
 ```
 
 The Neo4j Docker volume (`writ-neo4j-data`) persists across uninstalls;

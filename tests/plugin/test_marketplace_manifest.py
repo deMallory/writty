@@ -81,7 +81,7 @@ class TestMarketplaceManifestStructure:
             )
 
     def test_marketplace_plugin_entry_writ(self, manifest: dict) -> None:
-        """plugins array must have exactly one entry with name 'writ', source './', description, version '2.0.0'."""
+        """plugins array must have exactly one entry with name 'writ', source './', description, version '1.0.1'."""
         plugins = manifest.get("plugins", [])
         assert len(plugins) == 1, (
             f"marketplace.json must have exactly one plugin entry, found {len(plugins)}"
@@ -90,7 +90,7 @@ class TestMarketplaceManifestStructure:
         assert entry.get("name") == "writ", "Plugin entry name must be 'writ'"
         assert entry.get("source") == "./", "Plugin entry source must be './'"
         assert "description" in entry, "Plugin entry must have a 'description' field"
-        assert entry.get("version") == "2.0.0", "Plugin entry version must be '2.0.0'"
+        assert entry.get("version") == "1.0.1", "Plugin entry version must be '1.0.1'"
 
     def test_marketplace_source_relative_path_ok(self, manifest: dict) -> None:
         """source must start with './' (relative path; required for git-hosted same-repo marketplaces)."""

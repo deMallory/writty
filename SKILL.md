@@ -15,7 +15,7 @@ description: >
   level of ceremony, not whether Writ activates.
 metadata:
   author: infinri
-  version: "2.0.0"
+  version: "1.0.1"
 ---
 
 # Writ: Hybrid RAG knowledge retrieval plus workflow enforcement
