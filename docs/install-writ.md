@@ -1,5 +1,10 @@
 # Installing Writ
 
+> **New in v2.0.0**: Writ is now distributable as a Claude Code plugin.
+> See the README "Install as a Claude Code plugin" section for the
+> plugin install path. The instructions below cover the standalone-skill
+> install at `~/.claude/skills/writ/`, which remains supported.
+
 Writ is a Claude Code skill at `~/.claude/skills/writ/`. After cloning
 the skill repo there, two install touch-points wire it into the Claude
 Code runtime so the hooks and slash commands work from any project

@@ -8,6 +8,40 @@ At the live 276-rule production corpus (post Phase 1-5 public-rulebook expansion
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the v1.0.0 release notes and the full set of capabilities shipped.
 
+## Install as a Claude Code plugin
+
+Writ is published as a single-plugin marketplace in this repo. The installable shape described here is current as of v2.0.0.
+
+**Prerequisites**
+
+- Python 3.11 or newer
+- Docker (Neo4j runs in a container)
+- `jq`, `curl`, `envsubst`
+
+**Install**
+
+```shell
+claude plugin marketplace add infinri/Writ
+claude plugin install writ@writ
+```
+
+**One-time bootstrap.** Creates the venv at `${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv`, brings up Neo4j, ingests the rule bible, and starts the FastAPI daemon:
+
+```shell
+bash $(claude plugin path writ)/scripts/bootstrap-plugin.sh
+```
+
+Restart Claude Code. Verify with:
+
+```shell
+curl http://localhost:8765/health
+# {"status":"healthy"}
+```
+
+The plugin's hooks degrade gracefully until bootstrap completes. The SessionStart hook prints clear setup instructions on every fresh session where any prerequisite is missing, but the session itself is never blocked.
+
+The standalone install path at `~/.claude/skills/writ/` remains supported; see "Quick start" below if you prefer that mode.
+
 ## The problem
 
 Three things break when you give a coding agent a large rulebook the obvious way (paste it all into the prompt):
@@ -218,5 +252,16 @@ The benchmark suite has four files:
 - `SCALE_BENCHMARK_RESULTS.md` for the full live measurement plus the synthetic scale curve.
 - `CONTRIBUTING.md` for rule authoring workflow, monthly review cadence, and AI proposal triage.
 - `PROMOTIONAL-BRIEF.md` for the pitch-oriented version of this document.
+
+## Upgrading from standalone v1.0.0
+
+If Writ is currently installed as a standalone skill at `~/.claude/skills/writ/`:
+
+1. Stop the existing daemon: `bash ~/.claude/skills/writ/scripts/stop-server.sh`
+2. Remove the symlinks the standalone bootstrap created: `rm -f ~/.claude/rules/writ-*.md ~/.claude/agents/writ-*.md`
+3. Remove the rendered hook block from `~/.claude/settings.json` (the `permissions.allow` and `hooks` sections that reference `$HOME/.claude/skills/writ/.claude/hooks/`). Back up the file first.
+4. Install the plugin as described in "Install as a Claude Code plugin" above. The Neo4j Docker volume (`writ-neo4j-data`) is shared between modes, so the rule corpus survives the migration.
+
+The standalone-skill checkout itself can stay on disk; nothing in the plugin install path looks at it.
 
 License: MIT. Authored by Lucio Saldivar.
