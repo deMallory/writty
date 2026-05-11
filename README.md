@@ -1,7 +1,5 @@
 # Writ
 
-**v1.0.1** | MIT-licensed | Authored by Lucio Saldivar
-
 A Claude Code harness that gives every coding session two helpers: a fast librarian that picks the rules that fit the current task, and a process keeper that blocks risky writes until you have approved a plan and tests.
 
 At the live 276-rule production corpus (post Phase 1-5 public-rulebook expansion), the librarian returns ranked results in **0.590 ms at the 95th percentile**. At the 10,000-rule synthetic scale, it still holds at 0.557 ms while reducing context tokens by **726 times** versus loading the whole rulebook every turn.
@@ -10,7 +8,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the v1.0.0 release notes and the full set
 
 ## Install as a Claude Code plugin
 
-Writ is published as a single-plugin marketplace in this repo. The installable shape described here is current as of v1.0.1.
+Writ is published as a single-plugin marketplace in this repo.
 
 **Prerequisites**
 
@@ -255,7 +253,7 @@ The benchmark suite has four files:
 
 ## Switching from the standalone install to the plugin
 
-The standalone install at `~/.claude/skills/writ/` keeps working in v1.0.1; the plugin path is purely additive. If you'd rather move to the plugin path:
+The standalone install at `~/.claude/skills/writ/` will keep working; the plugin path is purely additive. If you'd rather move to the plugin path:
 
 1. Stop the existing daemon: `bash ~/.claude/skills/writ/scripts/stop-server.sh`
 2. Remove the symlinks the standalone bootstrap created: `rm -f ~/.claude/rules/writ-*.md ~/.claude/agents/writ-*.md`
