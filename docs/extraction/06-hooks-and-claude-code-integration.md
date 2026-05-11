@@ -1,5 +1,7 @@
 # 06 — Hooks and Claude Code Integration
 
+> **Refresh note (2026-05-10).** The 2026-05-10 cleanup deleted three legacy hooks that this doc originally described as "registered but superseded": `check-gate-approval.sh`, `enforce-final-gate.sh`, and `writ-pretool-rag.sh`. They are gone from disk. The current wired set is **30 hooks** (was 33). Separately, `bin/run-analysis.sh` grew from ~387 lines to ~1,053 lines via 6 new cross-language security/performance/scaling analyzers added in Phase 1-5 of the public-rulebook expansion. The new analyzers are documented in §10 below. Use `templates/settings.json` as the canonical wiring source; the table in §1 below has been updated to drop the deleted hooks.
+
 Skill root: `~/.claude/skills/writ`. Hook scripts under `.claude/hooks/`. Libraries under `bin/lib/`. Hooks are wired via `templates/settings.json` (the canonical wiring file users copy into `~/.claude/settings.json`).
 
 ## 1. Hook Trigger Map
@@ -40,9 +42,10 @@ Source: `templates/settings.json:55-358`. `.claude/settings.local.json` only car
 | **PostToolUse** | `Write\|Edit` | `writ-posttool-rag.sh` (line 340-348) |
 | **PostToolUse** | `Write` | `writ-quality-judge.sh` (line 349-357) |
 
-Hooks NOT wired in templates/settings.json (legacy/dead-code):
-- `check-gate-approval.sh` — superseded by `writ-pre-write-dispatch.sh`.
-- `enforce-final-gate.sh` — superseded; logic moved into `_can_write_check` in `writ-session.py`.
+Hooks deleted 2026-05-10 (formerly listed as legacy-but-present):
+- `check-gate-approval.sh` — was superseded by `writ-pre-write-dispatch.sh`; now deleted from disk.
+- `enforce-final-gate.sh` — was superseded; logic moved into `_can_write_check` in `writ-session.py`; now deleted from disk.
+- `writ-pretool-rag.sh` — was superseded by `writ-pre-write-dispatch.sh`; now deleted from disk.
 
 `writ-verify-before-claim.sh` is registered on BOTH PreToolUse(TodoWrite) and Stop.
 
@@ -54,12 +57,6 @@ Hooks NOT wired in templates/settings.json (legacy/dead-code):
 - **Exit**: always 0. Pattern match does NOT itself advance phase (Plan Section 8.1).
 - **Side effects**: writes `/tmp/writ-current-session`, `/tmp/writ-gate-token-{sid}`, `/tmp/writ-prompt-debug.log`, project's `workflow-friction.log`.
 
-### `check-gate-approval.sh` — PreToolUse Write/Edit (legacy, 68 lines)
-Pipes envelope through `_writ_session can-write`. If denial_count ≥ 2 emits `permissionDecision: ask`; else `deny` with warning.
-
-### `enforce-final-gate.sh` — PreToolUse Write/Edit (legacy, 83 lines)
-Skips unless mode=work. If path contains `COMPLETE` and `.claude/gates/gate-final.approved` is missing → `[ENF-GATE-FINAL]` deny. If path is `*/plan.md`, blocks if pending ENF-POST items or completion markers without final-gate.
-
 ### `enforce-violations.sh` — Stop (64 lines)
 Only acts when mode=work. Reads `pending_violations` from cache. If non-empty: prints `You have N unresolved violations: [RULE_IDS]. Fix these before completing.` to stderr and **exits 2** (forces Claude to continue).
 
@@ -69,8 +66,8 @@ Emits: `gate_denied_then_approved`, `phase_transition_time` (compares mtimes of 
 ### `inject-tier-workflow.sh` — PostToolUse Bash (87 lines)
 Detects `mode set <conversation|debug|review|work>` or legacy `tier set [0-3]` (tier 0→conversation, tier 1/2/3→work). Emits a mode-specific reminder block.
 
-### `pre-validate-file.sh` — PreToolUse Write/Edit (92 lines)
-Writes proposed content to a tempfile, runs `bin/run-analysis.sh`, on non-zero emits `permissionDecision: deny` with `[ENF-POST-007]` listing first 5 errors.
+### `pre-validate-file.sh` — PreToolUse Write/Edit (~100 lines)
+Writes proposed content to a tempfile, runs `bin/run-analysis.sh`, on non-zero emits `permissionDecision: deny` with `[ENF-POST-007]` listing first 5 errors. Skips paths matching `scripts/seed_*.py` since the public-rulebook seed scripts intentionally embed bad-code samples in `violation`/`pass_example` fields of the rules they ingest, and the new security analyzers would otherwise flag those literals.
 
 ### `track-failed-writes.sh` — PostToolUseFailure Write/Edit (78 lines)
 Builds `{file, reason, timestamp}` record, calls `_writ_session update --add-failed-write`, logs `write_failure` event.
@@ -117,9 +114,6 @@ Calls `_writ_session clear-rules-for-compaction` which empties `loaded_rules` (f
 
 ### `writ-pressure-audit.sh` — SessionEnd (55 lines)
 Emits `pressure_audit` friction event with `mode, active_playbook, phases_traversed, verification_evidence_count, quality_judgment_count, quality_override_count`. If `quality_override_count > 3` adds `escalation: "quality_override_threshold_exceeded"`.
-
-### `writ-pretool-rag.sh` — PreToolUse Write/Edit (legacy, 343 lines)
-Builds query from FILE PATH only (Magento path patterns: Controller/Model/Api/Observer/etc; Python signals; XML config types). Skips if `is_orchestrator`, `should-skip`, or `detect_language=="unknown"`. Caps budget at 1500. Threshold 0.4. Logs `rag_query` with `query_source: "file-write-pre"`. Replaced by `writ-pre-write-dispatch.sh`.
 
 ### `writ-pre-write-dispatch.sh` — PreToolUse Write/Edit (164 lines, v2)
 Calls `_writ_session pre-write-check` which posts to `POST /pre-write-check` (1s max) with subprocess fallback. Parses `decision` field (`allow|deny|ask`). On `deny`/`ask` emits hookSpecificOutput JSON with warning. On `allow` if `rag_rules` present, prints `[Writ: file-context rules for FILE]` block and updates cache.
@@ -294,10 +288,9 @@ The "ask" decision is added by `writ-pre-write-dispatch.sh` and `check-gate-appr
 Orchestrating hook: **`writ-rag-inject.sh`** on UserPromptSubmit. See §2 entry above for full structure.
 
 Other RAG entry points:
-- `writ-pretool-rag.sh` (PreToolUse Write/Edit): file-path-derived query. Source: `file-write-pre`.
+- `writ-pre-write-dispatch.sh` (PreToolUse Write/Edit): consolidated `POST /pre-write-check` returns `{decision, reason, rag_rules, rag_meta}` and embeds the file-path-derived RAG query the legacy `writ-pretool-rag.sh` used to fire. Source: `file-write-pre`.
 - `writ-posttool-rag.sh` (PostToolUse Write/Edit): code-derived query. Source: `file-write-post`.
 - `writ-read-rag.sh` (PreToolUse Read): only review/debug modes. Source: `file-read`.
-- `writ-pre-write-dispatch.sh` (PreToolUse Write/Edit): consolidated `POST /pre-write-check` returns `{decision, reason, rag_rules, rag_meta}`.
 
 ### Token budget enforcement
 - Session budget: `cache.remaining_budget` decremented on each `--cost`; `should-skip` returns true when ≤ 0.
@@ -336,7 +329,38 @@ pretool_queried_files: []
 token_snapshots: []
 ```
 
-## Files Read
+## 10. `bin/run-analysis.sh` — cross-language static analysis (added 2026-05-10)
+
+The analyzer router grew from ~387 lines to ~1,053 lines during the Phase 1-5 public-rulebook expansion. It now contains 7 per-language entry points and 6 cross-cutting public-rulebook analyzers. The per-language analyzers are called first; the cross-cutting analyzers run after each on the same file. All findings flow through the same `[ENF-POST-007]` channel that `pre-validate-file.sh` consumes.
+
+### Per-language analyzers (`bin/run-analysis.sh:41-310`)
+
+| Function | Lang | Mechanism |
+|---|---|---|
+| `analyze_php` | PHP | PHPStan level 8 + PHPCS sniffs (vendor-resolved via `find_tool`) |
+| `analyze_xml` | XML | `xmllint` schema + DTD validation |
+| `analyze_js_ts` | JavaScript/TypeScript | ESLint + tsc-strict via `find_tool` |
+| `analyze_python` | Python | `ruff check` (vendor-resolved) |
+| `analyze_rust` | Rust | `cargo check --quiet` (vendor-resolved) |
+| `analyze_go` | Go | `go vet` + `staticcheck` |
+| `analyze_graphql` | GraphQL | schema validation |
+
+### Public-rulebook analyzers (`bin/run-analysis.sh:352-998`)
+
+Each is a regex pass implemented inline as `python3 - <<'PYEOF' "$file" "$lang"`. Each skips `scripts/seed_*.py` (the seed scripts embed example bad-code as documentation in rule `violation` fields).
+
+| Function | Phase | Mandatory rules backed |
+|---|---|---|
+| `analyze_security_injection` | 1A | SEC-INJ-SQL-001, XSS-001, CMD-001, SSRF-001, DESER-001, CSRF-001 (+ advisory SEC-INJ-PATH-001, LDAP-001, SSTI-001, HEADER-001, LOG-001, XSS-002, XSS-003, CMD-002, REDIR-001) |
+| `analyze_security_auth_authz` | 1B | SEC-AUTH-HASH-001, TOKEN-001; SEC-AUTHZ-ENFORCE-001, IDOR-001, DEFAULT-001, MASS-001; SEC-VAL-SERVER-001, FILE-001 |
+| `analyze_security_crypto_headers` | 1C | SEC-CRYPTO-KEY-001, RAND-001 (+ advisory ALGO-001, CERT-001) |
+| `analyze_security_data_protection` | 1D | SEC-DATA-PII-001 |
+| `analyze_performance_n_plus_one` | 3B | PERF-QUERY-001 (warning, not error — heuristic) |
+| `analyze_scaling_stateless` | 4 | SCALE-STATELESS-001 (warning, not error — heuristic) |
+
+Each analyzer emits JSON-per-line via `emit(line_no, rule, tool, message, severity)`, where `severity ∈ {error, warning}`. `pre-validate-file.sh` denies the write only on `severity = error`; warnings surface as advisories.
+
+## Files Read (original 2026-05 extraction pass)
 
 | Path | Lines |
 |---|---|
@@ -346,8 +370,6 @@ token_snapshots: []
 | `.claude/commands/writ-approve.md` | 31 |
 | `.claude/settings.local.json` | 100 |
 | `.claude/hooks/auto-approve-gate.sh` | 213 |
-| `.claude/hooks/check-gate-approval.sh` | 68 |
-| `.claude/hooks/enforce-final-gate.sh` | 83 |
 | `.claude/hooks/enforce-violations.sh` | 64 |
 | `.claude/hooks/friction-logger.sh` | 235 |
 | `.claude/hooks/inject-tier-workflow.sh` | 87 |
@@ -367,7 +389,6 @@ token_snapshots: []
 | `.claude/hooks/writ-posttool-rag.sh` | 330 |
 | `.claude/hooks/writ-precompact.sh` | 31 |
 | `.claude/hooks/writ-pressure-audit.sh` | 55 |
-| `.claude/hooks/writ-pretool-rag.sh` | 343 |
 | `.claude/hooks/writ-pre-write-dispatch.sh` | 164 |
 | `.claude/hooks/writ-quality-judge.sh` | 100 |
 | `.claude/hooks/writ-rag-inject.sh` | 994 |
@@ -379,18 +400,17 @@ token_snapshots: []
 | `.claude/hooks/writ-verify-before-claim.sh` | 72 |
 | `.claude/hooks/writ-worktree-safety.sh` | 67 |
 | `bin/check-gates.sh` | 60 |
-| `bin/run-analysis.sh` | 387 (skimmed first 120) |
+| `bin/run-analysis.sh` | 1,053 (was 387 at original extraction; 6 new analyzers added) |
 | `bin/scan-deps.sh` | 362 (not detail-read) |
 | `bin/validate-handoff.sh` | 87 |
 | `bin/verify-files.sh` | 76 |
-| `bin/verify-matrix.sh` | 268 (not detail-read) |
 | `bin/lib/parse-hook-stdin.py` | 85 |
-| `bin/lib/writ-session.py` | 2090 |
+| `bin/lib/writ-session.py` | 2,090 |
 | `bin/lib/common.sh` | 465 |
 | `bin/lib/checklists.json` | 65 |
 | `bin/lib/gate-categories.json` | 488 |
 
-Total: 49 files read; ~9,400 lines covered.
+`bin/verify-matrix.sh` (originally 268 lines) was deleted 2026-05-10 along with the Phase A-D / `ENF-GATE-FINAL` workflow it served. Total per the original extraction: 49 files read; ~9,400 lines covered. The current set is 46 files / ~9,700 lines (analyzer growth offsets the 3 deleted files).
 
 ## Cross-References Noted
 

@@ -1,5 +1,7 @@
 # 02 — Graph and Storage Layer (full extraction)
 
+> **Refresh note (2026-05-10).** The schema-and-driver descriptions here are still accurate. Two original "gap" notes have been resolved since this doc was written and are flagged inline: the missing `Abstraction.abstraction_id` uniqueness constraint (§7.8 / §11.3) and the `mandatory` field being silently stripped from the Markdown export round-trip (§11.4 in the original tone is preserved but `writ/export.py` now writes `**Mandatory**` and `**Mechanical_Enforcement_Path**` metadata lines, and `writ/graph/ingest.py` parses them back; the `GRAPH_ONLY_FIELDS` exclusion no longer includes `mandatory`).
+
 Source paths read in full:
 - `writ/graph/schema.py` (523 lines)
 - `writ/graph/db.py` (446 lines)
@@ -483,9 +485,9 @@ CREATE INDEX {label_lower}_domain IF NOT EXISTS
     FOR (n:{label}) ON (n.domain)
 ```
 
-Total after a complete apply: 23 constraint/index objects across 11 node types.
+Total after a complete apply: 25 constraint/index objects across 12 node types.
 
-**Gap**: NO uniqueness constraint on `Abstraction.abstraction_id` despite `create_abstraction` using `MERGE` on it.
+**Resolved**: the `Abstraction.abstraction_id` uniqueness constraint and the `Abstraction.domain` index were added to `apply_constraints()` during the 2026-05-10 inert-features cleanup. Originally absent despite `create_abstraction` using `MERGE` on the id; now present.
 
 `list_constraints()` (db.py:342-346): `SHOW CONSTRAINTS`.
 `list_indexes()` (db.py:348-352): `SHOW INDEXES`.
@@ -635,8 +637,8 @@ Lives in `writ/retrieval/traversal.py` (class `AdjacencyCache`). Touch-points:
 ### 11.2 Allowed edge types with no dedicated write method
 17 in allowlist; only `ABSTRACTS` has a dedicated method. All others go through generic `create_edge`.
 
-### 11.3 Constraint gap
-`apply_constraints()` does NOT create an `Abstraction.abstraction_id` uniqueness constraint despite `create_abstraction` MERGEing on it.
+### 11.3 Constraint gap (resolved)
+Originally `apply_constraints()` did not create an `Abstraction.abstraction_id` uniqueness constraint despite `create_abstraction` MERGEing on it. Fixed 2026-05-10: the constraint and a `Abstraction.domain` index are now created.
 
 ### 11.4 ENF-prefix mandatory inconsistency
 - `_parse_rule_block` legacy path (149): defaults `mandatory=False`.
@@ -679,6 +681,4 @@ External callers:
 - `writ.authoring`, `writ.export`, `writ.compression.abstractions` — instantiate or accept `Neo4jConnection`.
 - `writ.server` — module-level `_db: Neo4jConnection | None`.
 
-External docs referenced:
-- `docs/phase-0-schema-proposal.md` — schema.py:259-263, 327, 360-363.
-- `writ-evolution.md §2.2` — ingest.py:145-148.
+External docs referenced (note: `docs/phase-0-schema-proposal.md` was deleted in the 2026-05-10 cleanup; the schema decisions it captured are now in commit history and reflected in current code comments).

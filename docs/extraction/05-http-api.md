@@ -1,5 +1,7 @@
 # 05 — HTTP API (full extraction)
 
+> **Refresh note (2026-05-10).** Endpoint surface is unchanged. One known drift: the `/pre-write-check` "final-gate" branch (§ "POST /pre-write-check" step 2 below) still denies writes whose `file_path` contains the substring "COMPLETE" with the message `[ENF-GATE-FINAL] Cannot mark module complete without ENF-GATE-FINAL verification` (`writ/server.py:1075-1083`). The `ENF-GATE-FINAL` rule itself was deleted in the 2026-05-10 cleanup along with the Phase A-D workflow. The deny path is therefore citing a rule that no longer exists in the corpus — a leftover the cleanup did not clear from the server code.
+
 Source: `writ/server.py` (FastAPI). All endpoints `async`. Started via `writ serve` (uvicorn) — defaults `host=localhost`, `port=8765`.
 
 ## App construction (server.py:109-113)

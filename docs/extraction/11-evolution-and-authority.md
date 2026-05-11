@@ -1,5 +1,7 @@
 # 11 — Evolution and Authority (full extraction)
 
+> **Refresh note (2026-05-10).** The original draft pointed at `docs/mandatory-rule-audit.md` (deleted in the 2026-05-10 cleanup) for the historical mandatory-rule audit context. That audit's outcome is reflected in the current corpus state (11 pre-expansion mandatory rules + 19 new mandatory rules from Phase 1-5 = 30 total). The authority/promotion mechanics described here are unchanged. `compute_confidence_weight` is now wired into the query path (see doc 03's resolution note); the description of frequency-driven ratio substitution below is accurate.
+
 ## A. Authority Model
 
 ### The three values
@@ -333,6 +335,6 @@ AI promotion gives `peer-reviewed = 0.6`, but `production-validated = 0.8` and `
 - **Hard-coded `threshold=50` and `ratio_min=0.75` in `compute_confidence_weight`** (`ranking.py:119-120`) duplicate the `DEFAULT_GRADUATION_*` constants in `frequency.py:14-15`. `writ.toml` overrides do not reach this call site.
 - **`_check_conflicts` is a near-no-op for new candidates** because `candidate_id not in pipeline._metadata` short-circuits.
 - **`writ propose` CLI does not forward `query_that_triggered`** — always passes None.
-- **No Wilson interval / no statistical confidence** exists in the codebase — graduation is a plain ratio threshold. **Discrepancy with prior handbook framing.**
+- **No Wilson interval / no statistical confidence** exists in the codebase — graduation is a plain ratio threshold. HANDBOOK.md was updated 2026-05-10 to drop the earlier Wilson framing.
 - **Methodology node types** inherit `authority`, `confidence`, `times_seen_*`, `last_seen` from `_MethodologyNodeBase` — evolution machinery is structurally compatible, but `propose_rule` only handles `Rule` today.
-- **`mechanical_enforcement_path` requirement** ties to "plan Section 2.1" and `docs/mandatory-rule-audit.md`.
+- **`mechanical_enforcement_path` requirement** ties to plan Section 2.1. The originally referenced `docs/mandatory-rule-audit.md` was deleted in the 2026-05-10 cleanup; the gate check (`writ/gate.py::_check_mechanical_enforcement`) is unchanged and remains the runtime enforcement.

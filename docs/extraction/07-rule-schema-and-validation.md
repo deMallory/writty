@@ -1,5 +1,7 @@
 # 07 — Rule Schema and Validation
 
+> **Refresh note (2026-05-10).** Schema and gate descriptions remain accurate. Examples below were originally drawn from rule IDs that have since been renamed during the Phase 1-5 public-rulebook expansion (e.g., `DB-SQL-001` → `SEC-INJ-SQL-001`, `SEC-UNI-001` → `SEC-AUTHZ-ENFORCE-001`, `ENF-GATE-FINAL` was deleted along with the Phase A-D workflow). The patterns and validators are unchanged. See `out-of-the-box-rules.md` for the current rule-id namespace.
+
 This document focuses on the rule data model, every validator, and the validation gate stack. Schema and gate facts come from docs 02 (graph) and 11 (evolution-and-authority). This doc consolidates them through the lens of "what does Writ accept as a valid rule?"
 
 ## 1. Where rules are defined
@@ -17,7 +19,7 @@ VALID_AUTHORITIES = ("human", "ai-provisional", "ai-promoted")
 ENFORCEMENT_CONVENTIONS = ("human-review", "judgment-gate", "training-feedback", "audit-log", "advisory-only")  # documented but NOT enforced in code
 ```
 
-ID pattern matches: `ARCH-ORG-001`, `FW-M2-RT-003`, `ENF-GATE-FINAL`, `DB-SQL-001`, `SEC-UNI-001`.
+ID pattern matches: `ARCH-LAYER-001`, `FW-M2-RT-003`, `ENF-GATE-007`, `SEC-INJ-SQL-001`, `SEC-AUTHZ-ENFORCE-001`. (The pattern still accepts the legacy IDs `ARCH-ORG-001`, `DB-SQL-001`, `SEC-UNI-001`, `ENF-GATE-FINAL` — those rule_ids were renamed or deleted during the Phase 1-5 expansion, not the pattern itself.)
 
 ## 2. `Rule` Pydantic model — required fields
 
@@ -87,7 +89,7 @@ class EvidenceType(str, Enum):
 `_MethodologyNodeBase` (alias `MethodologyNode`, `schema.py:275-334`) is the base for 10 methodology node types. Same authority/confidence/frequency fields as `Rule`. Differs in:
 - `evidence` defaults to `"peer-reviewed"` (vs `"doc:original-bible"` for Rule).
 - `severity` is `Severity | None` for non-retrievable types (Phase, Rationalization, etc.).
-- `tags: list[str]` field with `_normalize_tags` validator that lowercases + sorts (per docs/phase-0-schema-proposal.md decision 6).
+- `tags: list[str]` field with `_normalize_tags` validator that lowercases + sorts (prevents BM25-index inconsistency between e.g. "TDD" and "tdd"; design decision signed off 2026-04-21).
 
 Per-type prefixes (validated by `_validate_node_id` factory at `schema.py:355-380`):
 | Type | Prefix |
@@ -217,7 +219,7 @@ Higher tiers (`production-validated`, `battle-tested`) are reserved — only rea
 - At or above 50 observations and ratio passing → empirical ratio replaces enum weight at read time.
 - At or above 50 observations and ratio failing → `flagged=True` (surfaces in integrity report; no automatic state change).
 
-**No Wilson confidence interval** is implemented — the handbook's claim is incorrect. See doc 11.
+**No Wilson confidence interval** is implemented — graduation is a plain ratio threshold. HANDBOOK.md has been corrected to drop the earlier Wilson framing. See doc 11.
 
 ## 11. Validation surfaces in the codebase
 

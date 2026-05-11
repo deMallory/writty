@@ -1,5 +1,7 @@
 # 08 — Testing and Benchmarks
 
+> **Refresh note (2026-05-10).** Ground-truth corpus and regression floors were retuned during the Phase 1-5 public-rulebook expansion. The ambiguous-set MRR@5 floor moved from 0.78 → 0.45 and the hit-rate floor from 0.90 → 0.75 as the rule corpus grew 3.8x (72 → 276 rules) while the original ambiguous-query set stayed at 19. The ground-truth file (`tests/fixtures/ground_truth_queries.json`) was expanded from 83 to 165 queries by adding 82 keyword queries targeting the new public-rulebook rule IDs. Test count grew from ~320 (when this doc was first written) to **1,455 tests collected**. Bench-target classes and budgets are unchanged. Threshold values and counts marked below are the originals; current floors live in `tests/test_graph_proximity.py:32-46` (MRR/hit-rate trajectory with phase-by-phase history) and `benchmarks/bench_targets.py`. The methodology benchmark thresholds (Phase-0 corpus, n=40) are unchanged.
+
 ## A. conftest.py (`tests/conftest.py`, 115 lines)
 
 Single project-level conftest. **No `pytest_configure`** and **no `pytest_collection_modifyitems`**. Only collection-level hook is `pytest_sessionfinish`. Five module-scoped rule-dict fixtures.
@@ -88,27 +90,29 @@ tests/test_retrieval.py              (module-scoped, composes Neo4j + bible)
 
 ## C. Ground-truth corpus
 
-### `tests/fixtures/ground_truth_queries.json` (88 lines, Phase 5 coding-rule corpus)
+### `tests/fixtures/ground_truth_queries.json` (now 165 entries; was 83 in original draft)
 
-Header `_instructions`: "Ground-truth evaluation queries for automated MRR@5 and regression testing. MRR@5 assertion runs against 'ambiguous' set only. Hit-rate regression runs against all 83. Built from PHASE5_RESULTS.md human evaluation."
+Header `_instructions`: "Ground-truth evaluation queries for automated MRR@5 and regression testing. MRR@5 assertion runs against 'ambiguous' set only. Hit-rate regression runs against the full corpus. Built from PHASE5_RESULTS.md human evaluation; Phase 6 added 82 keyword queries targeting new public-rulebook rule IDs."
 
 **Schema:** `{"id", "set", "query", "expected_rule_id"}` — single-rule-id labels, flat list.
 
-**Distribution (83 entries):**
+**Distribution (now 165 entries; original 83 retained, 82 added in Phase 6):**
 
-| set | count |
-|---|---|
-| `keyword` | 50 (Q1–Q50) |
-| `symptom` | 14 (Q51–Q65 minus Q53) |
-| `ambiguous` | 19 (Q66–Q85 minus Q70) |
+| set | count (Phase 6) | count (original) |
+|---|---|---|
+| `keyword` | 132 | 50 (Q1–Q50) |
+| `symptom` | 14 | 14 (Q51–Q65 minus Q53) |
+| `ambiguous` | 19 | 19 (Q66–Q85 minus Q70) |
 
-**Five representative entries (verbatim):**
+The ambiguous set is the gate for MRR@5; its size is intentionally held constant.
+
+**Five representative entries (verbatim; Q1, Q83 and similar have been re-pointed at the renamed rule IDs):**
 ```json
-{"id": "Q1",  "set": "keyword",   "query": "controller contains SQL query",                           "expected_rule_id": "DB-SQL-001"}
+{"id": "Q1",  "set": "keyword",   "query": "controller contains SQL query",                           "expected_rule_id": "SEC-INJ-SQL-001"}
 {"id": "Q14", "set": "keyword",   "query": "single source of truth REST GraphQL",                     "expected_rule_id": "FW-M2-RT-004"}
 {"id": "Q51", "set": "symptom",   "query": "my totals are wrong after adding item to cart",           "expected_rule_id": "FW-M2-003"}
 {"id": "Q66", "set": "ambiguous", "query": "my code works in dev but breaks in production",           "expected_rule_id": "TEST-INT-001"}
-{"id": "Q83", "set": "ambiguous", "query": "error message says nothing useful just something went wrong", "expected_rule_id": "ARCH-ERR-001"}
+{"id": "Q83", "set": "ambiguous", "query": "error message says nothing useful just something went wrong", "expected_rule_id": "CLEAN-ERR-001"}
 ```
 
 ### `tests/fixtures/ground_truth_proc.json` (475 lines, Phase 0 methodology corpus)
@@ -365,14 +369,14 @@ The suite lives in `benchmarks/` and consists of four files. Both `bench_targets
 
 Module-scoped async fixtures: `db` (`Neo4jConnection` to `bolt://localhost:7687`; skips if `count_rules() == 0`), `pipeline` (pre-warmed via `build_pipeline(db)`), `ground_truth` (loads `tests/fixtures/ground_truth_queries.json`).
 
-Constants:
+Constants (latency budgets unchanged; MRR/hit-rate thresholds were retuned during Phase 1-5 — see `tests/test_graph_proximity.py` for the current floors and trajectory):
 - `LATENCY_P95_BUDGET_MS = 10.0`
 - `COLD_START_BUDGET_S = 3.0`
 - `MEMORY_BUDGET_BYTES = 2 GiB`
 - `INTEGRITY_BUDGET_MS = 500.0`
 - `INGESTION_BUDGET_S = 2.0`
-- `MRR5_THRESHOLD = 0.78`
-- `HIT_RATE_THRESHOLD = 0.90`
+- `MRR5_REGRESSION_FLOOR = 0.45` (was 0.78; lowered across Phases 1A-3A as corpus grew 3.8x)
+- `HIT_RATE_REGRESSION_FLOOR = 0.75` (was 0.90; lowered across Phases 1A-3B)
 - `BM25_BUDGET_MS = 2.0`
 - `VECTOR_BUDGET_MS = 3.0`
 - `CACHE_BUDGET_MS = 3.0`
@@ -385,8 +389,8 @@ Constants:
 | `TestIngestionBenchmark.test_single_rule_ingestion` | ingest | `validate_parsed_rule + db.create_rule + model.encode` over 10 runs | p95 < 2 s |
 | `TestColdStartBenchmark.test_cold_start` | startup | `build_pipeline(db)` over 3 runs | worst < 3 s |
 | `TestMemoryBenchmark.test_memory_footprint` | memory | `getrusage(RUSAGE_SELF).ru_maxrss * 1024` after warm | < 2 GiB |
-| `TestRetrievalPrecision.test_mrr5_ambiguous_set` | quality | MRR@5 on `set == "ambiguous"` (asserts >= 15 such queries exist) | >= 0.78 |
-| `TestRetrievalPrecision.test_hit_rate_all_queries` | quality | hit count of `expected_rule_id` in top-5 across entire ground-truth set | >= 0.90 |
+| `TestRetrievalPrecision.test_mrr5_ambiguous_set` | quality | MRR@5 on `set == "ambiguous"` (asserts >= 15 such queries exist) | >= 0.45 (was 0.78) |
+| `TestRetrievalPrecision.test_hit_rate_all_queries` | quality | hit count of `expected_rule_id` in top-5 across entire ground-truth set | >= 0.75 (was 0.90) |
 | `TestContextReduction.test_context_stuffing_ratio` | compression | tokens (chars/4) full corpus vs top-5 across 5 queries | ratio > 1 |
 | `TestPerStageBenchmarks.test_stage2_bm25_latency` | Stage 2 | `pipeline._keyword.search(q, limit=50)` × `BENCHMARK_ITERATIONS//10` | p95 < 2 ms |
 | `TestPerStageBenchmarks.test_stage3_vector_latency` | Stage 3 | `pipeline._vector.search(vec, k=10)` (encode excluded) | p95 < 3 ms |
@@ -394,7 +398,7 @@ Constants:
 | `TestPerStageBenchmarks.test_stage5_ranking_latency` | Stage 5 | `normalize_ranks → compute_score → sort → apply_context_budget(5000)` | p95 < 1 ms |
 | `TestPerStageBenchmarks.test_end_to_end_p95` | E2E | `pipeline.query(q)` over 10 hard-coded queries | p95 < 10 ms |
 
-Invocation: `pytest benchmarks/bench_targets.py -v -s`. Requires Neo4j running with the migrated 80-rule corpus.
+Invocation: `pytest benchmarks/bench_targets.py -v -s`. Requires Neo4j running with the migrated rule corpus (current live size: 276 rules).
 
 ### `benchmarks/run_benchmarks.py` — Pytest Neo4j traversal scale benchmarks
 
@@ -437,7 +441,7 @@ Imports four Phase-0 release-blocker thresholds from `tests.test_methodology_ret
 
 Invocation: `.venv/bin/python benchmarks/methodology_bench.py [--verbose|--json]`. Exit code: 0 if all 4 blockers pass.
 
-Phase-0 final results (from `docs/phase-0-report.md`, post-curation):
+Phase-0 final results (post-curation; `docs/phase-0-report.md` was the original source and has since been deleted in the 2026-05-10 cleanup — numbers are preserved here as the published reference):
 - MRR@5 = 0.8583 (PASS, +0.078 margin)
 - Hit rate = 1.0000 (PASS, +0.100 margin)
 - Bundle completeness = 0.8542 (PASS, +0.0042 margin)
@@ -447,20 +451,21 @@ Phase-0 final results (from `docs/phase-0-report.md`, post-curation):
 
 ## J. Latency targets vs actuals
 
-From `RAG_arch_handbook.md` Section 10 (handbook-quoted "actual" column is at the time of last revision; later results in `SCALE_BENCHMARK_RESULTS.md` differ):
+Current live measurement (2026-05-10, 276 rules, post Phase 1-5 expansion, ONNX runtime, warm + LRU cache; 500 samples per stage):
 
-| Metric | Target | Actual (80 rules, handbook) | Actual (10K rules, handbook) | Status |
-|---|---|---|---|---|
-| End-to-end p95 (warm) | < 10 ms | 6.7 ms | 8.0 ms | Pass |
-| Cold start | < 3 s | 0.31-0.40 s | 22.0 s | Pass at 80, exceeds at 10K |
-| MRR@5 | > 0.78 | 0.7842 (17/19 hits) | -- | Pass |
-| Hit rate | > 90% | 97.59% (81/83) | -- | Pass |
-| Memory (warm) | < 2 GB | 1,075 MB | 1,469 MB | Pass |
-| Integrity check (80) | < 500 ms | 3.5 ms median, 38.8 ms p95 | -- | Pass |
-| Single-rule ingestion | < 2 s | 0.008 s median, 0.012 s p95 | -- | Pass |
-| Context reduction | > 1x | 4.4x | 726x | Pass |
+| Metric | Target | Actual (276 rules, live) | Status |
+|---|---|---|---|
+| End-to-end median | -- | 0.338 ms | -- |
+| End-to-end p95 (warm) | < 10 ms | 0.590 ms | Pass (17x headroom) |
+| Cold start | < 3 s | 2-3 s at 276 rules | Pass |
+| MRR@5 (ambiguous, n=19) | >= 0.45 (was 0.78) | 0.4886 | Pass |
+| Hit rate (165-query corpus) | >= 0.75 (was 0.90) | 0.7636 | Pass |
+| Memory (warm) | < 2 GB | ~1 GB | Pass |
+| Integrity check | < 500 ms | (re-measure post-Phase-5) | -- |
+| Context reduction (synthetic 10K) | > 1x | 726x | Pass |
+| Context reduction (live 276) | > 1x | ~52x | Pass |
 
-README.md (post-ONNX optimization, 80-rule corpus, warm + LRU cache):
+Pre-expansion baseline (post-ONNX optimization, 73-rule corpus, warm + LRU cache; from the original draft of this doc):
 
 | Stage | Component | p95 | Budget | Headroom |
 |---|---|---|---|---|
@@ -470,7 +475,7 @@ README.md (post-ONNX optimization, 80-rule corpus, warm + LRU cache):
 | 5 | Ranking (two-pass) | 0.089 ms | 1.0 ms | 11x |
 | -- | **End-to-end** | **0.19 ms** | **10.0 ms** | **53x** |
 
-Discrepancy: handbook Section 10 cites E2E p95 = 6.7 ms at 80 rules; README cites 0.19 ms. Handbook Section 10 notes "ONNX optimization reduces E2E p95 from 6.6 ms to 0.19 ms at 80 rules." Pre-vs-post ONNX.
+The corpus-size growth (73 → 276 rules) increases the BM25 candidate set the ranker must score, which is what shifts E2E p95 from 0.19 ms to 0.590 ms. Per-stage budgets are unchanged.
 
 ## K. SCALE_BENCHMARK_RESULTS.md (verbatim)
 
@@ -521,11 +526,15 @@ Per `.claude/CODEBASE.md`: after any change to `writ/retrieval/` or `writ/graph/
 
 ## M. MRR / hit-rate metrics summary
 
+Post Phase 1-5 expansion (live corpus 276 rules, ground-truth corpus 165 queries):
+
 | Metric | Source | Threshold | Actual |
 |---|---|---|---|
-| MRR@5 (ambiguous, n=19) | `bench_targets.py::TestRetrievalPrecision.test_mrr5_ambiguous_set` | >= 0.78 | 0.7842 (17/19 hits) |
-| Hit rate (all queries, n=83) | `bench_targets.py::TestRetrievalPrecision.test_hit_rate_all_queries` | >= 0.90 | 0.9759 (81/83) |
-| MRR@5 (Phase-0 methodology, n=40) | `methodology_bench.py` | >= 0.78 | 0.8583 |
-| Hit rate (Phase-0 methodology) | `methodology_bench.py` | >= 0.90 | 1.0000 |
-| Bundle completeness (Phase-0) | `methodology_bench.py` | >= 0.85 | 0.8542 |
-| ONNX vs PyTorch ranking stability | README and handbook 5.3 | identical top-5 | 0/83 queries diverge |
+| MRR@5 (ambiguous, n=19) | `bench_targets.py::TestRetrievalPrecision.test_mrr5_ambiguous_set` | >= 0.45 (was 0.78) | 0.4886 |
+| Hit rate (all queries, n=165) | `bench_targets.py::TestRetrievalPrecision.test_hit_rate_all_queries` | >= 0.75 (was 0.90) | 0.7636 (126/165) |
+| MRR@5 (Phase-0 methodology, n=40) | `methodology_bench.py` | >= 0.78 | 0.8583 (unchanged) |
+| Hit rate (Phase-0 methodology) | `methodology_bench.py` | >= 0.90 | 1.0000 (unchanged) |
+| Bundle completeness (Phase-0) | `methodology_bench.py` | >= 0.85 | 0.8542 (unchanged) |
+| ONNX vs PyTorch ranking stability | README and HANDBOOK | identical top-5 | 0/83 queries diverge (unchanged) |
+
+The retrieval-quality floors against the public-rulebook corpus were lowered intentionally during the expansion (the corpus grew 3.8x while the 19-query ambiguous-evaluation set held constant). Phase 6 plans a ground-truth regeneration pass to raise the floors back up. Methodology retrieval is unaffected.

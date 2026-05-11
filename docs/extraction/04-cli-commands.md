@@ -1,6 +1,8 @@
 # 04 — CLI Commands (full extraction)
 
-Source: `writ/cli.py` (1063 lines). Framework: **Typer** (`typer.Typer`). Entry point: `writ.cli:app` (declared in `pyproject.toml [project.scripts]` as `writ = "writ.cli:app"`).
+> **Refresh note (2026-05-10).** Command surface is unchanged. Line-number citations here come from the original extraction pass and may drift by a handful as the file accumulates fixes; the dispatch shape is stable.
+
+Source: `writ/cli.py` (~1,063 lines). Framework: **Typer** (`typer.Typer`). Entry point: `writ.cli:app` (declared in `pyproject.toml [project.scripts]` as `writ = "writ.cli:app"`).
 
 ## App construction (cli.py:17-20)
 

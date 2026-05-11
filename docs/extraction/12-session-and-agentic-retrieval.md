@@ -1,6 +1,8 @@
 # 12 — Session and Agentic Retrieval
 
-Source: `bin/lib/writ-session.py` (2090 lines, stdlib-only). Heart of agentic retrieval — owns per-session state for hooks, budget tracking, gate enforcement, sub-agent isolation, compaction recovery, and friction telemetry.
+> **Refresh note (2026-05-10).** Session-cache schema and command surface are unchanged. The cache-key table below is still accurate. Line-number citations may drift by a handful since the original extraction pass.
+
+Source: `bin/lib/writ-session.py` (~2,090 lines, stdlib-only). Heart of agentic retrieval — owns per-session state for hooks, budget tracking, gate enforcement, sub-agent isolation, compaction recovery, and friction telemetry.
 
 A second client-side helper exists in `writ/retrieval/session.py` (96 lines) — `SessionTracker` — used for in-process multi-query simulation by callers not going through hooks.
 

@@ -1,5 +1,7 @@
 # 03 — Retrieval Pipeline (full extraction)
 
+> **Refresh note (2026-05-10).** Three "inert" notes in the original draft have been resolved by the 2026-05-10 inert-features cleanup: `compute_confidence_weight` is now invoked from `compute_score`; `apply_context_budget` now receives an `abstractions` argument from `build_pipeline`; and the `clusters.py:193` comment about Euclidean vs cosine was corrected. Resolved sites are flagged inline below. Latency targets remain accurate against the larger corpus (live E2E p95 at 276 rules: 0.590 ms, well inside the 10 ms budget).
+
 Source root: `~/.claude/skills/writ/writ/retrieval/`
 
 ## 1. Module layout
@@ -442,7 +444,7 @@ def filter_proximity_seeds(first_pass_scores, top_n=3):
 ```
 `FIRST_PASS_TOP_N = 3` (`pipeline.py:56`). No backfill with ai-provisional.
 
-### Confidence graduation (`ranking.py:115-133`) — not used by pipeline
+### Confidence graduation (`ranking.py:115-133`) — wired since 2026-05-10
 
 ```
 def compute_confidence_weight(static_confidence, times_positive, times_negative,
@@ -453,7 +455,7 @@ def compute_confidence_weight(static_confidence, times_positive, times_negative,
         return grad.ratio
     return CONFIDENCE_WEIGHTS.get(static_confidence, 0.8)
 ```
-Not invoked from `RetrievalPipeline.query()`.
+Now invoked from `compute_score` (both pass 1 and pass 2 score calls in `RetrievalPipeline.query()` pass `times_seen_positive` / `times_seen_negative` from the metadata, and `compute_score` delegates to `compute_confidence_weight`). The static `CONFIDENCE_WEIGHTS` table still applies to rules below the n=50 threshold; once graduated, the empirical ratio replaces it at query time.
 
 ### Sticky tiebreak (`pipeline.py:103-171`)
 
@@ -483,7 +485,7 @@ FULL_LIMIT = 10
 
 **No token estimation** — `budget_tokens` is just an integer compared to thresholds. The pipeline does not measure rendered length.
 
-`_summary_with_abstractions` (`ranking.py:300-340`): builds `rid_to_abs` map; for each top rule, replaces with parent abstraction (deduped by `abstraction_id`); ungrouped rules fall back to statement+trigger. **Pipeline does not pass `abstractions=`** (see `pipeline.py:401: apply_context_budget(scored_rules, budget_tokens)`), so this code path is currently inert.
+`_summary_with_abstractions` (`ranking.py:300-340`): builds `rid_to_abs` map; for each top rule, replaces with parent abstraction (deduped by `abstraction_id`); ungrouped rules fall back to statement+trigger. **Now wired**: `build_pipeline` loads abstractions via `db.get_all_abstractions()` and the pipeline passes them through to `apply_context_budget` in `query()`. The summary-mode abstraction path is live when `budget_tokens < 2000`.
 
 **`exclude_rule_ids` / `loaded_rule_ids` handling**: merged into one set (`pipeline.py:224`), applied as candidate-level filter on BM25 + vector results (`pipeline.py:252`, `272`). Treated identically.
 
@@ -593,17 +595,18 @@ FULL_LIMIT = 10                    (L48)
 SEVERITY_WEIGHTS: critical=1.0, high=0.75, medium=0.5, low=0.25
 CONFIDENCE_WEIGHTS: battle-tested=1.0, production-validated=0.8,
                     peer-reviewed=0.6, speculative=0.3
-compute_confidence_weight defaults: threshold=50, ratio_min=0.75 (NOT used in query path)
+compute_confidence_weight defaults: threshold=50, ratio_min=0.75
+                    (wired into compute_score since 2026-05-10)
 ```
 
 ## 14. Notable non-implementations / caveats
 
 - **No standard RRF `k` constant.** `normalize_ranks` is `1/(rank+1)`, with weighted linear fusion in `compute_score`. Docstrings say "RRF" but the formula is reciprocal-rank + weighted sum.
 - **No recency weighting** anywhere.
-- **`compute_confidence_weight` (graduation) not wired into `query()`.** Static enum table only.
+- ~~`compute_confidence_weight` (graduation) not wired into `query()`~~ — **resolved 2026-05-10**: now invoked from `compute_score`. Static enum table still applies below the n=50 threshold.
 - **Authority preference disabled by default** (threshold = 0.0).
 - **`DEFAULT_W_BUNDLE_COHESION = 0.0`** — bundle cohesion computed but contributes zero unless caller passes non-default `RankingWeights`.
-- **`abstractions` parameter unused** — `apply_context_budget` called without third argument (`pipeline.py:401`); Phase 8 abstraction-summary path inert.
+- ~~`abstractions` parameter unused~~ — **resolved 2026-05-10**: `build_pipeline` loads abstractions and `query()` forwards them to `apply_context_budget`. Summary-mode abstraction substitution is live.
 - **No token counting.** `budget_tokens` is a raw integer.
 
 ## Files Read

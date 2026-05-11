@@ -1,5 +1,7 @@
 # 10 — Compression and Abstractions
 
+> **Refresh note (2026-05-10).** Two original notes have been resolved by the 2026-05-10 inert-features cleanup: the `clusters.py:193` Euclidean-vs-cosine comment was rewritten to reflect the L2-normalized embedding invariant, and `apply_context_budget(..., abstractions=...)` is now wired through `build_pipeline` and `RetrievalPipeline.query()`. Sections below carry the resolution inline.
+
 ## Public API: `writ.compression`
 
 `writ/compression/__init__.py` is **empty** (0 lines). Public surface is reached by importing modules directly. There is no `__all__` re-export.
@@ -88,7 +90,7 @@ For each cluster:
 2. Compute Euclidean distances `np.linalg.norm(member_embeds - centroid, axis=1)`.
 3. Pick `argmin` -> store the cluster member's index in the original `rule_ids` list.
 
-**Comment-vs-code discrepancy (cosmetic, no behavioral impact)**: the inline comment at `clusters.py:193` says "Find member closest to centroid via cosine distance", but the formula on line 194 is the L2 / Euclidean norm. Because `OnnxEmbeddingModel.encode` produces L2-normalized vectors (`embeddings.py:114-121`, mean-pool + L2 normalize), Euclidean distance and cosine distance on unit vectors are monotonically related: `||a − b||² = 2·(1 − a·b) = 2·cosine_distance`. Therefore `argmin(Euclidean) == argmin(cosine_distance)` exactly, and the centroid-nearest selection produces the same rule whichever metric is named. The comment is imprecise but the behavior matches its intent. Fix the comment to say "Euclidean (equivalent to cosine on L2-normalized vectors)" if the discrepancy needs to be eliminated.
+**Comment (resolved)**: the inline comment at `clusters.py:193` originally said "Find member closest to centroid via cosine distance" while the formula was the L2 norm. The comment was rewritten 2026-05-10 to read: "Find member closest to centroid via Euclidean distance. Embeddings are L2-normalized (see embeddings.py:114-121), so for unit vectors argmin(Euclidean) == argmin(cosine distance). The metrics agree on which member is centroid-nearest." Algebraic identity: `||a - b||² = 2·(1 - a·b) = 2·cosine_distance`. Behavior was always correct; the comment now matches.
 
 ### Silhouette evaluation
 
@@ -185,7 +187,7 @@ The actual Cypher strings live in `writ.graph.db.Neo4jConnection`; this module o
 
 ## `summary` mode integration
 
-The retrieval-pipeline `summary` mode uses `_summary_with_abstractions` in `writ/retrieval/ranking.py` (see doc 03). The function swaps low-ranked rules for their parent Abstraction summaries when budget < 2000 tokens. **Pipeline does not currently pass `abstractions=` to `apply_context_budget`** (`pipeline.py:401`), so this code path is currently inert.
+The retrieval-pipeline `summary` mode uses `_summary_with_abstractions` in `writ/retrieval/ranking.py` (see doc 03). The function swaps low-ranked rules for their parent Abstraction summaries when budget < 2000 tokens. **Now wired (2026-05-10)**: `build_pipeline` loads abstractions via `db.get_all_abstractions()`, the `RetrievalPipeline` constructor stores them, and `query()` passes them through to `apply_context_budget(..., abstractions=...)`. The summary-mode substitution is live whenever `budget_tokens < SUMMARY_THRESHOLD`.
 
 ## `writ/shared/budget.json` (verbatim)
 

@@ -1,5 +1,7 @@
 # 09 — Configuration and Deployment
 
+> **Refresh note (2026-05-10).** Two one-shot migration scripts (`scripts/demote_mandatory_rules.py`, `scripts/populate_mechanical_paths.py`) were deleted in the 2026-05-10 cleanup along with the audit doc they consumed. Phase 1-5 added 10 seed scripts under `scripts/seed_phase_*.py` (one per sub-phase) that ingest the public out-of-the-box rulebook into Neo4j. The `writ/export.py` `GRAPH_ONLY_FIELDS` set no longer includes `mandatory`; the export now writes `**Mandatory**` and `**Mechanical_Enforcement_Path**` metadata lines so those fields survive the export → re-ingest round-trip. Configuration sections below are still accurate.
+
 ## A. `writ.toml` — Service Configuration
 
 ### `[source]`
@@ -249,15 +251,15 @@ check: test bench
 
 `.gitignore` highlights: `__pycache__/`, `.venv/`, runtime artifacts (`workflow-friction.log`, `.claude/gates/`, `.friction-snapshot`, `plan.md`, `capabilities.md`).
 
-## F. Scripts (12 files)
+## F. Scripts (current: 11 originals + 10 public-rulebook seed scripts)
 
 ### `scripts/bootstrap.sh` (206 lines)
 End-to-end machine setup. Idempotent. Constants: `NEO4J_WAIT_SECONDS=60`, `DAEMON_WAIT_SECONDS=10`, `MIN_PYTHON_MAJOR=3`, `MIN_PYTHON_MINOR=11`.
 
 Sequence: prereq checks → Python ≥3.11 → docker info → venv → `pip install -e .` → `install-harness-config.sh` → symlink rules+agents → `docker compose up -d neo4j` (poll bolt port up to 60s) → `writ import-markdown` → `writ serve` (poll /health up to 10s) → ready banner.
 
-### `scripts/demote_mandatory_rules.py` (111 lines)
-Phase 1 audit. Flips `mandatory: true → false` on rules listed in `docs/mandatory-rule-audit.md`. Final verification counts remaining `mandatory=true` rules with NULL `mechanical_enforcement_path`; non-empty → exit 1 (Phase 2 blocker).
+### `scripts/demote_mandatory_rules.py` (deleted 2026-05-10)
+Was a one-shot audit that flipped `mandatory: true → false` on rules listed in the (now also deleted) `docs/mandatory-rule-audit.md`. Demotion outcome is reflected in the current graph; the script and its input doc are gone.
 
 ### `scripts/ensure-server.sh` (74 lines)
 Plugin-Init lifecycle hook. Brings up Neo4j and Writ daemon if absent. Non-fatal. Polls `localhost:7687` (10s) and `/health` (5s).
@@ -283,11 +285,14 @@ Copies `templates/commands/*.md` into `~/.claude/commands/`. Always exits 0.
 ### `scripts/migrate.py` (255 lines)
 One-time migration of Markdown rules → Neo4j. Supports both rule corpus and methodology fixtures. Calls `db.apply_constraints()`, then for each parsed rule: `db.create_rule(clean)`. Methodology nodes routed via `db.create_methodology_node`. Filters dangling edge endpoints. Idempotent (MERGE).
 
-### `scripts/populate_mechanical_paths.py` (121 lines)
-Sets `mechanical_enforcement_path` on the 21 has-path + 2 could-have-path mandatory rules (Phase 2 release blocker). Hardcoded `PATHS: dict[str, str]`.
+### `scripts/populate_mechanical_paths.py` (deleted 2026-05-10)
+Was a one-shot script that hardcoded `mechanical_enforcement_path` values for has-path mandatory rules from the audit doc. The paths it set are now persisted in the graph and the bible/ export; the script and its source audit doc have both been removed.
 
 ### `scripts/profile_hotpath.py` (67 lines)
 Profiles retrieval pipeline with `pyinstrument` (100 queries: 10 fixed × 10 iterations).
+
+### `scripts/seed_phase_{1a,1b,1c,1d,2a,2b,3a,3b,4,5}_*.py` (Phase 1-5 public-rulebook seeds)
+Ten idempotent seed scripts that ingest the public out-of-the-box rulebook (`out-of-the-box-rules.md`) into Neo4j. Each script defines its sub-phase's rules inline as Python dicts and `MERGE`s them via `Neo4jConnection.create_rule`. The combined effect: 198 new rules across 12 domains (Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, Documentation), 19 new mandatory rules each pointing at one of the 6 new analyzers in `bin/run-analysis.sh` (see doc 06 §10). Each script's docstring cites the relevant section of `out-of-the-box-rules.md`. `pre-validate-file.sh` skips `scripts/seed_*.py` so the example bad-code embedded in each rule's `violation` field does not block the seed file's own write.
 
 ### `scripts/stop-server.sh` (31 lines)
 Plugin-Shutdown lifecycle hook. `lsof -ti :8765` → SIGTERM (poll 2s) → SIGKILL. Does NOT stop Neo4j.
@@ -298,8 +303,8 @@ Plugin-Shutdown lifecycle hook. `lsof -ti :8765` → SIGTERM (poll 2s) → SIGKI
 - `EXPORT_TIMESTAMP_FILE = ".export_timestamp"`
 - `SECTION_ORDER = ("trigger", "statement", "violation", "pass_example", "enforcement", "rationale")`
 - `SECTION_HEADERS` — `pass_example → "### Pass"`
-- `GRAPH_ONLY_FIELDS = {"mandatory", "confidence", "evidence", "staleness_window", "last_validated"}` — re-derived on re-ingest, never written
-- `METADATA_FIELDS = ("domain", "severity", "scope")` — written as `**Bold**:` lines
+- `GRAPH_ONLY_FIELDS = {"confidence", "evidence", "staleness_window", "last_validated"}` — re-derived on re-ingest, never written. (Originally also held `mandatory`; removed 2026-05-10 once the export started emitting `**Mandatory**: true|false` as a metadata line and `**Mechanical_Enforcement_Path**` when set. The ingest parser reads both back.)
+- `METADATA_FIELDS = ("domain", "severity", "scope")` — written as `**Bold**:` lines (plus `Mandatory` and `Mechanical_Enforcement_Path` as of 2026-05-10)
 
 ### `rule_to_markdown(rule: dict) -> str`
 Markers (`<!-- RULE START: {rule_id} -->`/`<!-- RULE END: {rule_id} -->`) match `ingest.py:RULE_START_PATTERN`.
@@ -437,7 +442,7 @@ Module-level: `_SKIP_METHODS` (frozenset of generic names like `get`, `set`, `cr
 1. `pyproject.toml [project.scripts]` defines `writ = "writ.cli:app"`.
 2. FastAPI lifespan: opens `Neo4jConnection`, `apply_constraints()`, `build_pipeline(db)`. Closes on shutdown.
 3. Background invocation: `nohup writ serve > /tmp/writ-server.log 2>&1 &`. Polls `/health` (curl --connect-timeout 0.5).
-4. Cold-start latency: ~0.6s at 80 rules. Budget: 5s in `ensure-server.sh` (50 × 100ms).
+4. Cold-start latency: ~0.6 s at 80 rules in the original measurement; 2-3 s at the current 276-rule corpus. Budget: 5 s in `ensure-server.sh` (50 × 100ms).
 
 ### Fallback: HTTP-first / subprocess-fallback (`_writ_session` pattern)
 Bash hooks query the Writ server via httpx with `timeout_ms = 50`. On timeout/refusal/5xx, fallback to invoking `writ` CLI subcommand directly via subprocess.
@@ -464,7 +469,6 @@ Bash hooks query the Writ server via httpx with `timeout_ms = 50`. On timeout/re
 | `.gitignore` | 48 |
 | `.pre-commit-config.yaml` | 9 |
 | `scripts/bootstrap.sh` | 206 |
-| `scripts/demote_mandatory_rules.py` | 111 |
 | `scripts/ensure-server.sh` | 74 |
 | `scripts/export_onnx.py` | 66 |
 | `scripts/export_subagent_roles.py` | 119 |
@@ -473,10 +477,12 @@ Bash hooks query the Writ server via httpx with `timeout_ms = 50`. On timeout/re
 | `scripts/install-harness-config.sh` | 92 |
 | `scripts/install-user-commands.sh` | 47 |
 | `scripts/migrate.py` | 255 |
-| `scripts/populate_mechanical_paths.py` | 121 |
 | `scripts/profile_hotpath.py` | 67 |
+| `scripts/seed_phase_*.py` (10 files) | ~3,400 total |
 | `scripts/stop-server.sh` | 31 |
-| **Total** | **3,445** |
+| **Total (current)** | **~6,600** |
+
+(`scripts/demote_mandatory_rules.py` 111 lines and `scripts/populate_mechanical_paths.py` 121 lines were both deleted 2026-05-10.)
 
 ## K. Cross-References Noted
 
@@ -489,7 +495,7 @@ Bash hooks query the Writ server via httpx with `timeout_ms = 50`. On timeout/re
 - `writ/analysis/analyzer.py` ↔ `writ/retrieval/pipeline.py` — analyzer uses `pipeline.query(query_text=...)`.
 - `writ/analysis/friction.py:resolve_log_path` ↔ `bin/lib/common.sh` — both honor `WRIT_FRICTION_LOG`.
 - `writ/analysis/llm.py` model IDs: `claude-haiku-4-5-20251001` and `claude-sonnet-4-6-20250514` are pinned in code.
-- `scripts/migrate.py` ↔ `tests/test_retrieval/conftest.py` — conftest calls migrate.py to restore methodology corpus after pipeline_db wipes shared graph (commit 2d7c028).
-- `scripts/populate_mechanical_paths.py` runs AFTER `scripts/demote_mandatory_rules.py` — Phase 2 release-blocker chain.
+- `scripts/migrate.py` ↔ `tests/conftest.py` — conftest's `pytest_sessionfinish` calls migrate.py to restore methodology corpus after `pipeline_db` wipes shared graph (commit 2d7c028).
+- `scripts/seed_phase_*.py` — Phase 1-5 public-rulebook ingestion chain; idempotent (MERGE on rule_id); each cites the section of `out-of-the-box-rules.md` it seeds.
 - `scripts/ingest_subagent_roles.py` and `export_subagent_roles.py` — bidirectional sync of `.claude/agents/*.md` ↔ `SubagentRole` nodes.
 - `Makefile bench` ↔ `.pre-commit-config.yaml stages: [pre-push]`.

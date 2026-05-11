@@ -1,11 +1,13 @@
 # 01 — Architecture and Data Flow
 
+> **Refresh note (2026-05-10).** This document was first written when the live corpus held 73 rules / 11 mandatory and 33 hook scripts. Phase 1-5 of the public-rulebook expansion (commits 516b963 → db0a367) brought the corpus to **276 rules / 30 mandatory**, and a separate cleanup pass deleted 3 legacy hooks (`check-gate-approval.sh`, `enforce-final-gate.sh`, `writ-pretool-rag.sh`) leaving **30 hook scripts**. `HANDBOOK.md` and `README.md` are the canonical sources for current counts and latency numbers. Where this doc differs in counts, defer to those. Architecture and data-flow descriptions below remain accurate.
+
 ## 1. System overview
 
 **Writ is the full Claude Code harness in this repository.** It is not a single service. The repo composes two co-equal layers plus a canonical data store:
 
 - **Knowledge layer** — the `writ/` Python package, served via FastAPI on `localhost:8765`. This is the part that is a hybrid-RAG service: it answers "what rules apply to this context?" via the five-stage pipeline. Stateless w.r.t. workflow.
-- **Enforcement layer** — `bin/lib/writ-session.py` (the session/mode/gate state machine, 2090 lines) plus 33 hook scripts under `.claude/hooks/`, plus slash commands under `.claude/commands/`, plus sub-agent role definitions under `.claude/agents/`, wired through Claude Code via `templates/settings.json`. Owns mode state, phase state, gate criteria, file classification, audit trail. Hooks are thin clients that delegate decisions to `writ-session.py`.
+- **Enforcement layer** — `bin/lib/writ-session.py` (the session/mode/gate state machine, ~2,090 lines) plus 30 hook scripts under `.claude/hooks/`, plus slash commands under `.claude/commands/`, plus sub-agent role definitions under `.claude/agents/`, wired through Claude Code via `templates/settings.json`. Owns mode state, phase state, gate criteria, file classification, audit trail. Hooks are thin clients that delegate decisions to `writ-session.py`.
 - **Canonical store** — Neo4j (running in Docker via `docker-compose.yml`, image `neo4j:5`, bolt on `localhost:7687`). Single source of truth for rules, methodology nodes, and edges. The hybrid-RAG indexes (Tantivy BM25, hnswlib HNSW, adjacency cache) are all built **from Neo4j** at server startup and served from memory. Runtime queries hit those in-memory indexes; they do not hit Neo4j directly except in Stage 4 fallbacks (which are not on the hot path).
 
 `bible/` is **not** a runtime data source. Per `writ.toml [source]` (`canonical = "neo4j"`, `exported_view = "bible/"`) and `writ/graph/ingest.py`'s module docstring: `bible/*.md` is the human-readable exported view of the canonical Neo4j graph, used for first-time bootstrap ingestion (`writ import-markdown bible/`) and as a re-export target after edits (`writ export bible/` or auto-export after `writ add` / `writ edit`). It is closer to a `dist/` artifact than to a database — derived, not authoritative.
@@ -27,7 +29,7 @@ Query text
                                       total p95 budget < 10 ms
 ```
 
-Mandatory `ENF-*` rules are excluded from the pipeline before Stage 1 and loaded out-of-band by hooks (handbook §7.5: "It is a hard filter at Stage 1 of the pipeline. Mandatory rules are excluded before BM25 scoring begins").
+Mandatory rules (originally just `ENF-*`; now also `SEC-INJ-*`, `SEC-AUTH-*`, `SEC-AUTHZ-*`, `SEC-VAL-*`, `SEC-CRYPTO-*`, `SEC-DATA-PII-001`, `PERF-QUERY-001`, `SCALE-STATELESS-001` per Phase 1-5) are excluded from the pipeline before Stage 1 and loaded out-of-band by hooks (handbook §7.5: "It is a hard filter at Stage 1 of the pipeline. Mandatory rules are excluded before BM25 scoring begins").
 
 ## 2. End-to-end query trace
 
@@ -58,7 +60,7 @@ Concrete trace from "user types prompt" to "RAG block injected":
 9. Hook receives response, formats via `bin/lib/writ-session.py format`, emits a single `--- WRIT RULES ---` block to stdout (Claude Code injects into the next inference call).
 10. Hook updates session cache: appends returned `rule_id`s to `loaded_rule_ids[<current_phase>]`, decrements `budget_tokens` by token cost.
 11. **Friction logging**: `Stop` hooks record gate denials, phase transitions, hook timing, rule-effectiveness signals.
-12. **PostToolUse RAG**: when the agent writes a file in Work mode, `writ-pretool-rag.sh` and `writ-posttool-rag.sh` re-query the pipeline with file context for additional file-specific rules. These also fire inside sub-agents.
+12. **PostToolUse RAG**: when the agent writes a file in Work mode, `writ-pre-write-dispatch.sh` (consolidated successor to the legacy `writ-pretool-rag.sh`) and `writ-posttool-rag.sh` re-query the pipeline with file context for additional file-specific rules. These also fire inside sub-agents.
 
 Sub-agent variant: `writ-subagent-start.sh` fires on `SubagentStart`, creates an isolated session cache keyed on `agent_id`, with `is_subagent: true` set. Phase-A and test-skeletons gates do not apply. Each sub-agent gets a fresh 8000-token RAG budget.
 
@@ -77,9 +79,9 @@ Sub-agent variant: `writ-subagent-start.sh` fires on `SubagentStart`, creates an
 |    writ-rag-inject.sh, auto-approve-gate.sh, writ-pre-write-dispatch.sh,           |
 |    pre-validate-file.sh, validate-exit-plan.sh, validate-rules.sh,                 |
 |    inject-tier-workflow.sh, validate-file.sh, validate-handoff.sh,                 |
-|    friction-logger.sh, writ-context-tracker.sh, writ-pretool-rag.sh,               |
-|    writ-posttool-rag.sh, writ-read-rag.sh, writ-subagent-start.sh,                 |
-|    writ-subagent-stop.sh, writ-quality-judge.sh, ... (33 hooks total)              |
+|    friction-logger.sh, writ-context-tracker.sh, writ-posttool-rag.sh,              |
+|    writ-read-rag.sh, writ-subagent-start.sh, writ-subagent-stop.sh,                |
+|    writ-quality-judge.sh, ... (30 hooks total)                                     |
 |     |                                                                              |
 |     | shell helpers:                                                               |
 |     |   bin/lib/parse-hook-stdin.py     (normalize stdin envelope)                  |
@@ -180,7 +182,19 @@ Mechanism:
 - Never BM25-indexed, never embedded, never ranked.
 - Loaded out-of-band by hooks via `/always-on` endpoint, with own independent budget cap (`always_on_budget` default 5000 tokens).
 - `/always-on` returns `always_on=true` rules + all `FRB-*` ForbiddenResponse nodes.
-- `docs/mandatory-rule-audit.md` (2026-04-21) classified the original 35 ENF rules: 15 have viable mechanical-enforcement paths, 2 are Phase 2.5 candidates, 18 recommended for demotion to advisory.
+
+A 2026-04-21 audit classified the original 35 ENF rules: 15 had viable mechanical-enforcement paths, 2 were Phase 2.5 candidates, 18 were recommended for demotion. The 2026-05-10 cleanup acted on that audit (pruning the corpus to 11 mandatory ENF-* rules). Phase 1-5 then added 19 new mandatory public-rulebook rules, each backed by a mechanical analyzer in `bin/run-analysis.sh`:
+
+| Phase | Mandatory rules added | Analyzer function |
+|---|---|---|
+| 1A Injection | SEC-INJ-SQL-001, XSS-001, CMD-001, SSRF-001, DESER-001, CSRF-001 | `analyze_security_injection` |
+| 1B Auth+AuthZ+Val | SEC-AUTH-HASH-001, TOKEN-001; SEC-AUTHZ-ENFORCE-001, IDOR-001, DEFAULT-001, MASS-001; SEC-VAL-SERVER-001, FILE-001 | `analyze_security_auth_authz` |
+| 1C Crypto | SEC-CRYPTO-KEY-001, RAND-001 | `analyze_security_crypto_headers` |
+| 1D Data | SEC-DATA-PII-001 | `analyze_security_data_protection` |
+| 3B Performance | PERF-QUERY-001 (N+1) | `analyze_performance_n_plus_one` |
+| 4 Scaling | SCALE-STATELESS-001 | `analyze_scaling_stateless` |
+
+Total mandatory: **30** (11 original ENF-* + 19 new public-rulebook rules).
 
 ## 8. Sub-agent architecture
 
@@ -199,7 +213,7 @@ Operational legs:
 2. **Frequency drives graduation** — automatic feedback from the Stop hook correlates which rules were in context with static-analysis pass/fail and posts to `/feedback`, incrementing `times_seen_positive` / `times_seen_negative`. `writ/frequency.py:evaluate_graduation` graduates a rule when `n = positive + negative >= 50` and `positive/n >= 0.75`.
 3. **Human approves authority promotion** — `writ review` lists, inspects, promotes (to `ai-promoted`, `peer-reviewed`), rejects, or downweights. Human rules outrank AI rules at equal relevance.
 
-**Discrepancy flag**: Handbook §6.1 and CODEBASE.md invariant 8 describe the graduation logic as "Wilson CI" / "Wilson confidence interval analysis". The actual code in `writ/frequency.py:41-53` computes a plain ratio `times_positive / (times_positive + times_negative) >= 0.75`. There is NO Wilson CI computation. The Wilson reasoning in `docs/evolution-reference.md` justifies *picking n=50 as the threshold* but is not the runtime check.
+**Note (now reconciled)**: earlier handbook revisions and CODEBASE.md described the graduation logic as "Wilson CI" / "Wilson confidence interval analysis". The actual code in `writ/frequency.py:41-53` computes a plain ratio `times_positive / (times_positive + times_negative) >= 0.75` — there is no Wilson CI computation. HANDBOOK.md has since been corrected to drop the Wilson framing.
 
 ## 10. Sub-agent role definitions
 
@@ -211,60 +225,59 @@ From `.claude/agents/writ-*.md`:
 | `writ-planner` | opus | Read, Glob, Grep, Write | Designs implementation plans. Writes `plan.md` and `capabilities.md` to project root. | Phase 2; consumes explorer output. |
 | `writ-test-writer` | sonnet | Read, Glob, Grep, Write, Bash | Writes test skeleton files with method signatures, mock setup, specific assertions. | Phase 3, after plan approval. |
 | `writ-implementer` | opus | Read, Glob, Grep, Write, Edit, Bash | Writes all production code per plan, ordered: registration/config → API/DTO → model → business logic → frontend/admin. Updates `capabilities.md`. | Phase 4, after test-skeleton approval. |
-| `writ-spec-reviewer` | haiku | Read, Glob, Grep, Bash | Reviews diff for spec compliance only. Strict JSON output. Per `docs/phase-2-self-review-decision.md`, runs *before* code-quality review. | First reviewer. |
+| `writ-spec-reviewer` | haiku | Read, Glob, Grep, Bash | Reviews diff for spec compliance only. Strict JSON output. Runs *before* code-quality review (the SDD review-order rule enforces this via `writ-sdd-review-order.sh`). | First reviewer. |
 | `writ-code-quality-reviewer` | sonnet | Read, Glob, Grep, Bash | Reviews diff for correctness, safety, readability, project conventions, rule violations. Severity: Critical (block merge), Important (should fix), Minor (nit). | Second reviewer, after spec-compliance passes. |
 
 The orchestrator dispatches workers in foreground sequentially. Workers bypass mode/gate checks entirely; they do not set a mode.
 
 ## 11. Document references / handbook navigation map
 
+Many of the original navigation targets (`docs/phase-0-*.md`, `docs/phase-2-self-review-decision.md`, `docs/phase-6-plan.md`, `docs/mandatory-rule-audit.md`, `docs/evolution-reference.md`, `docs/integration.md`, `docs/plan-format.md`, `bin/verify-matrix.sh`) were deleted in the 2026-05-10 cleanup. The remaining canonical pointers:
+
 | Topic | Primary doc & section | Supporting docs |
 |---|---|---|
-| Vision, problem statement | `RAG_arch_handbook.md` §1 | README.md "The problem" |
-| Rule schema, enforceability | `RAG_arch_handbook.md` §2 | doc 02, doc 07, `docs/phase-0-schema-proposal.md` |
-| Graph node + edge taxonomy | `RAG_arch_handbook.md` §3 | doc 02 |
-| Five-stage pipeline, ranking, ground-truth, context budget | `RAG_arch_handbook.md` §4 | doc 03, `tests/fixtures/ground_truth_queries.json` |
-| Runtime requirements, deps, embedding model | `RAG_arch_handbook.md` §5 | doc 09, `docs/install-writ.md` |
-| Project structure, CLI commands | `RAG_arch_handbook.md` §6 | doc 04, `.claude/CODEBASE.md`, `docs/integration.md` |
-| HTTP API, fallback, session state, mandatory vs retrieved | `RAG_arch_handbook.md` §7 | doc 05, doc 06, doc 12 |
-| Implementation roadmap, phase status | `RAG_arch_handbook.md` §8 | `docs/phase-6-plan.md`, `docs/phase-0-report.md` |
-| Open questions, decision gates | `RAG_arch_handbook.md` §9 | `docs/evolution-reference.md` |
-| Performance targets, measurement | `RAG_arch_handbook.md` §10 | doc 08, `SCALE_BENCHMARK_RESULTS.md` |
-| Technology decision rationale | `RAG_arch_handbook.md` §11 | -- |
-| Glossary | `RAG_arch_handbook.md` §12 | -- |
-| Hooks inventory + roles | SKILL.md, `docs/integration.md` | doc 06 |
-| Mode system, gate criteria, phase model | SKILL.md, `~/.claude/CLAUDE.md`, `rules/writ-workflow.md` | doc 06, doc 12 |
+| Vision, problem statement | `HANDBOOK.md` §1 | `README.md` "The problem" |
+| Rule schema, enforceability | `HANDBOOK.md` §2 | doc 02, doc 07 |
+| Graph node + edge taxonomy | `HANDBOOK.md` §3 | doc 02 |
+| Five-stage pipeline, ranking, ground-truth, context budget | `HANDBOOK.md` §4 | doc 03, `tests/fixtures/ground_truth_queries.json` |
+| Runtime requirements, deps, embedding model | `HANDBOOK.md` §5 | doc 09, `docs/install-writ.md` |
+| Project structure, CLI commands | `HANDBOOK.md` §6 | doc 04 |
+| HTTP API, fallback, session state, mandatory vs retrieved | `HANDBOOK.md` §7 | doc 05, doc 06, doc 12 |
+| Performance targets, measurement | `HANDBOOK.md` "By the numbers" | doc 08, `SCALE_BENCHMARK_RESULTS.md` |
+| Technology decision rationale | `HANDBOOK.md` (architecture section) | -- |
+| Glossary | `HANDBOOK.md` (glossary section) | -- |
+| Hooks inventory + roles | `SKILL.md` | doc 06 |
+| Mode system, gate criteria, phase model | `SKILL.md`, `~/.claude/CLAUDE.md`, `rules/writ-workflow.md` | doc 06, doc 12 |
 | Sub-agent orchestration | `rules/writ-orchestrator.md` | `.claude/agents/writ-*.md`, doc 12 |
-| Authority + frequency model | handbook §6.1, CODEBASE.md invariants 2-4-8, evolution-reference.md | doc 11, `writ/frequency.py`, `writ/authoring.py` |
-| Mandatory-rule audit | `docs/mandatory-rule-audit.md` | -- |
-| Phase-0 methodology validation | `docs/phase-0-report.md` | doc 08, `benchmarks/methodology_bench.py` |
-| Methodology absorption (Phase 6) | `docs/phase-6-plan.md` | `docs/phase-0-schema-proposal.md`, `docs/monthly-reviews/2026-06.md` |
-| Self-review judge, override policy | `docs/phase-2-self-review-decision.md` | doc 06 |
-| plan.md / capabilities format | `docs/plan-format.md` | `bin/verify-matrix.sh`, `bin/verify-files.sh` |
-| Monthly review cadence | CONTRIBUTING.md, `docs/monthly-reviews/TEMPLATE.md` | `docs/monthly-reviews/2026-{05,06}.md` |
-| Install / settings sync | `docs/install-writ.md`, README.md | doc 09, `scripts/bootstrap.sh` |
+| Authority + frequency model | `HANDBOOK.md` (mandatory-rule section) | doc 11, `writ/frequency.py`, `writ/authoring.py` |
+| Public out-of-the-box rulebook (220 rules across 12 domains) | `out-of-the-box-rules.md` | doc 07 |
+| Monthly review cadence | `CONTRIBUTING.md`, `docs/monthly-reviews/TEMPLATE.md` | `docs/monthly-reviews/2026-05.md` |
+| Install / settings sync | `docs/install-writ.md`, `README.md` | doc 09, `scripts/bootstrap.sh` |
 
 ## 12. Discrepancies catalog (code wins)
 
-- **Wilson CI**: handbook §6.1 docstring claims Wilson confidence interval; code uses plain ratio threshold. (See §9 above.)
-- **Edge type count**: phase-0-schema-proposal.md reconciles to 14 (6 existing + 8 new); driver allowlist in `writ/graph/db.py:40-47` contains 17. The 17 include `APPLIES_TO`, `ABSTRACTS`, `JUSTIFIED_BY` that are not in the proposal's count.
-- **Latency numbers**: handbook §10 cites E2E p95 = 6.7 ms (pre-ONNX); README cites 0.19 ms (post-ONNX); SCALE_BENCHMARK_RESULTS.md cites 0.278 ms.
-- **Hooks count**: SKILL.md inventory lists 12; `docs/integration.md` lists 18; templates/settings.json wires ~31 hooks. Treat templates/settings.json as authoritative.
-- **Test counts**: CODEBASE.md says "282 test functions across 15 test files + 12 benchmark tests"; integration.md says "~320 tests across 30 test files". Test counts have grown via v2/v3 hardening.
-- **Gate phases**: gate-categories.json defines phase-b/c/d categories; `_can_write_check` in writ-session.py uses only phase-a + test-skeletons. The gate-categories.json holdover is not enforced.
-- **`abstractions=` parameter**: `apply_context_budget` accepts an `abstractions` argument; pipeline does NOT pass it (`pipeline.py:401`). The Phase 8 abstraction-summary path is currently inert.
-- **`compute_confidence_weight`**: defined in ranking.py but not invoked from `query()`. Static enum table is what runs.
-- **`mechanical_enforcement_path`**: required by gate (Check 1b) for any `mandatory: true` rule. Per `docs/mandatory-rule-audit.md`, 18 of 35 ENF rules cannot satisfy this and should be demoted.
+Several entries from the original draft have been resolved by code changes; surviving discrepancies are flagged below.
 
-## Files Read
+- **Wilson CI** — resolved. HANDBOOK.md no longer claims Wilson CI; code uses a plain ratio threshold (`writ/frequency.py:28-53`).
+- **Edge type count** — driver allowlist in `writ/graph/db.py:40-47` contains 17 types (9 original + 8 Phase-1 additions). The `APPLIES_TO`, `ABSTRACTS`, `JUSTIFIED_BY` types are present in the allowlist but lack dedicated Pydantic write paths (see doc 02 §11.1).
+- **Latency numbers** — live measurement as of 2026-05-10 against the 276-rule post-expansion corpus: E2E p95 = 0.590 ms, median = 0.338 ms (10 representative queries × 50 iterations). See `SCALE_BENCHMARK_RESULTS.md` for synthetic curve.
+- **Hooks count** — 30 wired hooks; `templates/settings.json` is authoritative.
+- **Test counts** — 1,455 tests collected as of 2026-05-10 (was ~320 pre-hardening; growth from v2/v3 hardening and Phase 6 methodology absorption).
+- **Gate phases** — `gate-categories.json` still defines phase-b/c/d categories. `_can_write_check` in writ-session.py uses only `phase-a` + `test-skeletons`. The category-level rules are a holdover, not enforced by v2.
+- **`abstractions=` parameter** — resolved. The pipeline now passes abstractions through to `apply_context_budget` (see `writ/retrieval/pipeline.py::query` and `build_pipeline`).
+- **`compute_confidence_weight`** — resolved. Now invoked from `compute_score` in `writ/retrieval/ranking.py`.
+- **`Abstraction.abstraction_id` uniqueness constraint** — resolved. Constraint added in `writ/graph/db.py::apply_constraints`.
+- **`mechanical_enforcement_path`** — required by gate Check 1b for any `mandatory: true` rule. All 30 current mandatory rules satisfy this (the original 11 ENF-* rules point at hook files; the 19 new public-rulebook mandatory rules point at the 6 analyzers in `bin/run-analysis.sh`).
+
+## Files Read (original 2026-05 extraction pass)
 
 - `benchmarks/bench_targets.py`, `run_benchmarks.py`, `scale_benchmark.py`, `methodology_bench.py`
-- `SCALE_BENCHMARK_RESULTS.md`, `RAG_arch_handbook.md` (~934 lines), `README.md`, `SKILL.md`, `CONTRIBUTING.md`, `.claude/CODEBASE.md`
-- `docs/evolution-reference.md`, `install-writ.md`, `integration.md`, `mandatory-rule-audit.md`, `phase-0-report.md`, `phase-0-schema-proposal.md`, `phase-2-self-review-decision.md`, `phase-6-plan.md`, `plan-format.md`
-- `docs/monthly-reviews/2026-05.md`, `2026-06.md`, `TEMPLATE.md`
+- `SCALE_BENCHMARK_RESULTS.md`, the architecture handbook (now `HANDBOOK.md`, originally ~934 lines as `RAG_arch_handbook.md`), `README.md`, `SKILL.md`, `CONTRIBUTING.md`
+- `docs/install-writ.md` and the now-deleted planning artifacts (`evolution-reference.md`, `integration.md`, `mandatory-rule-audit.md`, `phase-0-report.md`, `phase-0-schema-proposal.md`, `phase-2-self-review-decision.md`, `phase-6-plan.md`, `plan-format.md`)
+- `docs/monthly-reviews/2026-05.md`, `TEMPLATE.md`
 - `.claude/agents/writ-{explorer,planner,test-writer,implementer,spec-reviewer,code-quality-reviewer}.md`
 
-Spot-check: `writ/frequency.py` (Wilson CI vs plain ratio).
+Spot-check: `writ/frequency.py` (plain ratio, no Wilson CI).
 
 ## Cross-References Noted
 
