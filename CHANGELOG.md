@@ -14,6 +14,11 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 - `templates/settings.README.md` now documents the standalone-only nature of both the rendered permissions block and the rendered CLAUDE.md, and points plugin-mode users at `scripts/patch-global-config.sh`.
 - README "Install as a Claude Code plugin" section now references `scripts/patch-global-config.sh` so plugin users do not miss the global-config setup (permissions plus CLAUDE.md).
+- `SKILL.md` server-requirements and architecture-reference sections now distinguish the standalone install path (`install-harness-config.sh`) from the plugin install path (`patch-global-config.sh`).
+- `HANDBOOK.md` Getting started section adds a one-line pointer at the plugin install path and `patch-global-config.sh`.
+- `docs/install-writ.md` recommends `install-harness-config.sh` (full install) and `patch-global-config.sh` (non-destructive permission/CLAUDE.md update) instead of the previous `cp` of `templates/settings.json`. The update-path and Known-limitations sections now reflect both options.
+- `docs/plugin-validation.md` fresh-install smoke test includes a `patch-global-config.sh` step plus grep verifications that the `AskUserQuestion` deny rule and the Writ-flavored `CLAUDE.md` landed.
+- `docs/SUBMISSION.md` pre-submission checklist now describes the README install steps as "install + bootstrap + patch-global-config" rather than the previous two-line shape.
 
 ### Notes
 

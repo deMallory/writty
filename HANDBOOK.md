@@ -405,6 +405,8 @@ bash scripts/bootstrap.sh
 
 That single script does everything: checks Python 3.11+ and Docker, sets up a virtualenv, installs the package, ingests the rule corpus into Neo4j, starts the service, and wires the hooks into your Claude Code config. Idempotent, so you can re-run it any time.
 
+For plugin-mode installs, see README "Install as a Claude Code plugin." The plugin path runs `scripts/bootstrap-plugin.sh` instead of `scripts/bootstrap.sh`, then `scripts/patch-global-config.sh` to bring `~/.claude/settings.json` and `~/.claude/CLAUDE.md` up to the state a standalone install would produce.
+
 Verify with:
 
 ```bash
