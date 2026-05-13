@@ -16,7 +16,10 @@ Run through this before opening the form. Every box must be checked.
       `./` and the repo is published at
       https://github.com/infinri/Writ (public).
 - [x] **README documents install + usage**: README.md "Install as a Claude
-      Code plugin" section ships the two-line install + bootstrap command.
+      Code plugin" section ships the install + bootstrap + patch-global-config
+      sequence. The patch step is plugin-mode-only and merges Writ's
+      permissions allowlist plus the global CLAUDE.md into the user's
+      `~/.claude/` (idempotent, backup-on-write).
 - [x] **Plugin works on a fresh checkout**: layered end-to-end verification
       passed (clone -> validate -> SessionStart probes -> editable install
       -> writ-rag-inject under plugin env returns rule block ->

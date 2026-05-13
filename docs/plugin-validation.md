@@ -45,6 +45,14 @@ curl -fsS http://localhost:8765/health
 # Expect: {"status":"healthy"}
 test -f "${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv/bin/python3" && echo OK
 # Expect: OK
+
+bash "$PLUGIN_DIR/scripts/patch-global-config.sh"
+# Expect: "[settings] Patched ..." and "[CLAUDE.md] Created ..." (or
+# "No changes needed" on re-runs, since the script is idempotent).
+grep -q '"AskUserQuestion"' "$HOME/.claude/settings.json" && echo OK
+# Expect: OK (deny rule landed)
+grep -q 'Always read at session start' "$HOME/.claude/CLAUDE.md" && echo OK
+# Expect: OK (template rendered)
 ```
 
 Open a new Claude Code session and submit a prompt; verify a

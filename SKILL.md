@@ -215,7 +215,8 @@ Writ requires:
 - Neo4j at `bolt://localhost:7687` (credentials in `writ.toml` or `docker-compose.yml`).
 - Writ server: `writ serve` (default `localhost:8765`).
 - Bible rules imported: `writ import-markdown` (initial bootstrap only).
-- Hooks installed: `bash scripts/install-harness-config.sh`.
+- Hooks installed (standalone): `bash scripts/install-harness-config.sh`. Renders `templates/settings.json` and `templates/CLAUDE.md` into `~/.claude/`.
+- Global config installed (plugin): `bash scripts/patch-global-config.sh`. Plugin installs do not render the templates automatically; this script merges the cross-mode allow/deny entries into `~/.claude/settings.json` and renders `templates/CLAUDE.md` into `~/.claude/CLAUDE.md`. Idempotent, backup-on-write.
 
 When loaded as a plugin, `scripts/ensure-server.sh` starts Neo4j (Docker) and the Writ server automatically via the Init lifecycle hook.
 
@@ -234,5 +235,6 @@ When loaded as a plugin, `scripts/ensure-server.sh` starts Neo4j (Docker) and th
 - Hooks: `.claude/hooks/` (30 hooks, all wired; see inventory above).
 - Plugin manifest: `.claude-plugin/plugin.json` (auto-discovery, lifecycle hooks).
 - Lifecycle: `scripts/ensure-server.sh`, `scripts/stop-server.sh`.
-- Install: `scripts/install-harness-config.sh` (renders `~/.claude/settings.json` from template).
+- Install (standalone): `scripts/install-harness-config.sh` (renders `~/.claude/settings.json` and `~/.claude/CLAUDE.md` from templates, with backups).
+- Install (plugin): `scripts/patch-global-config.sh` (merges cross-mode allow/deny entries into `~/.claude/settings.json` and renders `~/.claude/CLAUDE.md` from template; idempotent).
 - Full spec: `HANDBOOK.md`.

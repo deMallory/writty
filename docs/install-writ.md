@@ -14,16 +14,42 @@ directory.
 
 The active settings file Claude Code reads at session start is
 `~/.claude/settings.json`. The skill's canonical hook registrations
-live in `~/.claude/skills/writ/templates/settings.json`. To install:
+live in `~/.claude/skills/writ/templates/settings.json`. There are two
+ways to install, depending on how much of your existing config you
+want to keep.
+
+**Full wholesale install (matches what `bootstrap.sh` does):**
 
 ```bash
-cp ~/.claude/skills/writ/templates/settings.json ~/.claude/settings.json
+bash ~/.claude/skills/writ/scripts/install-harness-config.sh
 ```
 
-Or, if you have non-Writ entries in your active settings you want to
-preserve, merge by hand. The Writ-specific blocks are:
+This renders both `templates/settings.json` and `templates/CLAUDE.md`
+into `~/.claude/`, backing up any pre-existing files. Use this on
+first install or after a Writ update that adds new hooks.
+
+**Lighter alternative when only permissions or CLAUDE.md changed:**
+
+```bash
+bash ~/.claude/skills/writ/scripts/patch-global-config.sh
+```
+
+This merges the cross-mode allow/deny entries into your existing
+`~/.claude/settings.json` (preserving your ordering and any non-Writ
+entries) and renders `templates/CLAUDE.md` into `~/.claude/CLAUDE.md`.
+Hook registrations are not touched, so this is not a substitute for
+the full install when hooks change. The script is the same one
+plugin-mode users run; standalone users can call it for non-destructive
+permission updates between full installs.
+
+If you'd rather merge `templates/settings.json` by hand, the
+Writ-specific blocks are:
 - All `Bash(bash $HOME/.claude/skills/writ/.claude/hooks/*.sh)` lines
   in `permissions.allow`
+- The cross-mode Bash allowlist entries (`Bash(python3 *writ-session.py *)`,
+  `Bash(bash *writ/bin/*.sh*)`, `Bash(*writ/bin/writ ...*)`,
+  `Bash(bash *writ/scripts/*.sh*)`)
+- `AskUserQuestion` in `permissions.deny`
 - All entries under `hooks` whose `command` paths point at
   `$HOME/.claude/skills/writ/.claude/hooks/`
 
@@ -60,16 +86,19 @@ relevant step above.
 ## Update path
 
 When the skill is updated (`git pull` or equivalent in
-`~/.claude/skills/writ/`), re-run both steps:
+`~/.claude/skills/writ/`), re-run the install steps:
 
 ```bash
-cp ~/.claude/skills/writ/templates/settings.json ~/.claude/settings.json
+bash ~/.claude/skills/writ/scripts/install-harness-config.sh
 bash ~/.claude/skills/writ/scripts/install-user-commands.sh
 ```
 
-Settings sync is destructive (overwrites). Commands install is
-idempotent. If you have local `~/.claude/settings.json` customizations,
-back up before sync.
+`install-harness-config.sh` is destructive (renders the templates wholesale,
+backing up any pre-existing files). `install-user-commands.sh` is idempotent.
+If the update only touched permissions or `templates/CLAUDE.md` (no new
+hooks), `scripts/patch-global-config.sh` is a non-destructive alternative
+that preserves your existing `~/.claude/settings.json` ordering and
+non-Writ entries.
 
 ## 3. Restart the writ daemon (when server.py changes)
 
@@ -89,9 +118,11 @@ changes; routine ingest, query, or hook updates do not need it.
 
 ## Known limitations
 
-- The settings sync replaces your active `~/.claude/settings.json`
-  wholesale. Custom permissions or hooks outside the Writ template are
-  lost. Merge by hand if you have them.
+- `install-harness-config.sh` (and the older `cp` approach) replaces
+  your active `~/.claude/settings.json` wholesale. Custom permissions
+  or hooks outside the Writ template are lost. Use
+  `patch-global-config.sh` for non-destructive permission updates, or
+  merge by hand if you have non-Writ hook registrations.
 - The user-commands installer overwrites identically-named files in
   `~/.claude/commands/`. If you have a non-Writ `writ-approve.md`
   there for some reason, it gets replaced.
