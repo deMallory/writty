@@ -35,7 +35,25 @@
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-quality-judge.sh)",
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/validate-test-file.sh)",
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/validate-design-doc.sh)",
-      "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-memory-policy-guard.sh)"
+      "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-memory-policy-guard.sh)",
+      "Bash(python3 *writ-session.py *)",
+      "Bash(bash *writ/bin/check-gates.sh*)",
+      "Bash(bash *writ/bin/verify-files.sh*)",
+      "Bash(bash *writ/bin/scan-deps.sh*)",
+      "Bash(bash *writ/bin/run-analysis.sh*)",
+      "Bash(bash *writ/bin/validate-handoff.sh*)",
+      "Bash(*writ/bin/writ query *)",
+      "Bash(*writ/bin/writ status*)",
+      "Bash(*writ/bin/writ role-prompt *)",
+      "Bash(*writ/bin/writ validate*)",
+      "Bash(*writ/bin/writ analyze-friction*)",
+      "Bash(*writ/bin/writ audit-session*)",
+      "Bash(bash *writ/scripts/bootstrap.sh*)",
+      "Bash(bash *writ/scripts/bootstrap-plugin.sh*)",
+      "Bash(bash *writ/scripts/ensure-server.sh*)",
+      "Bash(bash *writ/scripts/install-harness-config.sh*)",
+      "Bash(bash *writ/scripts/install-user-commands.sh*)",
+      "Bash(bash *writ/scripts/stop-server.sh*)"
     ],
     "deny": [
       "Bash(touch */.claude/gates/*)",
@@ -47,7 +65,8 @@
       "Read(**/secrets*)",
       "Read(**/.ssh/*)",
       "Read(*.key)",
-      "Read(*.pem)"
+      "Read(*.pem)",
+      "AskUserQuestion"
     ]
   },
   "hooks": {
