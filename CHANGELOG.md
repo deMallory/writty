@@ -2,6 +2,24 @@
 
 All notable changes to Writ are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `AskUserQuestion` added to `permissions.deny` in `templates/settings.json`. Prevents the agent from opening an upfront clarifying-question wizard before producing a plan. The intended workflow is research first, then a plan with the agent's recommendation called out; the user redirects from the plan rather than answering a tabbed quiz.
+- Cross-mode Writ command allowlist in `templates/settings.json`. Covers the read-only `bin/` diagnostic scripts (`check-gates`, `verify-files`, `scan-deps`, `run-analysis`, `validate-handoff`), the read-only `writ` CLI subcommands (`query`, `status`, `role-prompt`, `validate`, `analyze-friction`, `audit-session`), the idempotent install scripts under `scripts/` (`bootstrap`, `bootstrap-plugin`, `ensure-server`, `install-harness-config`, `install-user-commands`, `stop-server`), and the `writ-session.py` state machine. Patterns use wildcards (`*writ/...`) so a single entry matches both standalone (`$HOME/.claude/skills/writ/...`) and plugin (`${CLAUDE_PLUGIN_ROOT}/...`) command paths.
+- `scripts/patch-permissions.sh` for plugin-mode users. Plugin installs do not render `templates/settings.json` into `~/.claude/settings.json` (hooks come from `hooks/hooks.json`, and the plugin manifest schema does not carry a permissions field), so the cross-mode allow/deny entries would not otherwise reach plugin users. This script merges them in idempotently, preserves existing ordering, backs up before writing, and supports `--dry-run`. Requires `jq`.
+
+### Changed
+
+- `templates/settings.README.md` now documents the standalone-only nature of the rendered permissions block and points plugin-mode users at `scripts/patch-permissions.sh`.
+- README "Install as a Claude Code plugin" section now references `scripts/patch-permissions.sh` so plugin users do not miss the permission setup.
+
+### Notes
+
+- Standalone-install users (whose `~/.claude/settings.json` was rendered from `templates/settings.json`) can re-run `bash scripts/install-harness-config.sh` to pick up the new permission entries. The installer is idempotent and backs up before overwriting.
+- Mutating `writ` subcommands (`add`, `edit`, `import-markdown`, `export`, `compress`, `migrate`, `propose`, `review`, `feedback`, `serve`) remain gated behind explicit human approval. They are intentionally not in the allowlist; only their idempotent or read-only counterparts are auto-allowed.
+
 ## [1.0.1] - 2026-05-11
 
 Patch release completing the v1 vision: Writ is now installable as a Claude Code plugin published through a same-repo marketplace. The standalone skill install path at `~/.claude/skills/writ/` is unchanged and continues to work byte-identically to v1.0.0; the plugin path is purely additive.
