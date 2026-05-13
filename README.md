@@ -36,14 +36,14 @@ curl http://localhost:8765/health
 # {"status":"healthy"}
 ```
 
-**Patch the permission allowlist (plugin mode only).** Plugin installs do not write to `~/.claude/settings.json`, so the Writ-specific Bash allowlist that suppresses permission prompts for read-only and onboarding commands is not installed automatically. Run this once to merge the cross-mode allow and deny entries into your settings:
+**Patch global config (plugin mode only).** Plugin installs do not write to `~/.claude/settings.json` or `~/.claude/CLAUDE.md`. The Writ-specific Bash allowlist that suppresses permission prompts for read-only and onboarding commands is missing, and the mandatory-workflow instructions that Writ relies on are not installed either. Run this once after bootstrap to bring `~/.claude/` up to the state a standalone install would produce:
 
 ```shell
-bash $(claude plugin path writ)/scripts/patch-permissions.sh
+bash $(claude plugin path writ)/scripts/patch-global-config.sh
 # Use --dry-run first to preview the diff.
 ```
 
-The script is idempotent, backs up `~/.claude/settings.json` before writing, and preserves your existing ordering. Standalone-install users do not need to run it; `scripts/install-harness-config.sh` already renders the same entries.
+The script does two things: merges the cross-mode allow and deny entries into `~/.claude/settings.json` (existing ordering preserved), and renders `templates/CLAUDE.md` into `~/.claude/CLAUDE.md`. Both steps are idempotent (no-op when already in sync) and back up any pre-existing file before writing. Standalone-install users do not need to run it; `scripts/install-harness-config.sh` already produces the same output.
 
 The plugin's hooks degrade gracefully until bootstrap completes. The SessionStart hook prints clear setup instructions on every fresh session where any prerequisite is missing, but the session itself is never blocked.
 

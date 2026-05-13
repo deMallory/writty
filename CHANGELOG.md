@@ -8,12 +8,12 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 - `AskUserQuestion` added to `permissions.deny` in `templates/settings.json`. Prevents the agent from opening an upfront clarifying-question wizard before producing a plan. The intended workflow is research first, then a plan with the agent's recommendation called out; the user redirects from the plan rather than answering a tabbed quiz.
 - Cross-mode Writ command allowlist in `templates/settings.json`. Covers the read-only `bin/` diagnostic scripts (`check-gates`, `verify-files`, `scan-deps`, `run-analysis`, `validate-handoff`), the read-only `writ` CLI subcommands (`query`, `status`, `role-prompt`, `validate`, `analyze-friction`, `audit-session`), the idempotent install scripts under `scripts/` (`bootstrap`, `bootstrap-plugin`, `ensure-server`, `install-harness-config`, `install-user-commands`, `stop-server`), and the `writ-session.py` state machine. Patterns use wildcards (`*writ/...`) so a single entry matches both standalone (`$HOME/.claude/skills/writ/...`) and plugin (`${CLAUDE_PLUGIN_ROOT}/...`) command paths.
-- `scripts/patch-permissions.sh` for plugin-mode users. Plugin installs do not render `templates/settings.json` into `~/.claude/settings.json` (hooks come from `hooks/hooks.json`, and the plugin manifest schema does not carry a permissions field), so the cross-mode allow/deny entries would not otherwise reach plugin users. This script merges them in idempotently, preserves existing ordering, backs up before writing, and supports `--dry-run`. Requires `jq`.
+- `scripts/patch-global-config.sh` for plugin-mode users. Plugin installs render neither `templates/settings.json` into `~/.claude/settings.json` (the plugin manifest schema has no permissions field; `hooks/hooks.json` only registers hook events) nor `templates/CLAUDE.md` into `~/.claude/CLAUDE.md` (the plugin lifecycle does not touch the global instructions file). This script closes both gaps in a single run. The settings step merges the cross-mode allow/deny entries idempotently while preserving the user's existing ordering. The CLAUDE.md step renders the template via `envsubst '$HOME'`, skipping the write when the target already matches the template byte-for-byte. Both steps back up any pre-existing file before overwriting, and `--dry-run` previews the diff for each phase without touching disk. Requires `jq` and `envsubst`.
 
 ### Changed
 
-- `templates/settings.README.md` now documents the standalone-only nature of the rendered permissions block and points plugin-mode users at `scripts/patch-permissions.sh`.
-- README "Install as a Claude Code plugin" section now references `scripts/patch-permissions.sh` so plugin users do not miss the permission setup.
+- `templates/settings.README.md` now documents the standalone-only nature of both the rendered permissions block and the rendered CLAUDE.md, and points plugin-mode users at `scripts/patch-global-config.sh`.
+- README "Install as a Claude Code plugin" section now references `scripts/patch-global-config.sh` so plugin users do not miss the global-config setup (permissions plus CLAUDE.md).
 
 ### Notes
 
