@@ -704,7 +704,31 @@ def export(
 def compress() -> None:
     """Cluster rules into abstraction nodes for compressed retrieval."""
     import numpy as np
-    from sentence_transformers import SentenceTransformer
+
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError as exc:
+        # Approach C (Finding D): sentence-transformers moved out of
+        # core deps because the production daemon does not import it.
+        # `writ compress` is a maintainer-only command that regenerates
+        # abstraction nodes via clustering, and that pipeline uses the
+        # SentenceTransformer model. Surface the missing dep as an
+        # actionable typer-style error rather than a bare ImportError
+        # traceback; mirrors the shape of the ONNX-unavailable error
+        # in writ/retrieval/pipeline.py (commit dae679a).
+        typer.echo(
+            "ERROR: `writ compress` requires the sentence-transformers "
+            f"library, which could not be imported ({type(exc).__name__}: "
+            f"{exc}).\n"
+            "\n"
+            "Production installs deliberately exclude this library (see "
+            "pyproject.toml: it lives in the [fallback] extras group, "
+            "not core dependencies). Install it with:\n"
+            "    pip install -e '.[fallback]'\n"
+            "Then re-run `writ compress`.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
 
     from writ.compression.abstractions import generate_abstractions, write_abstractions_to_graph
     from writ.compression.clusters import evaluate_both

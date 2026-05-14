@@ -300,6 +300,72 @@ class TestEmbeddingModelSelection:
         finally:
             await db.close()
 
+    @pytest.fixture()
+    def force_sentence_transformers_unavailable(self, monkeypatch):
+        """Replace sentence_transformers in sys.modules with None so import raises ImportError.
+
+        Mimics the production state after Approach C (Finding D fix):
+        production installs do not pull sentence-transformers. Importing
+        it raises ImportError unless the operator has run
+        ``pip install -e '.[fallback]'``. Setting ``sys.modules[name] = None``
+        is the documented Python mechanism to make a subsequent import
+        of that name fail with ImportError.
+        """
+        import sys
+
+        monkeypatch.setitem(sys.modules, "sentence_transformers", None)
+
+    @pytest.mark.asyncio
+    async def test_fallback_raises_actionable_error_when_sentence_transformers_missing(
+        self,
+        monkeypatch,
+        force_onnx_failure,
+        force_sentence_transformers_unavailable,
+    ):
+        """State: ONNX unavailable, fallback opted in via env var, but
+        sentence-transformers also missing.
+
+        After Approach C drops sentence-transformers from core deps, the
+        WRIT_ALLOW_EMBEDDING_FALLBACK=1 path is only usable when the
+        operator has also installed the [fallback] extras group. When
+        they have not, build_pipeline must raise a RuntimeError that
+        names the missing library AND the install command, not a bare
+        ImportError from the inline import inside the fallback branch.
+
+        Same shape as the ONNX-unavailable error (commit dae679a):
+        actionable, names cause + remediation, surfaces at startup not
+        at first request.
+        """
+        from writ.graph.db import Neo4jConnection
+        from writ.retrieval.pipeline import build_pipeline
+
+        monkeypatch.setenv("WRIT_ALLOW_EMBEDDING_FALLBACK", "1")
+
+        db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        try:
+            count = await db.count_rules()
+            if count == 0:
+                pytest.skip("Neo4j has no rules. Run scripts/migrate.py first.")
+
+            with pytest.raises(RuntimeError) as excinfo:
+                await build_pipeline(db)
+
+            msg = str(excinfo.value)
+            # The error must name the missing library, the [fallback]
+            # install command, and the pip install verb so a user
+            # scanning the message can act without re-reading docs.
+            assert "sentence" in msg.lower(), (
+                f"RuntimeError must name sentence-transformers; got: {msg!r}"
+            )
+            assert "fallback" in msg, (
+                f"RuntimeError must name the [fallback] extras group; got: {msg!r}"
+            )
+            assert "pip install" in msg, (
+                f"RuntimeError must name the pip install verb; got: {msg!r}"
+            )
+        finally:
+            await db.close()
+
     @pytest.mark.asyncio
     async def test_fallback_used_when_override_set_and_warning_logged(
         self, monkeypatch, caplog, force_onnx_failure, fake_sentence_transformer

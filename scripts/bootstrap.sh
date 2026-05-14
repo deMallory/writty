@@ -99,8 +99,24 @@ source "$VENV_DIR/bin/activate"
 # ── 4. Install Python deps ──────────────────────────────────────────────────
 step "Installing Python dependencies"
 pip install --quiet --upgrade pip
-(cd "$WRIT_DIR" && pip install --quiet -e .)
-ok "writ package installed (editable)"
+# Install with [dev] extras so optimum (ONNX export tool) is available
+# for the next step. The SentenceTransformer fallback library lives in
+# the separate [fallback] group and is NOT installed by default --
+# production daemons running on ONNX never need it. Operators who want
+# to exercise the WRIT_ALLOW_EMBEDDING_FALLBACK=1 path can install it
+# explicitly with `pip install -e '.[fallback]'`.
+(cd "$WRIT_DIR" && pip install --quiet -e '.[dev]')
+ok "writ package installed (editable, with dev extras)"
+
+# ── 4b. Export ONNX embedding model ─────────────────────────────────────────
+ONNX_MODEL_PATH="$HOME/.cache/writ/models/onnx/model.onnx"
+step "Ensuring ONNX embedding model is exported"
+if [ -f "$ONNX_MODEL_PATH" ]; then
+    ok "ONNX model already present at $ONNX_MODEL_PATH (skipping export)"
+else
+    (cd "$WRIT_DIR" && python scripts/export_onnx.py)
+    ok "ONNX model exported to $ONNX_MODEL_PATH"
+fi
 
 # ── 5. Harness config ───────────────────────────────────────────────────────
 step "Installing harness config (~/.claude/settings.json + CLAUDE.md)"
