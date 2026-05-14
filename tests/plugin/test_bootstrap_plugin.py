@@ -53,6 +53,29 @@ class TestBootstrapPluginContent:
             "bootstrap-plugin.sh must reference ${CLAUDE_PLUGIN_ROOT} so upgrades rebind"
         )
 
+    def test_bootstrap_plugin_installs_dev_extras(self, content: str) -> None:
+        """After Finding D (Approach C, 2026-05-14), bootstrap-plugin.sh
+        installs with [dev] extras so optimum is available for the ONNX
+        export step. The [fallback] group (sentence-transformers) is
+        intentionally NOT installed by default."""
+        assert "[dev]" in content, (
+            "bootstrap-plugin.sh must install -e '${WRIT_DIR}[dev]' (or "
+            "equivalent) so optimum is available for the ONNX export step. "
+            "If you intentionally moved to bare -e install, update this "
+            "test AND the install contract in pyproject.toml."
+        )
+
+    def test_bootstrap_plugin_exports_onnx_model(self, content: str) -> None:
+        """bootstrap-plugin.sh must produce the ONNX model on disk so the
+        daemon takes the production ONNX path on first start. Without this,
+        a fresh plugin install runs `writ serve` and the daemon refuses
+        to start (see writ/retrieval/pipeline.py three-state ONNX contract,
+        commit dae679a)."""
+        assert "scripts/export_onnx.py" in content, (
+            "bootstrap-plugin.sh must run scripts/export_onnx.py to produce "
+            "the ONNX model before the daemon starts."
+        )
+
     def test_bootstrap_plugin_checks_prerequisites(self, content: str) -> None:
         """Script must check for python3 >= 3.11, docker, jq, curl, and envsubst."""
         lowered = content.lower()

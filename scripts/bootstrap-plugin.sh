@@ -113,8 +113,22 @@ source "$VENV_DIR/bin/activate"
 # ── 4. Install Python deps (editable; rebinds on plugin upgrade) ────────────
 step "Installing Python dependencies"
 pip install --quiet --upgrade pip
-pip install --quiet -e "${WRIT_DIR}"
-ok "writ package installed (editable from ${WRIT_DIR})"
+# Install with [dev] extras so optimum (ONNX export tool) is available
+# for the export step. The SentenceTransformer fallback library lives
+# in the separate [fallback] group and is NOT installed by default --
+# production daemons running on ONNX never need it.
+pip install --quiet -e "${WRIT_DIR}[dev]"
+ok "writ package installed (editable from ${WRIT_DIR}, with dev extras)"
+
+# ── 4b. Export ONNX embedding model ─────────────────────────────────────────
+ONNX_MODEL_PATH="${HOME}/.cache/writ/models/onnx/model.onnx"
+step "Ensuring ONNX embedding model is exported"
+if [ -f "$ONNX_MODEL_PATH" ]; then
+    ok "ONNX model already present at $ONNX_MODEL_PATH (skipping export)"
+else
+    (cd "${WRIT_DIR}" && python scripts/export_onnx.py)
+    ok "ONNX model exported to $ONNX_MODEL_PATH"
+fi
 
 # ── 5. Start Neo4j via docker compose ──────────────────────────────────────
 step "Starting Neo4j via docker compose"

@@ -590,7 +590,29 @@ async def build_pipeline(
             type(onnx_construction_error).__name__,
             onnx_construction_error,
         )
-        from sentence_transformers import SentenceTransformer
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            # Approach C (Finding D): sentence-transformers moved from
+            # core deps to the [fallback] optional-dependencies group
+            # because the production runtime no longer imports it. The
+            # operator set WRIT_ALLOW_EMBEDDING_FALLBACK=1 but did not
+            # install the [fallback] extras group; the fallback cannot
+            # actually run. Raise the same shape of actionable error
+            # used for the ONNX-unavailable case above.
+            raise RuntimeError(
+                "WRIT_ALLOW_EMBEDDING_FALLBACK=1 was set, but the "
+                "sentence-transformers library could not be imported: "
+                f"{type(exc).__name__}: {exc}. "
+                "Production installs deliberately exclude this library "
+                "(see pyproject.toml: it lives in the [fallback] extras "
+                "group, not core dependencies). To enable the fallback "
+                "path for local development, run "
+                "`pip install -e '.[fallback]'`. To use the production "
+                "ONNX path instead, ensure the ONNX model is exported "
+                "(run scripts/export_onnx.py) and unset "
+                "WRIT_ALLOW_EMBEDDING_FALLBACK."
+            ) from exc
 
         model = SentenceTransformer(model_name)
         embeddings = model.encode(texts).tolist()

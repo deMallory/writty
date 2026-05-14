@@ -85,8 +85,34 @@ class TestBootstrapSections:
         )
 
     def test_bootstrap_installs_deps(self, content: str) -> None:
-        assert "pip install" in content and "-e ." in content, (
-            "bootstrap.sh must run `pip install -e .` for editable install"
+        # After Finding D (Approach C, 2026-05-14), bootstrap installs
+        # with the [dev] extras group so optimum is available for the
+        # ONNX export step. The [fallback] group (sentence-transformers)
+        # is intentionally NOT installed by default; production daemons
+        # running on ONNX never need it. Operators who want to exercise
+        # WRIT_ALLOW_EMBEDDING_FALLBACK=1 install it explicitly via
+        # `pip install -e '.[fallback]'`.
+        assert "pip install" in content, "bootstrap.sh must run pip install"
+        assert "-e '.[dev]'" in content or "-e .[dev]" in content, (
+            "bootstrap.sh must install -e '.[dev]' (Approach C: dev extras "
+            "provide optimum for the ONNX export step). If you intentionally "
+            "moved to bare -e . install, update this test AND the install "
+            "contract in pyproject.toml's three-group partitioning."
+        )
+
+    def test_bootstrap_exports_onnx_model(self, content: str) -> None:
+        # After Finding D (Approach C, 2026-05-14), bootstrap must
+        # produce the ONNX model on disk so the daemon can take the
+        # production ONNX path on first start. The export is gated on
+        # the model file not already existing -- the test verifies
+        # that bootstrap.sh has the export step, not the gating logic
+        # (idempotency is verified separately by re-running bootstrap).
+        assert "scripts/export_onnx.py" in content, (
+            "bootstrap.sh must run scripts/export_onnx.py so the ONNX model "
+            "is present for the daemon's production-path startup. Without "
+            "this, a fresh install runs `writ serve` and the daemon refuses "
+            "to start (see writ/retrieval/pipeline.py three-state ONNX "
+            "contract, commit dae679a)."
         )
 
     def test_bootstrap_invokes_harness_installer(self, content: str) -> None:
