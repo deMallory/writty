@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.retrieval.embeddings import (
     DEFAULT_ONNX_DIR,
     CachedEncoder,
@@ -173,7 +174,7 @@ class TestOnnxRankingStability:
         with open(gt_path) as f:
             ground_truth = json.load(f)["queries"]
 
-        db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         try:
             # Build PyTorch pipeline (lazy import).
             from sentence_transformers import SentenceTransformer
@@ -279,7 +280,7 @@ class TestEmbeddingModelSelection:
 
         monkeypatch.delenv("WRIT_ALLOW_EMBEDDING_FALLBACK", raising=False)
 
-        db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         try:
             count = await db.count_rules()
             if count == 0:
@@ -341,7 +342,7 @@ class TestEmbeddingModelSelection:
 
         monkeypatch.setenv("WRIT_ALLOW_EMBEDDING_FALLBACK", "1")
 
-        db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         try:
             count = await db.count_rules()
             if count == 0:
@@ -379,7 +380,7 @@ class TestEmbeddingModelSelection:
         monkeypatch.setenv("WRIT_ALLOW_EMBEDDING_FALLBACK", "1")
         caplog.set_level(logging.WARNING, logger="writ.retrieval.pipeline")
 
-        db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         try:
             count = await db.count_rules()
             if count == 0:

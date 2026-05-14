@@ -11,15 +11,16 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
+from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.graph.ingest import discover_rule_files, parse_rules_from_file
 from writ.graph.schema import Rule
 from writ.retrieval.pipeline import build_pipeline
 from writ.retrieval.traversal import AdjacencyCache
 
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "writdevpass"
+NEO4J_URI = get_neo4j_uri()
+NEO4J_USER = get_neo4j_user()
+NEO4J_PASSWORD = get_neo4j_password()
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 

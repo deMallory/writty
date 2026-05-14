@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pyinstrument import Profiler
 
+from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.retrieval.pipeline import build_pipeline
 
@@ -31,7 +32,7 @@ ITERATIONS = 10  # 10 x 10 queries = 100 total
 
 
 async def main():
-    db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+    db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
     print("Building pipeline...")
     pipeline = await build_pipeline(db)
 

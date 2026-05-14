@@ -121,11 +121,12 @@ class TestLoadedRuleIdsExclusion:
         """Build a pipeline with migrated rules."""
         from pathlib import Path
 
+        from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
         from writ.graph.db import Neo4jConnection
         from writ.graph.ingest import discover_rule_files, parse_rules_from_file, validate_parsed_rule
         from writ.retrieval.pipeline import build_pipeline
 
-        db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         count = await db.count_rules()
         if count == 0:
             bible = Path("bible/")
@@ -188,9 +189,10 @@ class TestRuleAbstractionMembership:
 
     @pytest_asyncio.fixture()
     async def db(self):
+        from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
         from writ.graph.db import Neo4jConnection
 
-        conn = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        conn = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         await conn.clear_all()
         yield conn
         await conn.clear_all()
@@ -270,11 +272,12 @@ class TestMultiQuerySession:
     async def pipeline(self):
         from pathlib import Path
 
+        from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
         from writ.graph.db import Neo4jConnection
         from writ.graph.ingest import discover_rule_files, parse_rules_from_file, validate_parsed_rule
         from writ.retrieval.pipeline import build_pipeline
 
-        db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         # Ensure rules are migrated (previous tests may have cleared DB).
         count = await db.count_rules()
         if count == 0:

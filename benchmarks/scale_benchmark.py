@@ -20,6 +20,8 @@ from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -465,7 +467,7 @@ async def main() -> None:
             real_rules.append(clean)
     print(f"  Loaded {len(real_rules)} real rules")
 
-    db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+    db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
     results: dict = {}
 
     try:

@@ -21,6 +21,7 @@ import pytest
 import pytest_asyncio
 
 from tests.fixtures.regression_floors import HIT_RATE_FLOOR, MRR5_FLOOR
+from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.graph.ingest import validate_parsed_rule
 from writ.graph.integrity import IntegrityChecker
@@ -36,9 +37,9 @@ from writ.retrieval.ranking import (
 # module-scoped async fixtures (db, pipeline) work correctly.
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "writdevpass"
+NEO4J_URI = get_neo4j_uri()
+NEO4J_USER = get_neo4j_user()
+NEO4J_PASSWORD = get_neo4j_password()
 
 GROUND_TRUTH_PATH = Path("tests/fixtures/ground_truth_queries.json")
 

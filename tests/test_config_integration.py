@@ -16,7 +16,15 @@ import pytest
 
 # Future config module -- ImportError expected until implementation lands.
 try:
-    from writ.config import load_config, get_neo4j_uri, get_neo4j_user, get_neo4j_password
+    from writ.config import (
+        DEFAULT_NEO4J_PASSWORD,
+        DEFAULT_NEO4J_URI,
+        DEFAULT_NEO4J_USER,
+        get_neo4j_password,
+        get_neo4j_uri,
+        get_neo4j_user,
+        load_config,
+    )
     _CONFIG_AVAILABLE = True
 except ImportError:
     _CONFIG_AVAILABLE = False
@@ -26,9 +34,16 @@ pytestmark = pytest.mark.skipif(
     reason="writ/config.py not yet implemented",
 )
 
-HARDCODED_URI = "bolt://localhost:7687"
-HARDCODED_USER = "neo4j"
-HARDCODED_PASSWORD = "writdevpass"
+# Reference the canonical defaults from writ/config.py rather than
+# duplicating the literal values here. Two reasons: (1) the meta-test
+# stays correct if the canonical defaults change in writ/config.py;
+# (2) the credential-literal pre-write hook (writ-crypto-scan) cannot
+# distinguish "literal as test fixture" from "literal as production
+# credential assignment", and pulling the values from writ.config
+# removes the literals from this file entirely.
+HARDCODED_URI = DEFAULT_NEO4J_URI
+HARDCODED_USER = DEFAULT_NEO4J_USER
+HARDCODED_PASSWORD = DEFAULT_NEO4J_PASSWORD
 
 WRIT_ROOT = Path(__file__).parent.parent
 
@@ -114,10 +129,80 @@ class TestConftestNoHardcodedCreds:
         )
 
     def test_conftest_does_not_contain_hardcoded_password(self) -> None:
-        """tests/conftest.py source does not contain the literal 'writdevpass' string."""
+        """tests/conftest.py source does not contain the literal default password string."""
         source = _source_of(WRIT_ROOT / "tests" / "conftest.py")
         assert HARDCODED_PASSWORD not in source, (
             f"tests/conftest.py still contains hardcoded password '{HARDCODED_PASSWORD}'"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestRepoWideNoHardcodedCreds (Finding 9, 2026-05-14)
+#
+# The three classes above cover writ/cli.py, writ/server.py, and
+# tests/conftest.py. The remaining ~20 sites that hardcoded the default
+# Neo4j password (scripts/*, benchmarks/*, most tests/test_*.py) were
+# uncovered drift surface. Finding 9 fixed those sites; this class
+# extends the meta-test to lock the property repo-wide so the drift
+# cannot recur.
+# ---------------------------------------------------------------------------
+
+
+# Files that legitimately contain the canonical default literal. Each
+# entry is itemized so additions require a deliberate decision.
+_HARDCODED_ALLOWLIST = {
+    # The canonical default constant. writ/config.py:DEFAULT_NEO4J_PASSWORD
+    # IS the source of truth that all consumers (including the tests
+    # below) read via the get_neo4j_password() accessor.
+    WRIT_ROOT / "writ" / "config.py",
+    # This meta-test file itself imports DEFAULT_NEO4J_PASSWORD from
+    # writ.config and uses it as HARDCODED_PASSWORD for the assertions
+    # against other files. The literal does not appear here directly,
+    # but the imported value resolves to the canonical default at
+    # runtime, so the file is on the allowlist by symmetry.
+    WRIT_ROOT / "tests" / "test_config_integration.py",
+}
+
+
+def _iter_python_sources_under(root: Path):
+    """Yield every .py file under `root`, excluding .venv, __pycache__,
+    .mypy_cache, and the allowlist."""
+    for path in root.rglob("*.py"):
+        parts = set(path.parts)
+        if "__pycache__" in parts or ".venv" in parts or ".mypy_cache" in parts:
+            continue
+        if path in _HARDCODED_ALLOWLIST:
+            continue
+        yield path
+
+
+class TestRepoWideNoHardcodedCreds:
+    """No Python file under writ/, scripts/, benchmarks/, or tests/
+    contains the canonical default Neo4j password as a literal, except
+    the documented allowlist (writ/config.py default constant; this
+    meta-test file)."""
+
+    @pytest.mark.parametrize(
+        "subtree",
+        ["writ", "scripts", "benchmarks", "tests"],
+    )
+    def test_no_hardcoded_password_outside_allowlist(self, subtree: str) -> None:
+        """Catches the bug class fixed by Finding 9 (2026-05-14): hardcoded
+        Neo4j credentials across scripts, benchmarks, and tests that drifted
+        from writ.toml without test coverage. After Finding 9, this property
+        holds repo-wide outside the documented allowlist."""
+        offenders: list[Path] = []
+        for source_path in _iter_python_sources_under(WRIT_ROOT / subtree):
+            if HARDCODED_PASSWORD in source_path.read_text():
+                offenders.append(source_path.relative_to(WRIT_ROOT))
+
+        assert not offenders, (
+            f"Files under {subtree}/ contain the canonical default Neo4j "
+            f"password as a literal instead of reading it via "
+            f"writ/config.py get_neo4j_password(): "
+            f"{[str(p) for p in offenders]}. If a new site genuinely "
+            f"requires the literal (rare), add it to _HARDCODED_ALLOWLIST "
+            f"in this file with a comment explaining why."
         )
 
 

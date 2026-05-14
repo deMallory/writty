@@ -18,11 +18,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "writdevpass"
+NEO4J_URI = get_neo4j_uri()
+NEO4J_USER = get_neo4j_user()
+NEO4J_PASSWORD = get_neo4j_password()
 AGENTS_DIR = Path(__file__).resolve().parent.parent / ".claude" / "agents"
 
 

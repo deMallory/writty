@@ -14,11 +14,12 @@ import time
 
 import pytest
 
+from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "writdevpass"
+NEO4J_URI = get_neo4j_uri()
+NEO4J_USER = get_neo4j_user()
+NEO4J_PASSWORD = get_neo4j_password()
 
 EDGES_PER_NODE = 4
 BENCHMARK_ITERATIONS = 100

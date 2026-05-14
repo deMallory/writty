@@ -17,6 +17,7 @@ from pathlib import Path
 # Add project root to path for imports.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.graph.ingest import (
     NODE_ID_FIELDS,
@@ -28,9 +29,9 @@ from writ.graph.ingest import (
     validate_parsed_rule,
 )
 
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "writdevpass"
+NEO4J_URI = get_neo4j_uri()
+NEO4J_USER = get_neo4j_user()
+NEO4J_PASSWORD = get_neo4j_password()
 
 
 async def run_migration(bible_dir: Path, dry_run: bool = False) -> None:

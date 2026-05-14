@@ -348,9 +348,10 @@ class TestExportWithNeo4j:
     @pytest_asyncio.fixture()
     async def db(self):
         """Provide a Neo4j connection, clear before and after."""
+        from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
         from writ.graph.db import Neo4jConnection
 
-        conn = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        conn = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         await conn.clear_all()
         yield conn
         await conn.clear_all()
