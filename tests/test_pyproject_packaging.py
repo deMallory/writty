@@ -37,7 +37,12 @@ class TestPyprojectInstallContract:
 
     def test_project_section_present(self, pyproject: dict) -> None:
         assert "project" in pyproject, "pyproject.toml lacks [project] section"
-        assert pyproject["project"].get("name") == "writ"
+        # The PyPI distribution name is "claude-writ" (the unqualified "writ"
+        # name was taken by an unrelated package; see commit 0e533b9 + CHANGELOG
+        # 1.0.1). The Python module name (`import writ`) and the console script
+        # name (`writ`) are unchanged; only the pip distribution identifier
+        # differs.
+        assert pyproject["project"].get("name") == "claude-writ"
 
     def test_writ_console_script_entry_point(self, pyproject: dict) -> None:
         scripts = pyproject.get("project", {}).get("scripts", {})
