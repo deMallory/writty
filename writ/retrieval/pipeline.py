@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import time
 from typing import TYPE_CHECKING
 
@@ -538,13 +539,25 @@ async def build_pipeline(
     texts = [f"{r.get('trigger', '')} {r.get('statement', '')}" for r in all_candidates]
     rule_ids = [r["rule_id"] for r in all_candidates]
 
-    # Auto-detect ONNX model when no model is passed.
+    # Embedding-model selection: three states.
+    #   1. embedding_model passed in -> use it (DI path for tests / pre-warmed servers).
+    #   2. ONNX construction succeeds -> production path.
+    #   3. ONNX construction fails -> raise unless WRIT_ALLOW_EMBEDDING_FALLBACK=1.
+    #
+    # Prior behavior silently swallowed FileNotFoundError / ImportError and
+    # fell through to SentenceTransformer. That made production daemons and
+    # CI environments answer to the same name while running different code:
+    # cold-start, latency, and memory numbers were unverifiable across
+    # environments. The override env var keeps the dev-only fallback
+    # available, but requires an explicit opt-in so the operational risk
+    # is visible.
     onnx_model = None
+    onnx_construction_error: Exception | None = None
     if embedding_model is None:
         try:
             onnx_model = OnnxEmbeddingModel(_ONNX_DIR)
-        except (FileNotFoundError, ImportError):
-            pass
+        except (FileNotFoundError, ImportError) as exc:
+            onnx_construction_error = exc
 
     if onnx_model is not None:
         # ONNX for everything: bulk encode at startup + cached single encode at query time.
@@ -552,7 +565,7 @@ async def build_pipeline(
         embeddings = onnx_model.encode_batch(texts)
         query_encoder = CachedEncoder(onnx_model)
     elif embedding_model is not None:
-        # Pre-loaded model passed in (tests, server reuse).
+        # Pre-loaded model passed in (tests, server reuse). Bypasses ONNX auto-detect.
         raw_model = embedding_model
         if isinstance(embedding_model, CachedEncoder):
             raw_model = embedding_model._model
@@ -564,13 +577,38 @@ async def build_pipeline(
             embedding_model if isinstance(embedding_model, CachedEncoder)
             else CachedEncoder(embedding_model)
         )
-    else:
-        # Fallback: SentenceTransformer (imports PyTorch -- avoid in production).
+    elif os.environ.get("WRIT_ALLOW_EMBEDDING_FALLBACK") == "1":
+        # Dev opt-in: ONNX unavailable, fallback explicitly permitted.
+        # Logged at WARNING on every startup so the operator sees the
+        # divergence from the production path.
+        _logger.warning(
+            "ONNX embedding model unavailable (%s: %s); using "
+            "SentenceTransformer fallback because "
+            "WRIT_ALLOW_EMBEDDING_FALLBACK=1. Production latency and "
+            "memory numbers will NOT apply on this run. Unset the env "
+            "var to restore the production-required path.",
+            type(onnx_construction_error).__name__,
+            onnx_construction_error,
+        )
         from sentence_transformers import SentenceTransformer
 
         model = SentenceTransformer(model_name)
         embeddings = model.encode(texts).tolist()
         query_encoder = CachedEncoder(model)
+    else:
+        raise RuntimeError(
+            "ONNX embedding model unavailable: "
+            f"{type(onnx_construction_error).__name__}: {onnx_construction_error}. "
+            f"Production startup requires the ONNX model at {_ONNX_DIR} "
+            "plus onnxruntime and tokenizers in the active interpreter. "
+            "Run `python scripts/export_onnx.py` to produce the model, "
+            "and verify the venv has onnxruntime + tokenizers installed "
+            "(`pip install -e .[dev]` or run scripts/bootstrap.sh). "
+            "To allow the SentenceTransformer fallback for local "
+            "development only, set WRIT_ALLOW_EMBEDDING_FALLBACK=1 "
+            "(NOT recommended for production; latency and memory numbers "
+            "will diverge from the production-path measurements)."
+        )
 
     # Compute corpus hash for HNSW cache lookup
     dims = len(embeddings[0]) if embeddings else 384

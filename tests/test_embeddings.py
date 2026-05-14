@@ -183,3 +183,132 @@ class TestOnnxRankingStability:
             assert mismatches == [], f"{len(mismatches)} queries diverged"
         finally:
             await db.close()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Embedding-model selection in build_pipeline(): three-state contract.
+#
+# State 1: ONNX construction succeeds                     -> production path.
+# State 2: ONNX fails + WRIT_ALLOW_EMBEDDING_FALLBACK=1   -> SentenceTransformer
+#                                                            with WARNING log.
+# State 3: ONNX fails + no override                       -> RuntimeError raised.
+#
+# Prior behavior silently swallowed FileNotFoundError / ImportError and
+# fell through to SentenceTransformer. The override env var keeps the
+# fallback available for dev environments that have not yet exported
+# ONNX, but requires explicit opt-in so production cannot regress
+# silently. See commit history for the full diagnosis.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestEmbeddingModelSelection:
+    """Behavior tests for the ONNX-required / fallback-opt-in / refuse contract."""
+
+    @pytest.fixture()
+    def force_onnx_failure(self, monkeypatch):
+        """Replace OnnxEmbeddingModel in the pipeline module so construction raises.
+
+        Mimics the production failure mode that motivated this contract:
+        OnnxEmbeddingModel.__init__ raises ImportError when onnxruntime
+        is missing from the active interpreter (system python without
+        the dev deps installed) or FileNotFoundError when the ONNX
+        export has not been produced yet.
+        """
+        from writ.retrieval import pipeline as pipeline_mod
+
+        def fail(_model_dir):
+            raise FileNotFoundError("simulated: ONNX model not exported")
+
+        monkeypatch.setattr(pipeline_mod, "OnnxEmbeddingModel", fail)
+
+    @pytest.fixture()
+    def fake_sentence_transformer(self, monkeypatch):
+        """Replace sentence_transformers.SentenceTransformer with a fast stub.
+
+        The real fallback loads PyTorch + a ~90 MB model file, which adds
+        seconds per test invocation. The stub returns the same shape
+        (N x 384 numpy array) so build_pipeline progresses past the
+        embedding step without the real cost.
+        """
+        import sys
+        import types
+
+        fake_module = types.ModuleType("sentence_transformers")
+
+        class StubSentenceTransformer:
+            def __init__(self, model_name):
+                self.model_name = model_name
+
+            def encode(self, texts):
+                return np.zeros((len(texts), 384), dtype=np.float32)
+
+        fake_module.SentenceTransformer = StubSentenceTransformer
+        monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+
+    @pytest.mark.asyncio
+    async def test_raises_when_onnx_unavailable_and_no_override(
+        self, monkeypatch, force_onnx_failure
+    ):
+        """State 3: ONNX construction fails, no override env var, build_pipeline raises."""
+        from writ.graph.db import Neo4jConnection
+        from writ.retrieval.pipeline import build_pipeline
+
+        monkeypatch.delenv("WRIT_ALLOW_EMBEDDING_FALLBACK", raising=False)
+
+        db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        try:
+            count = await db.count_rules()
+            if count == 0:
+                pytest.skip("Neo4j has no rules. Run scripts/migrate.py first.")
+
+            with pytest.raises(RuntimeError) as excinfo:
+                await build_pipeline(db)
+
+            msg = str(excinfo.value)
+            # The message must name the cause exception class, the override
+            # env var, and the export script. If any of those goes missing,
+            # the next maintainer hits the error without an actionable next
+            # step and the contract loses its operational value.
+            assert "ONNX embedding model unavailable" in msg
+            assert "FileNotFoundError" in msg
+            assert "WRIT_ALLOW_EMBEDDING_FALLBACK" in msg
+            assert "scripts/export_onnx.py" in msg
+        finally:
+            await db.close()
+
+    @pytest.mark.asyncio
+    async def test_fallback_used_when_override_set_and_warning_logged(
+        self, monkeypatch, caplog, force_onnx_failure, fake_sentence_transformer
+    ):
+        """State 2: ONNX fails, override env var is set, fallback is taken and warned."""
+        import logging
+
+        from writ.graph.db import Neo4jConnection
+        from writ.retrieval.pipeline import build_pipeline
+
+        monkeypatch.setenv("WRIT_ALLOW_EMBEDDING_FALLBACK", "1")
+        caplog.set_level(logging.WARNING, logger="writ.retrieval.pipeline")
+
+        db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+        try:
+            count = await db.count_rules()
+            if count == 0:
+                pytest.skip("Neo4j has no rules. Run scripts/migrate.py first.")
+
+            # Should NOT raise -- the override grants permission to fall back.
+            pipeline = await build_pipeline(db)
+            assert pipeline is not None
+
+            warnings = [
+                rec
+                for rec in caplog.records
+                if rec.levelno >= logging.WARNING
+                and rec.name == "writ.retrieval.pipeline"
+            ]
+            assert warnings, "expected WARNING from pipeline; got none"
+            warning_text = " ".join(rec.getMessage() for rec in warnings)
+            assert "ONNX embedding model unavailable" in warning_text
+            assert "WRIT_ALLOW_EMBEDDING_FALLBACK" in warning_text
+            assert "SentenceTransformer fallback" in warning_text
+        finally:
+            await db.close()
