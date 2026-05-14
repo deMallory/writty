@@ -428,6 +428,17 @@ def validate(
                 typer.echo(f"\nRedundant ({len(findings['redundant'])}):")
                 for r in findings["redundant"]:
                     typer.echo(f"  {r['rule_a']} ~ {r['rule_b']} ({r['similarity']})")
+            if findings.get("redundancy_unavailable"):
+                # Redundancy check could not run (missing optional dep).
+                # Surface explicitly so the user does not read silence as
+                # "no redundancies found." Same principle as the explicit
+                # ONNX-fallback contract in writ/retrieval/pipeline.py
+                # (commit dae679a): wire-format silence is indistinguishable
+                # from a clean check; the gate must say which it is.
+                typer.echo(
+                    f"\nRedundancy check skipped: {findings['redundancy_unavailable']}",
+                    err=True,
+                )
 
             if findings.get("unreviewed"):
                 u = findings["unreviewed"]
