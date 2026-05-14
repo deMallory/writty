@@ -44,7 +44,24 @@ GROUND_TRUTH_PATH = Path("tests/fixtures/ground_truth_queries.json")
 
 # Per ARCH-CONST-001: benchmark budgets from handbook Section 10.
 LATENCY_P95_BUDGET_MS = 10.0
-COLD_START_BUDGET_S = 3.0
+# Cold-start budget for build_pipeline() on the ONNX path.
+#
+# Measurement (2026-05-13, 276-rule corpus, ONNX path, dev machine):
+#   10-run distribution: min 1.84s, median 2.20s, max 2.64s, p95 ~2.60s
+#   Cold-cold (no HNSW cache): 1.86s
+#
+# Budget is 3.5s, not 2.7-3.0s, deliberately. CI runners are typically
+# slower and noisier than the measurement environment; a budget equal
+# to local p95 will flake, and a flaky hard-blocking gate erodes its
+# own authority within weeks (people start adding "rerun CI" as a
+# reflex, then ignoring the failure, and the gate becomes documentation
+# again). 0.5s of slack on an operation that runs once per machine
+# reboot costs nothing operationally and preserves the gate.
+#
+# Re-measure and reconsider if the corpus grows substantially or the
+# embedding model changes. Do not tighten without a corresponding
+# re-measurement; "feels generous" is not a reason.
+COLD_START_BUDGET_S = 3.5
 MEMORY_BUDGET_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
 INTEGRITY_BUDGET_MS = 500.0
 INGESTION_BUDGET_S = 2.0
