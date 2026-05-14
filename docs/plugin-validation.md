@@ -21,8 +21,10 @@ validator checks:
 
 ```shell
 cd /path/to/Writ
-python3 -m pytest tests/plugin/ -v
+.venv/bin/python3 -m pytest tests/plugin/ -v
 ```
+
+Note: invoke pytest via the project venv (`.venv/bin/python3`), not the system `python3`. The system interpreter on many machines lacks `onnxruntime`, which causes `OnnxEmbeddingModel.__init__` to raise `ImportError` and `build_pipeline()` to silently fall through to the SentenceTransformer fallback. The bench would then measure a non-production code path. The `Makefile` already pins `PYTHON` to the venv; this command does the same explicitly.
 
 Expected: all phase-A/B/C/D tests pass; only the `pytest.skip()`
 markers remain: `test_bootstrap_plugin_idempotent` (requires shell
