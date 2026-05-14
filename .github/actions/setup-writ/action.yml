@@ -1,0 +1,65 @@
+name: 'Set up Writ test environment'
+description: >
+  Python 3.12 venv, install -e '.[dev]', migrate rule corpus into the
+  Neo4j service container, verify the corpus migrated to non-empty,
+  and export the ONNX embedding model so build_pipeline() takes the
+  production path. Required by both PR jobs (test and bench).
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Create venv and install -e '.[dev]'
+      shell: bash
+      # Quote '.[dev]' so the line survives copy-paste into zsh, which
+      # globs the bracket without quoting. bash treats it literally
+      # either way; quoting is defensive consistency.
+      run: |
+        python -m venv .venv
+        .venv/bin/pip install --upgrade pip
+        .venv/bin/pip install -e '.[dev]'
+
+    - name: Migrate rule corpus into Neo4j
+      shell: bash
+      run: .venv/bin/python scripts/migrate.py
+
+    - name: Verify rule corpus migrated
+      shell: bash
+      # Reads Neo4j credentials via writ/config.py (the same path
+      # writ/server.py uses to load writ.toml). The codebase has
+      # ~20 sites that hardcode 'writdevpass' instead of reading
+      # writ.toml; that drift is pre-existing tech debt tracked
+      # separately. This step does not join the drift surface --
+      # any change to writ.toml's neo4j.password will be reflected
+      # here without code changes.
+      run: |
+        count=$(.venv/bin/python -c '
+        import asyncio
+        from writ.config import get_neo4j_uri, get_neo4j_user, get_neo4j_password
+        from writ.graph.db import Neo4jConnection
+        async def main():
+            conn = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
+            n = await conn.count_rules()
+            await conn.close()
+            print(n)
+        asyncio.run(main())
+        ')
+        echo "Rules in Neo4j after migration: $count"
+        if [ "$count" -lt 250 ]; then
+          echo "::error::Expected >= 250 rules after migration; got $count. scripts/migrate.py may have silently produced an incomplete corpus." >&2
+          exit 1
+        fi
+
+    - name: Export ONNX embedding model
+      shell: bash
+      # Runs in-line every PR. We deliberately do NOT use actions/cache
+      # here. A cache keyed on the export script + library version
+      # creates a staleness surface (the same class of bug as the
+      # silent ONNX fallback in dae679a). 90 seconds of latency per
+      # PR is a worse trade than the certainty that the model on
+      # disk reflects the export script that just ran.
+      run: .venv/bin/python scripts/export_onnx.py
