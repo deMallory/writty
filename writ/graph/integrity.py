@@ -98,8 +98,29 @@ class IntegrityChecker:
 
         try:
             from sentence_transformers import SentenceTransformer
-        except ImportError:
-            return []
+        except ImportError as exc:
+            # Approach C (Finding D): sentence-transformers moved out
+            # of core deps. The redundancy check is opt-in by way of
+            # this dependency. Returning [] here would silently degrade
+            # into output indistinguishable from "no redundancies
+            # found", which is the bug class fixed in commit dae679a
+            # for the ONNX fallback. Raise with an actionable message
+            # naming the cause, the [fallback] install command, and the
+            # skip_redundancy=True opt-out for callers that intentionally
+            # want to exclude this check (the integrity benchmark uses
+            # this opt-out, for example).
+            raise RuntimeError(
+                "Redundancy check requires the sentence-transformers "
+                f"library, which could not be imported ({type(exc).__name__}: "
+                f"{exc}). "
+                "Production installs deliberately exclude this library "
+                "(see pyproject.toml: it lives in the [fallback] extras "
+                "group, not core dependencies). To enable redundancy "
+                "detection, run `pip install -e '.[fallback]'` and "
+                "re-run the check. To intentionally exclude redundancy "
+                "from an integrity scan (e.g., for benchmarking), pass "
+                "skip_redundancy=True to run_all_checks()."
+            ) from exc
 
         model = SentenceTransformer("all-MiniLM-L6-v2")
         texts = [f"{r['trigger']} {r['statement']}" for r in rules]
@@ -258,7 +279,19 @@ class IntegrityChecker:
         }
 
         if not skip_redundancy:
-            findings["redundant"] = await self.detect_redundant()
+            try:
+                findings["redundant"] = await self.detect_redundant()
+            except RuntimeError as exc:
+                # detect_redundant() raises when sentence-transformers
+                # is not installed. Catch here so the other four checks
+                # (conflicts, orphans, stale, confidence-defaults) still
+                # complete and report; surface the missing-dep state via
+                # a separate key the caller (writ validate) can print
+                # explicitly. exit_code below excludes this key on
+                # purpose: "we could not run the check" is informational,
+                # not a finding.
+                findings["redundant"] = []
+                findings["redundancy_unavailable"] = str(exc)
         else:
             findings["redundant"] = []
 
