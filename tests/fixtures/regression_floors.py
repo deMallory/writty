@@ -122,6 +122,45 @@ from 72 to 276 rules (preserved verbatim from the original site at
                                    top-10 cutoff question). Floor
                                    unchanged for the same sample-size-
                                    variance reason given in 1a.
+    0.45 / 0.75     2026-05-15     Item 1c measurement, no floor change:
+                                   Q77 ("two cron jobs updating the
+                                   same table at midnight") was the
+                                   second of the two original
+                                   bad-label cases identified in Item
+                                   1a. Inspection of corpus
+                                   candidates found ENF-SYS-003
+                                   ("When writing code that changes a
+                                   status/state column in a database
+                                   where more than one actor could
+                                   attempt the same transition") is
+                                   the principled framework-agnostic
+                                   answer and was already ranked at
+                                   rank 5 (score 0.286) for the query.
+                                   The original label FW-M2-RT-002 was
+                                   Magento-specific for a framework-
+                                   agnostic query -- a labeling error,
+                                   not a retrieval failure. Relabeled
+                                   to ENF-SYS-003 with a sidecar note
+                                   recording the alternatives
+                                   considered (ARCH-IDEMPOTENT-001
+                                   web-API-focused, SCALE-QUEUE-002
+                                   queue-consumer-focused) and why
+                                   ENF-SYS-003 fits best. MRR@5 =
+                                   0.6456 (was 0.6377; +0.008 abs --
+                                   smallest possible gain because Q77
+                                   entered as a rank-5 hit contributing
+                                   only 0.2 to the reciprocal-rank sum
+                                   over 19 queries). Hit rate = 0.800
+                                   (was 0.7939). Ambiguous-set misses
+                                   reduced from 2 to 1: only Q81
+                                   remains (near miss at rank 10 for
+                                   SOLID-DIP-002 -- Item 1d will
+                                   investigate the top-5-vs-top-10
+                                   cutoff and whether re-ranking by
+                                   domain-relevance would help). Floor
+                                   unchanged for the same sample-size
+                                   reason: 19 queries and a single
+                                   hit/miss flip moves MRR by ~5pp.
 
 Each public-rulebook sub-phase diluted the ambiguous-set MRR / hit
 rate. After full Phase 1-5 expansion (276 rules / 30 mandatory) and

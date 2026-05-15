@@ -451,7 +451,8 @@
       "id": "Q77",
       "set": "ambiguous",
       "query": "two cron jobs updating the same table at midnight",
-      "expected_rule_id": "FW-M2-RT-002"
+      "expected_rule_id": "ENF-SYS-003",
+      "_relabel_note_2026-05-15": "Relabeled from FW-M2-RT-002 during Item 1c label-quality audit. The original label was Magento-specific (FW-M2-RT-002: Magento order-state changes via sales_order_save_after observers) for a framework-agnostic query. ENF-SYS-003 is the principled answer: its trigger is 'When writing code that changes a status/state column in a database where more than one actor could attempt the same transition' -- two cron jobs ARE 'more than one actor' updating shared state. The corpus already ranked ENF-SYS-003 at rank 5 (score 0.286) for this query; the relabel is a label-quality fix, not a corpus or retrieval change. ARCH-IDEMPOTENT-001 was considered but is web-API focused (write endpoints, charges, emails) rather than concurrent-writer focused. SCALE-QUEUE-002 was considered but is queue-consumer focused. ENF-SYS-003's state-transition framing covers the cron-job-race symptom most directly."
     },
     {
       "id": "Q78",
