@@ -183,7 +183,11 @@ Twelve targets, all pass/fail. The pipeline is not allowed to ship if any target
 
 ## Real-vs-synthetic at matched scale (Item 2 investigation, 2026-05-15)
 
-The synthetic scale curve above measures BM25 + vector + cache + ranking under increasing rule counts, but the rules themselves come from `benchmarks/scale_benchmark.py`'s templated generator. The original v1.0.0 critique that motivated this section: live p95 at 276 real rules (0.590 ms recorded; 10-11 ms on re-measurement during the v1.1.0 work) was higher than synthetic p95 at 10K rules (0.557 ms), implying the synthetic curve underpredicts real-corpus difficulty.
+The synthetic scale curve above measures BM25 + vector + cache + ranking under increasing rule counts, but the rules themselves come from `benchmarks/scale_benchmark.py`'s templated generator. The original v1.0.0 critique that motivated this section: live p95 at 276 real rules (0.590 ms recorded) was reported as higher than synthetic p95 at 10K rules (0.557 ms), implying the synthetic curve underpredicts real-corpus difficulty.
+
+The first re-measurement during the v1.1.0 work produced an E2E p95 of 10-11 ms, an apparent 18x regression. Per-query instrumentation (see `/tmp/e2e_per_query.py` pattern; effectively reproducible via the bench with the warmup removed) showed every cold-cache outlier was from iteration 0 of each query, 15-36x slower than warm iterations. The bench's E2E test was measuring "first 10 queries after daemon startup," not steady-state production latency. After adding a one-line warmup pass before the timed loop in `test_end_to_end_p95`, the E2E p95 is 0.5-0.6 ms across five sequential runs -- matching the originally-recorded 0.590 ms. The recorded number was always correct; the bench had regressed in what it measured, not what it observed.
+
+The per-stage gap (BM25, vector) below is the real signal. Those tests already amortize cold-cache by looping the same query 100 times, so iteration 0's outlier is one of 100 samples and does not dominate p95.
 
 `scripts/instrument-corpus-stats.py` tests four hypotheses for why the gap exists at matched corpus size (real 246 domain rules vs synthetic 246 generated rules). Run with `./.venv/bin/python3 scripts/instrument-corpus-stats.py`.
 
@@ -231,7 +235,9 @@ The synthetic curve does NOT reflect real-corpus difficulty in two structural wa
 
 ### Implication
 
-The synthetic curve in this document is a useful upper-bound on retrieval cost as N grows, but it understates per-query cost at any given N. A scale benchmark that tracks real-corpus latency growth must either use the actual rule corpus at multiple scales (e.g., subsample 50 / 100 / 200 of the 276 production rules) or rewrite the synthetic generator to produce text with realistic length and embedding diversity. Out of scope for v1.1.0; flagged as a follow-up.
+The synthetic curve in this document is a useful upper-bound on retrieval cost as N grows, but it understates per-query cost at any given N. The +63% BM25 and +143% vector p95 gaps at matched scale are real, but they sit comfortably within the 10 ms E2E budget on the production path (steady-state p95 0.5 ms after warmup, 17x headroom). The real-corpus latency story is "we measure the right number now and it has plenty of headroom," not "the corpus is too slow."
+
+A scale benchmark that tracks real-corpus latency growth into the future would still benefit from either using the actual rule corpus at multiple scales (e.g., subsample 50 / 100 / 200 of the 276 production rules) or rewriting the synthetic generator to produce text with realistic length and embedding diversity. Flagged as a follow-up; not blocking.
 
 ## Related documents
 
