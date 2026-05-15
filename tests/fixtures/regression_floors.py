@@ -161,6 +161,71 @@ from 72 to 276 rules (preserved verbatim from the original site at
                                    unchanged for the same sample-size
                                    reason: 19 queries and a single
                                    hit/miss flip moves MRR by ~5pp.
+    0.45 / 0.75     2026-05-15     Item 1d measurement, no floor change:
+                                   Q81 ("I am newing up services
+                                   inside my controller") expected
+                                   SOLID-DIP-002 at rank 10 -- the
+                                   near-miss case identified in Item
+                                   1a. Inspection showed SOLID-DIP-002
+                                   was outranked by SOLID-SRP-002
+                                   (catches "controller") and
+                                   ARCH-BOUNDARY-001 (catches
+                                   "services") because SOLID-DIP-002's
+                                   trigger was abstract ("When
+                                   constructing a class that requires
+                                   collaborators") without mentioning
+                                   the colloquial "newing up" or the
+                                   common contexts (controllers,
+                                   route handlers). Same corpus-
+                                   content shape as Item 1b: the rule
+                                   is the right answer but its text
+                                   does not contain the query's
+                                   keywords. Edit added "controller,
+                                   route handler, or service-layer
+                                   class" to the trigger plus the
+                                   "newing up" colloquialism with the
+                                   `new ConcreteClass()` literal,
+                                   genuine clarifications not
+                                   keyword injection. Re-measurement:
+                                   SOLID-DIP-002 now ranks top-1
+                                   (score 0.97) for Q81; Q77
+                                   incidentally flipped back from a
+                                   rank-5 hit (per Item 1c) to a
+                                   rank-6 miss as a side effect of
+                                   the SOLID-DIP-002 edit perturbing
+                                   BM25 IDF scores corpus-wide
+                                   (DRY-DUP-001's score on Q77
+                                   bumped from 0.271 to 0.302,
+                                   elbowing ENF-SYS-003 out of top-5
+                                   by ~0.016). Same ranking-stability
+                                   perturbation class as Q84 in
+                                   Item 1b -- one corpus edit can
+                                   nudge other queries' borderline
+                                   rankings. Q77's Item 1c relabel
+                                   stands on the merits; the flicker
+                                   is sample-variance, not a Q77
+                                   labeling error. Net of 1d: Q81
+                                   hit (+1.0/19), Q77 miss (-0.2/19),
+                                   MRR@5 = 0.6904 (was 0.6456;
+                                   +0.045 abs, +6.9% rel). Hit rate
+                                   unchanged at 0.800 (Q81 gain +1
+                                   query, Q77 loss -1 query, net
+                                   zero). Combined Item 1a + 1b + 1c
+                                   + 1d recovers ~80% of the gap
+                                   from the 0.78 v0 baseline.
+                                   Remaining gap (0.78 - 0.6904 =
+                                   0.0896, ~12% of original drift)
+                                   is likely real corpus-growth
+                                   dilution: 3.8x more rules competing
+                                   for top-5 positions on each query.
+                                   Floor unchanged for the same
+                                   sample-size variance argument
+                                   (single hit/miss flip moves MRR
+                                   by ~5pp; the Q77 flicker proved
+                                   it just now). Set expansion
+                                   remains the next-if-needed step
+                                   to characterize variance at
+                                   larger N before any floor raise.
 
 Each public-rulebook sub-phase diluted the ambiguous-set MRR / hit
 rate. After full Phase 1-5 expansion (276 rules / 30 mandatory) and

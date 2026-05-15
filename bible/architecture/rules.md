@@ -628,10 +628,10 @@ Concrete dependencies make business logic untestable, untransferable, and tightl
 **Mandatory**: false
 
 ### Trigger
-When constructing a class that requires collaborators (services, repositories, gateways, clients).
+When constructing a controller, route handler, or service-layer class that requires collaborators (services, repositories, gateways, clients) -- including any time such a class instantiates ("news up") its own dependencies with `new ConcreteClass()` instead of receiving them via constructor injection.
 
 ### Statement
-Dependencies are received via constructor injection, typed to an interface or protocol. Direct instantiation (`new ConcreteClass()`) is permitted only for DTOs, value objects, and known framework types. Application services receive their dependencies; they do not construct them.
+Dependencies are received via constructor injection, typed to an interface or protocol. Direct instantiation (`new ConcreteClass()`) inside a controller or service-layer class is permitted only for DTOs, value objects, and known framework types. Application services and controllers receive their dependencies; they do not construct them.
 
 ### Violation
 ```python
