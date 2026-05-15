@@ -239,6 +239,25 @@ The synthetic curve in this document is a useful upper-bound on retrieval cost a
 
 A scale benchmark that tracks real-corpus latency growth into the future would still benefit from either using the actual rule corpus at multiple scales (e.g., subsample 50 / 100 / 200 of the 276 production rules) or rewriting the synthetic generator to produce text with realistic length and embedding diversity. Flagged as a follow-up; not blocking.
 
+## Compression ratio on real corpus (Item 5 investigation, 2026-05-15)
+
+The synthetic scale curve showed non-monotonic compression ratio across scales (5.6x at 80 rules -> 7.6x at 500 -> 2.8x at 1K -> 25.2x at 10K), with a dip at the 1K mid-scale. The original design discussion hypothesized a length-cap on the summary as the cause; inspection of `writ/compression/abstractions.py` shows there is no length cap (the summary IS the centroid rule's statement, unconstrained). The hypothesis was wrong; the real cause is HDBSCAN's auto-discovered cluster count interacting with centroid-statement length variance.
+
+Measurement on real corpus subsamples at seeds=42:
+
+| N (rules) | Clusters | Mean compression | Min  | Max   | Mean cluster size | Silhouette |
+|-----------|----------|------------------|------|-------|-------------------|------------|
+| 50        | 13       | 3.52x            | 2.09 | 6.36  | 2.6               | 0.109      |
+| 100       | 23       | 4.43x            | 2.09 | 16.46 | 3.0               | 0.102      |
+| 200       | 55       | 3.64x            | 2.09 | 8.49  | 2.6               | 0.139      |
+| 247       | 60       | 4.27x            | 2.09 | 10.94 | 3.0               | 0.127      |
+
+Real corpus does show a mild version of the synthetic non-monotonicity (3.52 -> 4.43 -> 3.64 -> 4.27, dip at 200). Amplitude is much smaller than the synthetic curve's 2.8 -> 25.2 swing because real rules have diverse embeddings (per Item 2 H4 finding), preventing HDBSCAN from forming the very large clusters that produce the synthetic 25.2x ratio at 10K.
+
+Silhouette scores hover at 0.10-0.14 on real -- well below "well-clustered" (typically 0.5+). HDBSCAN is struggling on real-corpus diversity. K-means with explicit cluster count, or per-domain clustering, would likely produce more stable compression ratios. Out of scope for v1.1.0.
+
+Production impact is low: compression / Abstraction nodes are used only in summary mode (when retrieval would otherwise return more rules than the context budget allows). Typical query paths never invoke summary mode; the compression-ratio non-monotonicity does not affect query-time latency or precision. The measurement above is the first record of compression behavior on the real corpus -- prior data was only synthetic.
+
 ## Related documents
 
 - `HANDBOOK.md` (the architecture handbook, with a condensed version of these numbers in the "By the numbers" section)
