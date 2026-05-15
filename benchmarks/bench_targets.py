@@ -20,7 +20,11 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from tests.fixtures.regression_floors import HIT_RATE_FLOOR, MRR5_FLOOR
+from tests.fixtures.regression_floors import (
+    DOMAIN_HIT_RATE_TOP5_FLOOR,
+    HIT_RATE_FLOOR,
+    MRR5_FLOOR,
+)
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.graph.ingest import validate_parsed_rule
@@ -288,6 +292,65 @@ class TestRetrievalPrecision:
 
         assert hit_rate >= HIT_RATE_FLOOR, (
             f"Hit rate {hit_rate:.2%} below floor {HIT_RATE_FLOOR:.0%}. Misses: {misses}"
+        )
+
+    def test_domain_hit_rate_top5(self, db, pipeline, ground_truth) -> None:
+        """Domain hit rate at top-5. Floor 90% (Item 3, 2026-05-15).
+
+        Domain hit rate = % of queries where at least one rule from the
+        expected rule's domain appears in top-5 of pipeline.query results.
+
+        Catches the synthetic-scale-curve concern (100% at N=80 dropped to
+        90% at N>=500 in SCALE_BENCHMARK_RESULTS.md) as a real-corpus gate.
+        Measured 94.5% on the 164-query ground truth at the production
+        276-rule corpus; floor at 90% leaves ~4.5pp headroom and surfaces
+        a regression of ~7 queries before failing.
+        """
+        import asyncio
+
+        async def _domains() -> dict[str, str]:
+            d: dict[str, str] = {}
+            async with db._driver.session(database=db._database) as s:
+                r = await s.run(
+                    "MATCH (r:Rule) RETURN r.rule_id AS id, r.domain AS domain"
+                )
+                async for rec in r:
+                    d[rec["id"]] = rec["domain"] or ""
+            return d
+
+        rule_domains = asyncio.get_event_loop().run_until_complete(_domains())
+
+        hits = 0
+        total = 0
+        misses: list[str] = []
+        for q in ground_truth:
+            expected_domain = rule_domains.get(q["expected_rule_id"])
+            if not expected_domain:
+                # Skip queries whose expected_rule_id is not in the corpus.
+                # This is a data hygiene issue worth its own surfacing but
+                # not a domain-hit-rate failure.
+                continue
+            total += 1
+            result = pipeline.query(q["query"])
+            top5_domains = [
+                rule_domains.get(r["rule_id"], "") for r in result["rules"][:5]
+            ]
+            if expected_domain in top5_domains:
+                hits += 1
+            else:
+                misses.append(q["id"])
+
+        rate = hits / total if total else 0.0
+        print(
+            f"\nDomain hit rate top-5 (all {total} queries): "
+            f"{hits}/{total} = {rate:.2%} (floor: {DOMAIN_HIT_RATE_TOP5_FLOOR:.0%})"
+        )
+        if misses:
+            print(f"  Misses: {', '.join(misses[:20])}{'...' if len(misses) > 20 else ''}")
+
+        assert rate >= DOMAIN_HIT_RATE_TOP5_FLOOR, (
+            f"Domain hit rate {rate:.2%} below floor "
+            f"{DOMAIN_HIT_RATE_TOP5_FLOOR:.0%}. Misses: {misses}"
         )
 
 

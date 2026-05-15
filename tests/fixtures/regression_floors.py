@@ -248,3 +248,21 @@ even when superseded.
 
 MRR5_FLOOR = 0.45
 HIT_RATE_FLOOR = 0.75
+
+# Domain hit rate at top-5 floor, established 2026-05-15 in the Item 3
+# investigation. Domain hit rate is "% of queries where at least one rule
+# from the expected rule's domain appears in top-5." The synthetic scale
+# curve in SCALE_BENCHMARK_RESULTS.md showed domain hit rate degrading
+# from 100% at 80 rules to 90% at 500+ rules, raising the concern that
+# real corpus at production scale would suffer the same degradation.
+# Measurement on real 276-rule corpus (164 ground-truth queries):
+#   keyword (n=131):    96.2%
+#   symptom (n=14):     78.6%  (small N; one flip = 7pp variance)
+#   ambiguous (n=19):   94.7%
+#   all     (n=164):    94.5%
+# Floor set at 0.90 to enforce the synthetic-curve concern as a real-
+# corpus regression gate: PRs that perturb the corpus (rule-text edits,
+# label changes, retrieval-weight tweaks) cannot degrade the all-subset
+# top-5 domain hit rate below 90%. Same anti-drift principle as the
+# MRR/hit-rate floors. Re-measure and append-only when changing.
+DOMAIN_HIT_RATE_TOP5_FLOOR = 0.90
