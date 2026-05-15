@@ -419,9 +419,37 @@ class RetrievalPipeline:
 
 
 def _compute_corpus_hash(rule_ids: list[str], vectors: list[list[float]]) -> str:
-    """Compute a SHA-256 hash of the corpus for cache invalidation."""
+    """Compute a SHA-256 hash of the corpus for cache invalidation.
+
+    Kept for callers that already have embeddings in hand and want to
+    cache-key on the embedded vectors. Prefer `_compute_corpus_hash_from_text`
+    in new code: that variant lets the caller check the HNSW cache before
+    paying for the embedding pass, which is the dominant cold-start cost.
+    """
     pairs = sorted(zip(rule_ids, [str(v) for v in vectors]))
     digest_input = "|".join(f"{rid}:{vec}" for rid, vec in pairs)
+    return hashlib.sha256(digest_input.encode()).hexdigest()
+
+
+def _compute_corpus_hash_from_text(rule_ids: list[str], texts: list[str]) -> str:
+    """Compute a SHA-256 hash of the corpus from rule_id + text pairs.
+
+    Equivalent invalidation semantics to `_compute_corpus_hash` because
+    the embedding is a deterministic function of text + model: any text
+    change produces a different embedding, and we already pin the model
+    via DEFAULT_ONNX_DIR. The advantage of hashing text directly: callers
+    can compute the cache key BEFORE running the expensive `encode_batch`
+    pass, then skip encoding entirely on a cache hit.
+
+    Item 4 (Approach C, 2026-05-15): per-stage instrumentation showed
+    `encode_batch` is ~84% of cold-start at 276 rules (~2.3s) and scales
+    linearly with rule count. At 10K rules it would dominate cold-start
+    at ~80-100s. Hashing from text lets the HNSW cache short-circuit the
+    encode on subsequent cold-starts, cutting steady-state cold-start
+    from O(N) to O(model_load) + O(load_index).
+    """
+    pairs = sorted(zip(rule_ids, texts))
+    digest_input = "|".join(f"{rid}:{txt}" for rid, txt in pairs)
     return hashlib.sha256(digest_input.encode()).hexdigest()
 
 
@@ -559,24 +587,57 @@ async def build_pipeline(
         except (FileNotFoundError, ImportError) as exc:
             onnx_construction_error = exc
 
+    # Item 4 (Approach C, 2026-05-15): compute the HNSW cache key from
+    # rule text BEFORE running the expensive encode_batch pass, then
+    # check the cache. On a cache hit, the HNSW persistence already
+    # contains the vectors -- we still need the model loaded for
+    # query-time encoding, but the corpus-wide encode_batch is the
+    # cold-start bottleneck (~84% of total at 276 rules per
+    # scripts/instrument-cold-start.py). Skipping it on cache hit cuts
+    # warm-cache cold-start from O(N) embedding cost down to O(1) cache
+    # load plus the fixed model load. At 10K rules this is the
+    # difference between ~80s and ~3s.
+    cache_dir = get_hnsw_cache_dir()
+    corpus_hash = _compute_corpus_hash_from_text(rule_ids, texts)
+    # 384 is the fixed output dimensionality of all-MiniLM-L6-v2 (the
+    # only model the pipeline supports). Hardcoding lets us initialize
+    # the vector store before we have any embeddings to inspect.
+    vector_store = HnswlibStore(dimensions=384, cache_dir=cache_dir)
+    loaded_from_cache = False
+    try:
+        vector_store.load_index(corpus_hash=corpus_hash)
+        loaded_from_cache = True
+        _logger.info(
+            "Loaded HNSW index from cache (hash=%s); skipping encode_batch",
+            corpus_hash[:12],
+        )
+    except Exception as exc:
+        _logger.debug("HNSW cache miss: %s", exc)
+
+    # Embeddings only needed when we have to rebuild the HNSW index.
+    embeddings: list[list[float]] | None = None
+
     if onnx_model is not None:
-        # ONNX for everything: bulk encode at startup + cached single encode at query time.
+        # ONNX for everything: cached single encode at query time. Bulk
+        # encode only on HNSW cache miss.
         # No PyTorch/sentence-transformers in the runtime path.
-        embeddings = onnx_model.encode_batch(texts)
         query_encoder = CachedEncoder(onnx_model)
+        if not loaded_from_cache:
+            embeddings = onnx_model.encode_batch(texts)
     elif embedding_model is not None:
         # Pre-loaded model passed in (tests, server reuse). Bypasses ONNX auto-detect.
         raw_model = embedding_model
         if isinstance(embedding_model, CachedEncoder):
             raw_model = embedding_model._model
-        if isinstance(raw_model, OnnxEmbeddingModel):
-            embeddings = raw_model.encode_batch(texts)
-        else:
-            embeddings = raw_model.encode(texts).tolist()
         query_encoder = (
             embedding_model if isinstance(embedding_model, CachedEncoder)
             else CachedEncoder(embedding_model)
         )
+        if not loaded_from_cache:
+            if isinstance(raw_model, OnnxEmbeddingModel):
+                embeddings = raw_model.encode_batch(texts)
+            else:
+                embeddings = raw_model.encode(texts).tolist()
     elif os.environ.get("WRIT_ALLOW_EMBEDDING_FALLBACK") == "1":
         # Dev opt-in: ONNX unavailable, fallback explicitly permitted.
         # Logged at WARNING on every startup so the operator sees the
@@ -615,8 +676,9 @@ async def build_pipeline(
             ) from exc
 
         model = SentenceTransformer(model_name)
-        embeddings = model.encode(texts).tolist()
         query_encoder = CachedEncoder(model)
+        if not loaded_from_cache:
+            embeddings = model.encode(texts).tolist()
     else:
         raise RuntimeError(
             "ONNX embedding model unavailable: "
@@ -632,23 +694,19 @@ async def build_pipeline(
             "will diverge from the production-path measurements)."
         )
 
-    # Compute corpus hash for HNSW cache lookup
-    dims = len(embeddings[0]) if embeddings else 384
-    cache_dir = get_hnsw_cache_dir()
-    corpus_hash = _compute_corpus_hash(rule_ids, embeddings)
-
-    vector_store = HnswlibStore(dimensions=dims, cache_dir=cache_dir)
-
-    # Try loading cached index; fall back to rebuild + save
-    loaded_from_cache = False
-    try:
-        vector_store.load_index(corpus_hash=corpus_hash)
-        loaded_from_cache = True
-        _logger.info("Loaded HNSW index from cache (hash=%s)", corpus_hash[:12])
-    except Exception as exc:
-        _logger.debug("HNSW cache miss: %s", exc)
-
     if not loaded_from_cache:
+        # Cache miss: we have just-computed embeddings; build + persist
+        # the HNSW index so the next cold-start can skip encode_batch.
+        if embeddings is None:
+            # Defensive: only reachable if a branch above failed to set
+            # embeddings on the cache-miss path. Surface as a clear
+            # invariant violation rather than letting build_index hit a
+            # None deref.
+            raise RuntimeError(
+                "HNSW cache miss but no embeddings produced. This is an "
+                "invariant violation in build_pipeline -- one of the "
+                "model-selection branches did not encode on cache miss."
+            )
         vector_store.build_index(rule_ids, embeddings)
         try:
             vector_store.save_index(corpus_hash=corpus_hash)
