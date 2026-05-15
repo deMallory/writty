@@ -181,9 +181,62 @@ pytest benchmarks/bench_targets.py -v -s
 
 Twelve targets, all pass/fail. The pipeline is not allowed to ship if any target is missed.
 
+## Real-vs-synthetic at matched scale (Item 2 investigation, 2026-05-15)
+
+The synthetic scale curve above measures BM25 + vector + cache + ranking under increasing rule counts, but the rules themselves come from `benchmarks/scale_benchmark.py`'s templated generator. The original v1.0.0 critique that motivated this section: live p95 at 276 real rules (0.590 ms recorded; 10-11 ms on re-measurement during the v1.1.0 work) was higher than synthetic p95 at 10K rules (0.557 ms), implying the synthetic curve underpredicts real-corpus difficulty.
+
+`scripts/instrument-corpus-stats.py` tests four hypotheses for why the gap exists at matched corpus size (real 246 domain rules vs synthetic 246 generated rules). Run with `./.venv/bin/python3 scripts/instrument-corpus-stats.py`.
+
+### H1 -- Text length per rule (real is 2.2x longer)
+
+| Metric                              | Real (246) | Synthetic (246) |
+|-------------------------------------|------------|-----------------|
+| Trigger+statement chars, median     | 295        | 135             |
+| Trigger+statement chars, mean       | 303        | 134             |
+| Full rendered chars, median         | 734        | 242             |
+| Full rendered chars, mean           | 819        | 240             |
+
+Real rules are roughly 2.2x longer per rule than synthetic. Tantivy tokenizes every rule's full text into the BM25 inverted index; longer rule text means more tokens to score against per query. This directly explains the +63% BM25 p95 gap (real 0.278 ms vs synthetic-interp 0.171 ms at matched scale).
+
+### H2 -- Graph edge density (real 0.61 edges/node; synthetic zero)
+
+The real corpus has 169 edges across 276 nodes (`RELATED_TO`, `CONFLICTS_WITH`, `SUPERSEDES`, etc.). The synthetic generator produces Rule nodes only -- no edges. Stage 4 (adjacency cache + graph proximity) has zero work to do on synthetic, but real work on the live corpus. The recorded synthetic Cache p95 of 0.001 ms reflects an empty-graph short-circuit, not actual traversal cost.
+
+### H3 -- BM25 candidate-set size per query
+
+| Corpus     | Per-query candidates (top_k=50) on 5 test queries |
+|------------|---------------------------------------------------|
+| Real       | median 13, mean 12.0, samples [23, 13, 13, 7, 4]  |
+| Synthetic  | median 0, mean 6.0, samples [0, 0, 0, 15, 15]     |
+
+Real BM25 reliably returns a non-trivial working set (median 13 candidates) for every test query. Synthetic returns zero for queries whose vocab is disjoint from the templated rule text (`"controller SQL query"`, `"dependency injection"`, `"async event loop blocking"` all return 0); when the query happens to share vocab with the template (`"security authorization"` -> 15, `"performance optimization"` -> 15), synthetic returns a saturated set. The per-stage cost downstream of BM25 (vector scoring, ranking) is proportional to candidate-set size; the synthetic curve underestimates downstream cost by virtue of returning fewer candidates on average.
+
+### H4 -- Intra-domain pairwise cosine similarity (reversal of original hypothesis)
+
+The v1.0.0 design discussion hypothesized that real corpus rules within a domain would share vocabulary more than synthetic rules within a domain, making ranking harder on the real corpus. The data shows the opposite.
+
+| Corpus     | Median intra-domain cosine | p75    | Max    |
+|------------|----------------------------|--------|--------|
+| Real       | 0.184                      | 0.278  | 0.776  |
+| Synthetic  | 0.909                      | 0.931  | 0.981  |
+
+Synthetic rules within a domain are near-clones of each other (median cosine 0.91) because the generator uses one template per domain and varies only the rule number. Real rules within a domain are vastly more diverse (median 0.18) because each rule covers a structurally distinct concept (the `security` domain has separate rules for SQL injection, XSS, auth, crypto, headers, rate limits, PII, etc.).
+
+The implication for the latency gap is the opposite of the original prediction:
+
+- Synthetic ANN search (hnswlib HNSW) navigates a compact embedding space where most domain-neighbor embeddings cluster tightly; HNSW pruning is very effective. This drops vector-stage cost.
+- Real ANN search navigates a more diverse embedding space; HNSW must look at more candidates before finding the top-K. This is consistent with the +143% vector p95 gap (real 0.124 ms vs synthetic-interp 0.051 ms).
+
+The synthetic curve does NOT reflect real-corpus difficulty in two structural ways: real rules are longer and real embeddings are more diverse within each domain.
+
+### Implication
+
+The synthetic curve in this document is a useful upper-bound on retrieval cost as N grows, but it understates per-query cost at any given N. A scale benchmark that tracks real-corpus latency growth must either use the actual rule corpus at multiple scales (e.g., subsample 50 / 100 / 200 of the 276 production rules) or rewrite the synthetic generator to produce text with realistic length and embedding diversity. Out of scope for v1.1.0; flagged as a follow-up.
+
 ## Related documents
 
 - `HANDBOOK.md` (the architecture handbook, with a condensed version of these numbers in the "By the numbers" section)
 - `benchmarks/bench_targets.py` (the contractual gate suite)
 - `benchmarks/scale_benchmark.py` (the synthetic scale curve generator)
 - `benchmarks/methodology_bench.py` (Phase 0 retrieval quality benchmarks against the curated 40-query methodology corpus)
+- `scripts/instrument-corpus-stats.py` (Item 2 four-hypothesis test runner)
