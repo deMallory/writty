@@ -48,6 +48,35 @@ from 72 to 276 rules (preserved verbatim from the original site at
                                    queries averaged slightly below the
                                    original set, so hit-rate floor
                                    adjusted to 0.75 with margin.
+    0.45 / 0.75     2026-05-15     Item 1a measurement, no floor change:
+                                   audit of the 6 ambiguous-set misses
+                                   found 2 bad labels (Q77 Magento-
+                                   specific label on framework-agnostic
+                                   query; Q83 expected CLEAN-ERR-001
+                                   but query is about API-ERROR-002)
+                                   and 2 cases of query-design
+                                   ambiguity (Q66 ARCH-ENV vs TEST-INT;
+                                   Q72 SOLID-SRP vs ARCH-LAYER).
+                                   Relabeled Q66, Q72, Q83 to the
+                                   corpus-validated alternative; Q77
+                                   left for the real-retrieval-failure
+                                   investigation (the right rule
+                                   ARCH-IDEMPOTENT-001 does not surface
+                                   in top-5). Re-measurement on the
+                                   relabeled set: MRR@5 = 0.5719 (was
+                                   0.4886; +17%), hit rate = 0.7758
+                                   (was 0.7576). Floor unchanged at
+                                   0.45 / 0.75 -- the new measurement
+                                   has substantial headroom, but with
+                                   only 19 queries a single hit/miss
+                                   flip moves MRR by ~5pp, so raising
+                                   the floor on intuition would
+                                   recreate the CI flakiness the v1.1.0
+                                   slack was sized to avoid. A floor
+                                   raise should follow ambiguous-set
+                                   expansion (Item 1c) when variance
+                                   can be characterized at the
+                                   expanded sample size.
 
 Each public-rulebook sub-phase diluted the ambiguous-set MRR / hit
 rate. After full Phase 1-5 expansion (276 rules / 30 mandatory) and

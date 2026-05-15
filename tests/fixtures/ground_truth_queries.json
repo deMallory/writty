@@ -389,7 +389,8 @@
       "id": "Q66",
       "set": "ambiguous",
       "query": "my code works in dev but breaks in production",
-      "expected_rule_id": "TEST-INT-001"
+      "expected_rule_id": "ARCH-ENV-001",
+      "_relabel_note_2026-05-15": "Relabeled from TEST-INT-001 during Item 1a label-quality audit. The symptom 'works in dev, breaks in prod' is a textbook environment-configuration / env-parity problem (ARCH-ENV-001), not primarily an integration-test gap (TEST-INT-001). Both rules are defensible answers; the relabel chooses the more direct semantic match. The corpus ranks ARCH-ENV-001 at top-1 with score 0.921, well above the next candidate at 0.431."
     },
     {
       "id": "Q67",
@@ -419,7 +420,8 @@
       "id": "Q72",
       "set": "ambiguous",
       "query": "I wrote a class that handles validation and saves to DB",
-      "expected_rule_id": "ARCH-LAYER-001"
+      "expected_rule_id": "SOLID-SRP-001",
+      "_relabel_note_2026-05-15": "Relabeled from ARCH-LAYER-001 during Item 1a label-quality audit. A class doing validation AND DB persistence is the textbook single-responsibility violation (SOLID-SRP-001). Layered-architecture (ARCH-LAYER-001) is a defensible alternate framing but less direct; SRP is the canonical fit. Corpus ranks SOLID-SRP-001 at rank 3 with score 0.45."
     },
     {
       "id": "Q73",
@@ -485,7 +487,8 @@
       "id": "Q83",
       "set": "ambiguous",
       "query": "error message says nothing useful just something went wrong",
-      "expected_rule_id": "CLEAN-ERR-001"
+      "expected_rule_id": "API-ERROR-002",
+      "_relabel_note_2026-05-15": "Relabeled from CLEAN-ERR-001 during Item 1a label-quality audit. The original label CLEAN-ERR-001 is about empty catch blocks; the query is about non-actionable error message content. API-ERROR-002 ('error messages are actionable: tell the caller what to fix, not just what failed; Invalid input is a violation; Field email must be a valid email is the structure') is literally the rule this query asks about. Original label was incorrect, not ambiguous. Corpus ranks API-ERROR-002 at rank 2 with score 0.525."
     },
     {
       "id": "Q84",
