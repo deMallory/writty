@@ -7,6 +7,7 @@ docs/plugin-validation.md all reflect the v1.0.1 plugin distribution work.
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,20 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 SKILL_MD = REPO_ROOT / "SKILL.md"
 PLUGIN_VALIDATION_DOC = REPO_ROOT / "docs" / "plugin-validation.md"
+
+
+def _pyproject_version() -> str:
+    """Single source of truth for the current writ version.
+
+    Mirrors the helper in tests/plugin/test_plugin_manifest.py and
+    tests/plugin/test_marketplace_manifest.py. Tests that pin to a
+    specific version literal recreate the same drift pattern Finding 9
+    fixed for hardcoded credentials -- every release requires touching
+    the test. Reading pyproject.toml dynamically means the test catches
+    drift between manifests + docs without per-release edits.
+    """
+    data = tomllib.loads(PYPROJECT.read_text())
+    return data["project"]["version"]
 
 
 class TestReadmePluginSection:
@@ -79,20 +94,37 @@ class TestChangelog:
 
 
 class TestVersionBumps:
-    def test_pyproject_version_1_0_1(self) -> None:
-        """pyproject.toml must declare version = '1.0.1'."""
+    """Manifest version-field consistency.
+
+    Previously pinned to '1.0.1' literal; refactored 2026-05-15 during
+    the v1.1.0 release prep to read the current version from
+    pyproject.toml so future bumps do not require per-release test
+    edits. The plugin.json and marketplace.json tests use the same
+    pattern; this file covers pyproject self-shape + SKILL.md.
+    """
+
+    def test_pyproject_declares_semver_version(self) -> None:
+        """pyproject.toml must declare a non-empty version field that
+        parses as a semver-shaped string."""
         assert PYPROJECT.exists(), "pyproject.toml must exist"
-        content = PYPROJECT.read_text()
-        assert 'version = "1.0.1"' in content, (
-            "pyproject.toml must declare version = \"1.0.1\""
+        version = _pyproject_version()
+        assert version, "pyproject.toml [project].version must be non-empty"
+        assert re.match(r"^\d+\.\d+\.\d+", version), (
+            f"pyproject.toml version {version!r} must be semver-shaped "
+            f"(MAJOR.MINOR.PATCH)."
         )
 
-    def test_skill_md_version_1_0_1(self) -> None:
-        """SKILL.md frontmatter metadata.version must equal '1.0.1'."""
+    def test_skill_md_version_matches_pyproject(self) -> None:
+        """SKILL.md frontmatter metadata.version must equal pyproject's
+        [project].version. Manifests move in lockstep with pyproject."""
         assert SKILL_MD.exists(), "SKILL.md must exist"
+        expected = _pyproject_version()
         content = SKILL_MD.read_text()
-        assert re.search(r'version[:\s]+["\']?1\.0\.1["\']?', content), (
-            "SKILL.md frontmatter must have version: 1.0.1"
+        pattern = re.escape(expected)
+        assert re.search(rf'version[:\s]+["\']?{pattern}["\']?', content), (
+            f"SKILL.md frontmatter must have version: {expected!r} "
+            f"(from pyproject.toml). The manifests must move in "
+            f"lockstep with pyproject.toml."
         )
 
 
