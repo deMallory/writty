@@ -15,7 +15,7 @@ description: >
   level of ceremony, not whether Writ activates.
 metadata:
   author: lucio-saldivar
-  version: "1.0.1"
+  version: "1.1.0"
 ---
 
 # Writ: Hybrid RAG knowledge retrieval plus workflow enforcement

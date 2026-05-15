@@ -8,6 +8,7 @@ pytest.skip("Phase B")) verify component-path fields that are added in Phase B.
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,20 @@ import pytest
 from tests.plugin.conftest import REPO_ROOT
 
 MANIFEST_PATH = REPO_ROOT / ".claude-plugin" / "plugin.json"
+
+
+def _pyproject_version() -> str:
+    """Single source of truth for the current writ version.
+
+    Reads pyproject.toml on every call. Asserting plugin.json version
+    against this rather than a hardcoded string means version bumps
+    only require touching pyproject.toml + plugin.json + the other two
+    manifests; this test catches drift between them without needing
+    its own per-release edit.
+    """
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    return data["project"]["version"]
+
 
 DEPRECATED_FIELDS = {"permissions", "defaultEnabled"}
 DEPRECATED_LIFECYCLE_KEYS = {"Init", "Shutdown"}
@@ -58,9 +73,14 @@ class TestPluginManifestSchema:
         )
 
     def test_plugin_json_metadata_fields(self, manifest: dict) -> None:
-        """plugin.json must have version '1.0.1', description, author.name, homepage, repository, license, keywords."""
-        assert manifest.get("version") == "1.0.1", (
-            f"plugin.json version must be '1.0.1', got '{manifest.get('version')}'"
+        """plugin.json must have version matching pyproject.toml's version
+        field, plus description, author.name, homepage, repository,
+        license, keywords."""
+        expected_version = _pyproject_version()
+        assert manifest.get("version") == expected_version, (
+            f"plugin.json version must match pyproject.toml [project].version "
+            f"({expected_version!r}); got {manifest.get('version')!r}. The "
+            f"manifests must move in lockstep with pyproject.toml."
         )
         assert "description" in manifest and manifest["description"], (
             "plugin.json must have a non-empty description"

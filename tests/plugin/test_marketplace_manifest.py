@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,18 @@ import pytest
 from tests.plugin.conftest import REPO_ROOT
 
 MANIFEST_PATH = REPO_ROOT / ".claude-plugin" / "marketplace.json"
+
+
+def _pyproject_version() -> str:
+    """Single source of truth for the current writ version.
+
+    See tests/plugin/test_plugin_manifest.py for the same helper +
+    rationale. Reads pyproject.toml on every call so future version
+    bumps only require touching pyproject.toml + the manifests; the
+    tests catch drift without needing per-release edits.
+    """
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    return data["project"]["version"]
 
 RESERVED_NAMES = {
     "claude-code-marketplace",
@@ -81,7 +94,9 @@ class TestMarketplaceManifestStructure:
             )
 
     def test_marketplace_plugin_entry_writ(self, manifest: dict) -> None:
-        """plugins array must have exactly one entry with name 'writ', source './', description, version '1.0.1'."""
+        """plugins array must have exactly one entry with name 'writ',
+        source './', description, and version matching pyproject.toml's
+        version field."""
         plugins = manifest.get("plugins", [])
         assert len(plugins) == 1, (
             f"marketplace.json must have exactly one plugin entry, found {len(plugins)}"
@@ -90,7 +105,13 @@ class TestMarketplaceManifestStructure:
         assert entry.get("name") == "writ", "Plugin entry name must be 'writ'"
         assert entry.get("source") == "./", "Plugin entry source must be './'"
         assert "description" in entry, "Plugin entry must have a 'description' field"
-        assert entry.get("version") == "1.0.1", "Plugin entry version must be '1.0.1'"
+        expected_version = _pyproject_version()
+        assert entry.get("version") == expected_version, (
+            f"Plugin entry version must match pyproject.toml "
+            f"[project].version ({expected_version!r}); got "
+            f"{entry.get('version')!r}. The manifests must move in "
+            f"lockstep with pyproject.toml."
+        )
 
     def test_marketplace_source_relative_path_ok(self, manifest: dict) -> None:
         """source must start with './' (relative path; required for git-hosted same-repo marketplaces)."""

@@ -111,6 +111,29 @@ Run on the first Monday of each month. Goal: turn the friction log into actionab
 
 Friction signal is noisy at the per-session level. A 30, 60, or 90 day rolling window smooths over pressure runs, one-off pressure tests, and individual exploratory sessions. Acting on a week of data tunes against noise; acting on a month of data tunes against signal.
 
+## Regression floors and benchmark gates
+
+Regression floors and benchmark thresholds are only meaningful when CI enforces them. **A gate that exists in a file but is not run by a workflow does not exist.**
+
+The history that produced this rule: v1.0.0 reported the contractual benchmark suite as passing, but `bench_targets.py` had drifted from the regression floors actually enforced at release time, no CI workflow ran the bench, and the pre-push hook in `.pre-commit-config.yaml` was never installed locally. Two files asserted different thresholds against the same ground truth; neither was load-bearing. The v1.1.0 work re-established the gate by consolidating thresholds into `tests/fixtures/regression_floors.py`, recalibrating budgets to measured values with the basis recorded in the source comment, fixing the install path so the bench measures the production ONNX code path, and adding a hard-blocking `.github/workflows/pr.yml` that runs `make test` and `make bench` against a Neo4j service container on every PR.
+
+When adding a new threshold, budget, or regression floor:
+
+1. **Confirm a workflow runs the test that asserts it, on every PR, and is required for merge.** Inspect `.github/workflows/pr.yml`. If your new threshold is in a file that workflow already invokes (`tests/`, `benchmarks/bench_targets.py`), the workflow will pick it up. If not, the workflow needs a step that does.
+2. **If no such workflow exists, add it in the same PR.** Do not add the threshold first and the enforcement later. The intermediate state (file exists, workflow does not run it) is structurally the same as the v1.0.0 drift this rule was written to prevent.
+3. **Reviewers should reject PRs that add unenforced gates.** An assertion in a file that no required check runs is documentation of intent, not enforcement of intent. They are different things and the file format does not distinguish them.
+
+Floor and threshold locations:
+
+- **Retrieval-quality floors** (MRR@5 ambiguous-set, hit-rate) live in `tests/fixtures/regression_floors.py`. Both `tests/test_graph_proximity.py` and `benchmarks/bench_targets.py` import from there. Do not declare floors locally in either file.
+- **Performance budgets** (cold-start, BM25 p95, vector p95, ranking p95, end-to-end p95, integrity check, ingestion, memory) live in `benchmarks/bench_targets.py` with a measurement-basis comment on the cold-start budget (the most recently calibrated one) as the model. When adding a new performance budget, include the comment block: measurement date, corpus size, code path, observed distribution, reasoning for the chosen value. "Feels generous" is not a reason; "feels tight" is not a reason. The next maintainer needs the evidence, not the intuition.
+
+When raising or lowering an existing floor or budget:
+
+- Re-measure with the methodology in the existing comment (same corpus, same code path).
+- Append a row to the phase-by-phase history docstring in `tests/fixtures/regression_floors.py` (for floors) or update the measurement-basis comment block (for budgets). The history is append-only; do not delete prior rows even when superseded.
+- Land the change in the same PR as whatever justifies it. A standalone "tighten the floor" PR without an enforcing measurement is the same pattern as the v1.0.0 drift.
+
 ## Related documents
 
 - `HANDBOOK.md` covers the architecture and the structural gate in detail.

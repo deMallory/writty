@@ -2,7 +2,23 @@
 
 All notable changes to Writ are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-05-15
+
+Minor release. Two themes: (1) the gate that was claimed-enforcing in v1.0.0 is now actually enforced and honestly measured, and (2) the install contract drops ~5GB of unused production dependencies after the runtime moved to ONNX-only by default in this release.
+
+### Correction to v1.0.0 verification
+
+v1.0.0 reported the contractual benchmark suite as passing. On re-measurement against the live 276-rule corpus during this release cycle (commit `0d7ee3f` and the consolidation work that followed), three of those targets fail at their stated thresholds:
+
+  - `bench_targets.py::TestColdStartBenchmark::test_cold_start` (~25-29s vs the 3.0s budget — the bench had been measuring the SentenceTransformer fallback path because `make` invoked system `python3` which lacked `onnxruntime`)
+  - `bench_targets.py::TestRetrievalPrecision::test_mrr5_ambiguous_set` (MRR@5 = 0.4886 vs the 0.75 threshold declared in `bench_targets.py`)
+  - `bench_targets.py::TestRetrievalPrecision::test_hit_rate_all_queries` (0.7576 vs the 0.90 threshold declared in `bench_targets.py`)
+
+The thresholds in `bench_targets.py` had drifted from the floors actually applied at release time (the regression floors in `tests/test_graph_proximity.py:32-63` had been walked down to 0.45 / 0.75 across the Phase 1-5 public-rulebook expansion; the bench file's `MRR5_THRESHOLD=0.75` / `HIT_RATE_THRESHOLD=0.90` were the orphan defaults from the 73-rule baseline era). Two files asserting different floors against the same ground truth, neither enforced by CI: the gate existed as a file, not as enforcement.
+
+This release consolidates the two sources into `tests/fixtures/regression_floors.py` (commit `3bae7b7`), pins the bench Makefile to the venv `python3` so the production ONNX path is measured (commit `87fea71`), recalibrates the cold-start budget to 3.5s against a 10-run measurement on the production path (commit `0d7ee3f`), replaces the silent ONNX fallback with an explicit `RuntimeError` (commit `04de034`), adds a hard-blocking PR-checks workflow (commit `d43254a`), and closes a second silent-fallback site in `writ/graph/integrity.py` (commit `67753a6`).
+
+Anyone reading this entry should take from it the framing that drove the work: regression floors and benchmark thresholds are only meaningful when CI enforces them. A gate that exists in a file but is not run by a workflow does not exist. The CONTRIBUTING.md guidance section added in this release names that invariant directly so future maintainers do not recreate the same drift.
 
 ### Added
 
