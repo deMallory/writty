@@ -413,7 +413,7 @@ Makefile                       test, bench, check
 - Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`).
 - ONNX-optimized embedding inference with verified ranking parity against PyTorch.
 - HNSW persistence with corpus-hash invalidation.
-- 1,442 tests, 12 contractual benchmark targets.
+- 1,512 tests, 13 contractual benchmark targets (v1.1.0; was 1,442 / 12 at v1.0.0).
 - Friction log analytics with a dashboard (`GET /dashboard`).
 - Public out-of-the-box rulebook seeded: 198 new rules across 12 domains (Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, Documentation) per Phases 1-5; see `out-of-the-box-rules.md` for the canonical rule list.
 

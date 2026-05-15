@@ -147,17 +147,18 @@ Synthetic scale curve (2026-04-13, from `SCALE_BENCHMARK_RESULTS.md`):
 | 1,000 rules| 0.399 ms  | 121,473        | 1,602            | 75.8x     |
 | 10,000 rules| 0.557 ms | 1,174,142      | 1,617            | **726.1x**|
 
-Quality (against the Phase 6 ground-truth corpus, 165 queries: the original 83 + 82 new queries covering the public-rulebook expansion):
+Quality (v1.1.0, against the Phase 6 ground-truth corpus, 165 queries: the original 83 + 82 new queries covering the public-rulebook expansion):
 
-| Metric                                            | Threshold | Actual         |
+| Metric                                            | Floor     | Actual         |
 |---------------------------------------------------|-----------|----------------|
-| MRR at 5 (ambiguous queries, n=19)                | >= 0.45   | 0.4886         |
-| Hit rate (all 165 queries)                        | >= 0.75   | 0.7636         |
+| MRR at 5 (ambiguous queries, n=19)                | >= 0.45   | **0.6904**     |
+| Hit rate (all 165 queries)                        | >= 0.75   | **0.800**      |
+| Domain hit rate top-5 (all 164 queries)           | >= 0.90   | **0.945**      |
 | Methodology MRR at 5 (n=40, signed off corpus)    | >= 0.78   | 0.8583         |
 | Methodology hit rate                              | >= 0.90   | 1.0000         |
-| ONNX vs PyTorch ranking stability                 | identical | 0/83 differ    |
+| ONNX vs PyTorch ranking stability (inline 12-rule corpus, 8 queries) | identical top-1 + top-5 set | 0/8 differ |
 
-The ambiguous-set MRR and hit-rate floors were retuned downward during the Phase 1-5 expansion: the corpus grew 3.8x (72 to 276 rules) while the ambiguous-set query count remained constant at 19. Methodology retrieval is unaffected (a separate, signed-off corpus).
+The ambiguous-set MRR and hit-rate floors were retuned downward during the v1.0.0 Phase 1-5 expansion: the corpus grew 3.8x (72 to 276 rules) while the ambiguous-set query count remained constant at 19. The v1.1.0 release recovered ~70% of the v0->v1.0.0 gap (MRR@5 0.4886 -> 0.6904) via 4 label/rule-text fixes; remaining ~12% gap is real corpus-growth dilution. Methodology retrieval is unaffected (a separate, signed-off corpus). The v1.1.0 domain-hit-rate gate is new enforcement against the synthetic-curve concern about top-5 domain coverage degrading with corpus growth.
 
 Full numbers in `SCALE_BENCHMARK_RESULTS.md`. Architectural detail in `HANDBOOK.md`.
 
@@ -282,7 +283,7 @@ make check         # both
 Pre-commit: `make bench` runs at `pre-push`. No formatting or lint hooks configured.
 
 The benchmark suite has four files:
-- `benchmarks/bench_targets.py` (12 contractual targets, all pass/fail).
+- `benchmarks/bench_targets.py` (13 contractual targets at v1.1.0, all pass/fail; was 12 pre-v1.1.0).
 - `benchmarks/run_benchmarks.py` (Neo4j traversal scale at 1K and 10K nodes; wipes the graph).
 - `benchmarks/scale_benchmark.py` (the synthetic 80/500/1K/10K scale curve generator; restores only Rule nodes).
 - `benchmarks/methodology_bench.py` (methodology retrieval against the curated 40-query Phase 0 corpus; read only, no Neo4j changes).
