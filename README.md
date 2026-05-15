@@ -164,9 +164,9 @@ Full numbers in `SCALE_BENCHMARK_RESULTS.md`. Architectural detail in `HANDBOOK.
 
 ## Relationship to Agent Skills
 
-Anthropic's Agent Skills standard — originated by Anthropic and now maintained as an open spec at [agentskills.io](https://agentskills.io) — solves a specific problem well. Skills live as directories with a `SKILL.md` entry point; at session start the agent pre-loads each skill's `name` and `description` into its system prompt. This is **progressive disclosure**: the agent sees just enough to know when a skill applies, without the body of the skill consuming context until needed. The design optimizes for a small system-prompt footprint, agent-side relevance decisions, no per-skill load cost, and low-friction authoring.
+Anthropic's Agent Skills standard originated by Anthropic and now maintained as an open spec at [agentskills.io](https://agentskills.io) solves a specific problem well. Skills live as directories with a `SKILL.md` entry point; at session start the agent pre-loads each skill's `name` and `description` into its system prompt. This is **progressive disclosure**: the agent sees just enough to know when a skill applies, without the body of the skill consuming context until needed. The design optimizes for a small system-prompt footprint, agent-side relevance decisions, no per-skill load cost, and low-friction authoring.
 
-Writ targets a different problem. Writ is built around an enforcement-grade rule corpus — currently 276 rules and designed to scale into the thousands — where:
+Writ targets a different problem. Writ is built around an enforcement-grade rule corpus currently 276 rules and designed to scale into the thousands where:
 
 - The agent must not be the matching-decision-maker between context and rule.
 - Retrieval must be triggerable by filesystem and tool-call signals, not only by prompt content.
