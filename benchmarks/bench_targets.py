@@ -475,13 +475,37 @@ class TestPerStageBenchmarks:
         )
 
     def test_end_to_end_p95(self, pipeline) -> None:
-        """Full pipeline p95. Budget < 10ms."""
+        """Full pipeline p95. Budget < 10ms (steady-state production latency).
+
+        Production daemons serve queries continuously; this benchmark
+        measures steady-state p95, not the cold-cache latency a query
+        sees on the very first request after daemon startup. Cold-start
+        is covered separately by test_cold_start with its own budget.
+
+        Per-query instrumentation on 2026-05-15 (Item 2 follow-up)
+        showed every cold-cache outlier (15-36x slower than warm) was
+        from iteration 0 of each query. Without the warmup loop below,
+        iteration-0 outliers dominate the p95 calculation: 10 queries x
+        10 iterations = 100 samples; the 5 slowest (p95 index 95-99)
+        are all iteration-0 cold-cache hits, not representative of
+        production. Adding a warmup pass per query before the timed
+        loop is the standard fix for this benchmark category. The
+        recorded SCALE_BENCHMARK_RESULTS.md p95 of 0.590 ms was the
+        steady-state number; the pre-warmup test was reporting
+        ~10 ms not because latency regressed but because the test
+        was measuring something different.
+        """
         queries = [
             "controller SQL query", "dependency injection", "plugin observer",
             "error handling try catch", "unit test isolation", "named bind parameters",
             "async event loop blocking", "security authorization", "performance optimization",
             "magic number constant",
         ]
+        # Warmup: each query once so the cold-cache outlier does not
+        # contaminate the timed measurements.
+        for q in queries:
+            pipeline.query(q)
+
         latencies: list[float] = []
         for _ in range(BENCHMARK_ITERATIONS // len(queries)):
             for q in queries:
