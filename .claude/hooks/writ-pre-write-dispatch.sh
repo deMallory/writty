@@ -25,38 +25,41 @@ HOOK_START_NS=$(hook_timer_start)
 
 # Read stdin once
 STDIN_DATA=$(cat)
-SESSION_ID=$(echo "$STDIN_DATA" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('agent_id','') or d.get('session_id',''))" 2>/dev/null)
+
+# Item 4c: one python3 spawn parses stdin into session_id + check_body. Was
+# two separate calls in v1.1.0 (session_id parse, then envelope parse).
+PARSED_INPUT=$(python3 -c "
+import sys, json
+raw = sys.argv[1] or '{}'
+skill_dir = sys.argv[2] or ''
+try:
+    data = json.loads(raw)
+except (ValueError, json.JSONDecodeError):
+    data = {}
+sid = (data.get('agent_id') or data.get('session_id') or '').strip()
+ti = data.get('tool_input', {})
+if isinstance(ti, str):
+    try:
+        ti = json.loads(ti)
+    except (ValueError, json.JSONDecodeError):
+        ti = {}
+file_path = ti.get('file_path', ti.get('path', ''))
+body = json.dumps({
+    'session_id': sid,
+    'tool_input': ti if isinstance(ti, dict) else {},
+    'skill_dir': skill_dir,
+    'file_path': file_path,
+})
+print(sid)
+print(body)
+" "$STDIN_DATA" "$SKILL_DIR" 2>/dev/null)
+
+SESSION_ID=$(echo "$PARSED_INPUT" | head -1)
+CHECK_BODY=$(echo "$PARSED_INPUT" | tail -n +2)
 
 if [ -z "$SESSION_ID" ]; then
     SESSION_ID=$(detect_session_id "")
 fi
-
-# Build the /pre-write-check request body
-CHECK_BODY=$(echo "$STDIN_DATA" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    ti = data.get('tool_input', {})
-    if isinstance(ti, str):
-        try:
-            ti = json.loads(ti)
-        except (json.JSONDecodeError, ValueError):
-            ti = {}
-    file_path = ti.get('file_path', ti.get('path', ''))
-    print(json.dumps({
-        'session_id': '${SESSION_ID}',
-        'tool_input': ti,
-        'skill_dir': '${SKILL_DIR}',
-        'file_path': file_path,
-    }))
-except Exception:
-    print(json.dumps({
-        'session_id': '${SESSION_ID}',
-        'tool_input': {},
-        'skill_dir': '${SKILL_DIR}',
-        'file_path': '',
-    }))
-" 2>/dev/null)
 
 if [ -z "$CHECK_BODY" ]; then
     hook_timer_end "$HOOK_START_NS" "writ-pre-write-dispatch" "$SESSION_ID" ""
@@ -71,91 +74,104 @@ if [ -z "$RESULT" ]; then
     exit 0
 fi
 
-# Parse decision
-DECISION=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('decision','allow'))" 2>/dev/null || echo "allow")
+# Item 4c: single python3 spawn computes decision + reason + file_path + payload
+# + hookSpecificOutput JSON + RAG metadata. Was three sequential json.load() spawns
+# plus an inline hookSpecificOutput builder. Output is tab-separated lines the
+# shell reads with `mapfile` to avoid further parsing spawns.
+DENIAL_COUNT_VAL=""
+if [ -n "$SESSION_ID" ]; then
+    DENIAL_COUNT_VAL=$(_writ_session read "$SESSION_ID" 2>/dev/null | python3 -c "
+import sys, json
+try:
+    cache = json.load(sys.stdin)
+except Exception:
+    cache = {}
+counts = cache.get('denial_counts', {}) or {}
+print(max(counts.values()) if counts else 2)
+" 2>/dev/null || echo "2")
+fi
 
-# Diagnostic: log decision + reason + file_path to friction log so silent write paths
-# leave a trail. Added after the Back-in-Stock audit where planner writes vanished
-# with no gate_denial or posttool-rag event -- now we can see allow/deny per attempt.
-DECISION_REASON=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('reason',''))" 2>/dev/null || echo "")
-DECISION_FILE=$(echo "$CHECK_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('file_path',''))" 2>/dev/null || echo "")
-DECISION_PAYLOAD=$(python3 -c "
+DISPATCH_BLOB=$(python3 -c "
 import json, sys
-print(json.dumps({
-    'decision': sys.argv[1],
-    'reason': sys.argv[2],
-    'file_path': sys.argv[3],
-}))
-" "$DECISION" "$DECISION_REASON" "$DECISION_FILE" 2>/dev/null || echo "{}")
+result_raw = sys.argv[1] or '{}'
+body_raw = sys.argv[2] or '{}'
+denial_count = sys.argv[3] or '2'
+try:
+    result = json.loads(result_raw)
+except (ValueError, json.JSONDecodeError):
+    result = {}
+try:
+    body = json.loads(body_raw)
+except (ValueError, json.JSONDecodeError):
+    body = {}
+decision = result.get('decision', 'allow') or 'allow'
+reason = result.get('reason', '') or ''
+file_path = body.get('file_path', '') or ''
+rag_rules = result.get('rag_rules', '') or ''
+rag_meta = result.get('rag_meta', {}) or {}
+rule_ids = rag_meta.get('rule_ids', []) or []
+tokens = rag_meta.get('tokens', 0)
+
+payload = json.dumps({
+    'decision': decision,
+    'reason': reason,
+    'file_path': file_path,
+})
+if decision == 'ask':
+    hook_output = json.dumps({
+        'hookSpecificOutput': {
+            'hookEventName': 'PreToolUse',
+            'permissionDecision': 'ask',
+            'permissionDecisionReason': '[Writ: repeated gate violation #' + denial_count + '] ' + (reason or 'Gate approval required'),
+        }
+    })
+elif decision == 'deny':
+    hook_output = json.dumps({
+        'hookSpecificOutput': {
+            'hookEventName': 'PreToolUse',
+            'permissionDecision': 'deny',
+            'permissionDecisionReason': reason or 'Gate approval required',
+            'additionalContext': 'IMPORTANT: This write was denied by a Writ gate. Do NOT attempt more writes to other files -- the denial applies to ALL files until the gate advances. Read the denial reason and follow the workflow: present your work to the user and wait for approval.',
+        }
+    })
+else:
+    hook_output = ''
+
+sys.stdout.write(decision + '\n')
+sys.stdout.write(file_path + '\n')
+sys.stdout.write(payload + '\n')
+sys.stdout.write(hook_output + '\n')
+sys.stdout.write(rag_rules.replace('\n', ' ') + '\n')
+sys.stdout.write(json.dumps(rule_ids) + '\n')
+sys.stdout.write(str(tokens) + '\n')
+" "$RESULT" "$CHECK_BODY" "$DENIAL_COUNT_VAL" 2>/dev/null || echo "")
+
+DECISION=$(echo "$DISPATCH_BLOB" | sed -n '1p')
+DECISION_FILE=$(echo "$DISPATCH_BLOB" | sed -n '2p')
+DECISION_PAYLOAD=$(echo "$DISPATCH_BLOB" | sed -n '3p')
+HOOK_OUTPUT=$(echo "$DISPATCH_BLOB" | sed -n '4p')
+RAG_RULES_RAW=$(echo "$DISPATCH_BLOB" | sed -n '5p')
+NEW_RULE_IDS=$(echo "$DISPATCH_BLOB" | sed -n '6p')
+COST=$(echo "$DISPATCH_BLOB" | sed -n '7p')
+
+DECISION="${DECISION:-allow}"
+DECISION_PAYLOAD="${DECISION_PAYLOAD:-{}}"
 log_friction_event "$SESSION_ID" "" "pre_write_decision" "$DECISION_PAYLOAD"
 
 if [ "$DECISION" = "deny" ] || [ "$DECISION" = "ask" ]; then
-    REASON=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('reason','Gate approval required'))" 2>/dev/null || echo "Gate approval required")
-
-    if [ "$DECISION" = "ask" ]; then
-        # Escalation: force human intervention
-        DENIAL_COUNT=$(_writ_session read "$SESSION_ID" 2>/dev/null | python3 -c "
-import sys, json
-cache = json.load(sys.stdin)
-counts = cache.get('denial_counts', {})
-print(max(counts.values()) if counts else 2)
-" 2>/dev/null || echo "2")
-
-        python3 -c "
-import json, sys
-print(json.dumps({
-    'hookSpecificOutput': {
-        'hookEventName': 'PreToolUse',
-        'permissionDecision': 'ask',
-        'permissionDecisionReason': '[Writ: repeated gate violation #' + sys.argv[2] + '] ' + sys.argv[1]
-    }
-}))
-" "$REASON" "$DENIAL_COUNT"
-    else
-        # First denial: deny with additionalContext
-        python3 -c "
-import json, sys
-print(json.dumps({
-    'hookSpecificOutput': {
-        'hookEventName': 'PreToolUse',
-        'permissionDecision': 'deny',
-        'permissionDecisionReason': sys.argv[1],
-        'additionalContext': 'IMPORTANT: This write was denied by a Writ gate. Do NOT attempt more writes to other files -- the denial applies to ALL files until the gate advances. Read the denial reason and follow the workflow: present your work to the user and wait for approval.'
-    }
-}))
-" "$REASON"
-    fi
+    [ -n "$HOOK_OUTPUT" ] && echo "$HOOK_OUTPUT"
 else
-    # Allow: inject RAG rules if present
-    RAG_RULES=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('rag_rules',''))" 2>/dev/null || echo "")
-    if [ -n "$RAG_RULES" ]; then
-        FILE_PATH=$(echo "$CHECK_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('file_path',''))" 2>/dev/null || echo "")
+    # RAG_RULES_RAW arrives flattened (newlines collapsed to spaces) so the
+    # 7-field transport above stays single-line per field. Render as-is.
+    if [ -n "$RAG_RULES_RAW" ]; then
         echo ""
-        echo "[Writ: file-context rules for $(basename "${FILE_PATH:-unknown}")]"
-        echo "$RAG_RULES"
+        echo "[Writ: file-context rules for $(basename "${DECISION_FILE:-unknown}")]"
+        printf '%s\n' "$RAG_RULES_RAW"
     fi
-
-    # Update session cache with RAG metadata
-    META=$(echo "$RESULT" | python3 -c "
-import sys, json
-meta = json.load(sys.stdin).get('rag_meta', {})
-rule_ids = meta.get('rule_ids', [])
-tokens = meta.get('tokens', 0)
-if rule_ids:
-    print(json.dumps(rule_ids))
-    print(tokens)
-else:
-    print('')
-    print('0')
-" 2>/dev/null || echo "")
-
-    NEW_RULE_IDS=$(echo "$META" | head -1)
-    COST=$(echo "$META" | tail -1)
-
-    if [ -n "$NEW_RULE_IDS" ] && [ "$NEW_RULE_IDS" != "" ]; then
+    if [ -n "$NEW_RULE_IDS" ] && [ "$NEW_RULE_IDS" != "[]" ]; then
         _writ_session update "$SESSION_ID" \
             --add-rules "$NEW_RULE_IDS" \
-            --cost "$COST" \
+            --cost "${COST:-0}" \
             --inc-queries 2>/dev/null || true
     fi
 fi

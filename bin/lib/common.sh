@@ -325,8 +325,77 @@ _writ_session() {
             url="${WRIT_SESSION_BASE}/session/${session_id}/current-phase"
             ;;
         "format")
-            # format is stateless and reads from stdin; fall through to subprocess
-            python3 "$helper" format "$@"
+            # Stateless: read /query response JSON from stdin, POST it to
+            # /session/format, render the {"text": ..., "meta": ...} response
+            # back into the legacy stdout shape (text body + WRIT_META: line)
+            # so existing hook consumers (writ-posttool-rag.sh) are unchanged.
+            # Falls back to the subprocess CLI when the server is unreachable.
+            local stdin_data
+            stdin_data=$(cat)
+            local fmt_body fmt_result
+            fmt_body=$(python3 -c "
+import json, sys
+try:
+    data = json.loads(sys.argv[1])
+except (ValueError, json.JSONDecodeError):
+    data = {}
+print(json.dumps({'query_response': data}))
+" "$stdin_data" 2>/dev/null)
+            if [ -n "$fmt_body" ]; then
+                fmt_result=$(curl -sf --connect-timeout 0.1 --max-time 0.5 \
+                    -X POST "${WRIT_SESSION_BASE}/session/format" \
+                    -H "Content-Type: application/json" \
+                    -d "$fmt_body" 2>/dev/null) || true
+                if [ -n "$fmt_result" ]; then
+                    python3 -c "
+import json, sys
+try:
+    body = json.loads(sys.argv[1])
+except (ValueError, json.JSONDecodeError):
+    sys.exit(1)
+text = body.get('text', '')
+meta = body.get('meta', {}) or {}
+if text:
+    sys.stdout.write(text)
+    sys.stdout.write('\n')
+sys.stdout.write('WRIT_META:' + json.dumps({
+    'rule_ids': meta.get('rule_ids', []),
+    'cost': meta.get('tokens', 0),
+}) + '\n')
+" "$fmt_result"
+                    return 0
+                fi
+            fi
+            # Fallback: subprocess (original behavior)
+            echo "$stdin_data" | python3 "$helper" format "$@"
+            return $?
+            ;;
+        "context-percent")
+            # POST /session/{id}/context-percent. Body fields:
+            #   --pct N             -> context_percent
+            #   --emitted-at N      -> context_warning_emitted_at_pct
+            local cp_pct=0 cp_emitted=0
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --pct) cp_pct="$2"; shift 2 ;;
+                    --emitted-at) cp_emitted="$2"; shift 2 ;;
+                    *) shift ;;
+                esac
+            done
+            local cp_body cp_result
+            cp_body="{\"context_percent\":${cp_pct},\"context_warning_emitted_at_pct\":${cp_emitted}}"
+            cp_result=$(curl -sf --connect-timeout 0.1 --max-time 0.5 \
+                -X POST "${WRIT_SESSION_BASE}/session/${session_id}/context-percent" \
+                -H "Content-Type: application/json" \
+                -d "$cp_body" 2>/dev/null) || true
+            if [ -n "$cp_result" ]; then
+                echo "$cp_result"
+                return 0
+            fi
+            # Fallback: write both fields via the CLI update path
+            python3 "$helper" update "$session_id" \
+                --context-percent "$cp_pct" \
+                --context-warning-emitted-at-pct "$cp_emitted" 2>/dev/null
             return $?
             ;;
         "coverage")

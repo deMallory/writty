@@ -18,13 +18,30 @@ source "$WRIT_DIR/bin/lib/common.sh"
 
 HOOK_START_NS=$(hook_timer_start)
 
-# Session ID: grandparent PID = the claude process
-SESSION_ID=$(ps -o ppid= -p $PPID 2>/dev/null | tr -d ' ')
+# Session ID: prefer the stdin envelope (Claude Code passes session_id), fall
+# back to grandparent PID, then to the deterministic cwd+user hash.
+STDIN_DATA=$(cat 2>/dev/null || true)
+SESSION_ID=""
+if [ -n "$STDIN_DATA" ]; then
+    SESSION_ID=$(echo "$STDIN_DATA" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    data = {}
+print((data.get('agent_id') or data.get('session_id') or '').strip())
+" 2>/dev/null || echo "")
+fi
+if [ -z "$SESSION_ID" ]; then
+    SESSION_ID=$(ps -o ppid= -p $PPID 2>/dev/null | tr -d ' ')
+fi
 if [ -z "$SESSION_ID" ]; then
     SESSION_ID=$(echo "${PWD}:${USER}" | md5sum | cut -c1-12)-$(date +%Y%m%d)
 fi
 
-# Reset phase exclusion list and budget
+# Reset phase exclusion list and budget. cmd_reset_after_compaction also
+# clears context_warning_emitted_at_pct so the v1.2.0 context-watcher
+# 50%/75% bands re-arm on the next crossing after compaction.
 _writ_session reset-after-compaction "$SESSION_ID" \
     >> "/tmp/writ-postcompact-${SESSION_ID}.log" 2>/dev/null || true
 

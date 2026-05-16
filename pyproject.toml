@@ -1,6 +1,6 @@
 [project]
 name = "claude-writ"
-version = "1.1.0"
+version = "1.2.0"
 description = "Hybrid RAG rule retrieval and session-aware workflow enforcement for Claude Code: a five-stage hybrid pipeline (BM25 + ANN + graph + RRF) over a Neo4j knowledge graph, wired into Claude Code via 30 hook scripts and a state machine."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -122,6 +122,12 @@ writ = "writ.cli:app"
 
 [tool.setuptools.packages.find]
 include = ["writ*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "perf: hook latency p95 regression floor tests (Item 4)",
+    "integration: tests that require a live Claude Code install or external service",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

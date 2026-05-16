@@ -80,11 +80,19 @@ def anyio_backend() -> str:
 
 @pytest.fixture()
 def mock_writ_session_orch():
-    """Mock writ_session for orchestrator HTTP route tests."""
+    """Mock writ_session for orchestrator HTTP route tests.
+
+    v1.2.0 routed `session_mode_set` through `writ_session._mode_set` so
+    canonicalization (lowercase + VALID_MODES) and friction-log emission
+    match the CLI path. The mock therefore exposes `_mode_set` for call-
+    argument assertions; `_read_cache` / `_write_cache` remain mocked because
+    other tests in this file exercise lower-level cache paths directly.
+    """
     session_data = _make_base_cache()
     mock = MagicMock()
     mock._read_cache = MagicMock(return_value=dict(session_data))
     mock._write_cache = MagicMock(return_value=None)
+    mock._mode_set = MagicMock(return_value=None)
     mock.DEFAULT_SESSION_BUDGET = 8000
     return mock
 
@@ -316,17 +324,16 @@ class TestOrchestratorModeRoute:
     async def test_mode_set_with_orchestrator_true_passes_flag_to_mode_set(
         self, client: AsyncClient, mock_writ_session_orch
     ) -> None:
-        """Route handler passes orchestrator=True through to the cache write logic."""
+        """Route handler passes orchestrator=True through to _mode_set."""
         resp = await client.post(
             f"/session/{SESSION_ID}/mode",
             json={"mode": "work", "orchestrator": True},
         )
         assert resp.status_code == 200
-        # Verify _write_cache was called with is_orchestrator=True
-        call_args = mock_writ_session_orch._write_cache.call_args
+        # v1.2.0: route invokes writ_session._mode_set with is_orchestrator=True.
+        call_args = mock_writ_session_orch._mode_set.call_args
         assert call_args is not None
-        written_data = call_args[0][1]
-        assert written_data.get("is_orchestrator") is True
+        assert call_args.kwargs.get("is_orchestrator") is True
 
     @pytest.mark.asyncio
     async def test_mode_set_without_orchestrator_field_defaults_false(
@@ -338,11 +345,10 @@ class TestOrchestratorModeRoute:
             json={"mode": "work"},
         )
         assert resp.status_code == 200
-        # _write_cache should be called but is_orchestrator should not be set to True
-        call_args = mock_writ_session_orch._write_cache.call_args
+        # v1.2.0: route invokes _mode_set with is_orchestrator=False (Pydantic default).
+        call_args = mock_writ_session_orch._mode_set.call_args
         assert call_args is not None
-        written_data = call_args[0][1]
-        assert written_data.get("is_orchestrator", False) is False
+        assert call_args.kwargs.get("is_orchestrator", False) is False
 
     @pytest.mark.asyncio
     async def test_session_mode_set_request_accepts_orchestrator_field(self) -> None:

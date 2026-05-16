@@ -64,6 +64,7 @@ def cluster_hdbscan(
         min_cluster_size=HDBSCAN_MIN_CLUSTER_SIZE,
         min_samples=HDBSCAN_MIN_SAMPLES,
         metric="euclidean",
+        copy=True,
     )
     labels = model.fit_predict(embeddings)
     return _build_result(rule_ids, embeddings, labels, "hdbscan")

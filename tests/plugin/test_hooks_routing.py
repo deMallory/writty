@@ -111,12 +111,13 @@ class TestHooksJsonStructure:
             "hooks.json must have a top-level 'hooks' key"
         )
 
-    def test_hooks_json_covers_all_31_registrations(self, hooks_data: dict) -> None:
-        """Total registrations must equal 32 (31 from Phase B + SessionStart in Phase C)."""
+    def test_hooks_json_covers_all_33_registrations(self, hooks_data: dict) -> None:
+        """Total registrations must equal 34 (31 Phase B + 1 SessionStart Phase C + 2 v1.2.0 context-watcher)."""
         registrations = _collect_all_registrations(hooks_data)
-        assert len(registrations) == 32, (
-            f"hooks.json must have 32 total registrations (31 from templates/settings.json "
-            f"plus the Phase C SessionStart bootstrap entry), found {len(registrations)}"
+        assert len(registrations) == 34, (
+            f"hooks.json must have 34 total registrations (31 from templates/settings.json "
+            f"plus the Phase C SessionStart bootstrap entry plus the v1.2.0 writ-context-watcher "
+            f"on UserPromptSubmit + PreToolUse), found {len(registrations)}"
         )
 
     def test_hooks_json_event_mapping(self, hooks_data: dict) -> None:

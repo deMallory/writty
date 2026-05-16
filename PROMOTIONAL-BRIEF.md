@@ -204,11 +204,13 @@ Same as context stuffing, but worse: it pollutes the system prompt where it is h
 - Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`).
 - ONNX-optimized embedding inference verified identical to PyTorch.
 - HNSW persistence with corpus-hash invalidation.
-- 1,512 tests, 13 contractual benchmark targets (v1.1.0; was 1,442 / 12 at v1.0.0).
+- 1,512+ tests (v1.2.0 adds 14 new test files covering context-window watcher, hook-spawn consolidation, friction-log mode canonicalization, and the warn-with-zero-violations analyzer fix), 13 contractual benchmark targets (v1.1.0; was 1,442 / 12 at v1.0.0).
+- Hook hot-path latency p95 enforced via `tests/test_hook_perf_floors.py` (v1.2.0).
 - Friction log analytics with a dashboard (`GET /dashboard`).
+- Proactive context-window management (v1.2.0): soft directive at 50%, hard block at 75% on PreToolUse via `writ-context-watcher.sh`.
 - Public out-of-the-box rulebook seeded: 198 new universal rules across 12 domains; 19 new mandatory rules each with a cross-language analyzer.
 
-**Roadmap:** v1.1.0 closed most of the v0->v1.0.0 quality regression (MRR@5 0.4886 -> 0.6904 via measurement-quality fixes; the underlying floors at 0.45 / 0.75 stand). Open: ambiguous-set expansion to ~70 queries to characterize variance at larger N before any floor raise; rewrite the synthetic scale generator to produce realistic rule text length and embedding diversity (the v1.0.0 synthetic curve underpredicts real-corpus per-query cost, per the v1.1.0 Item 2 investigation); multi-query session simulation work; consider a Qdrant-backed vector store for corpora over 100K rules; consider an optional remote-graph mode and distributed sub-agent dispatch.
+**Roadmap:** v1.2.0 closed the workflow-observability cluster (cosmetic PostToolUse banner, friction-log mode case-drift, hook hot-path latency) and added proactive context-window management. v1.1.0 closed most of the v0->v1.0.0 quality regression (MRR@5 0.4886 -> 0.6904 via measurement-quality fixes; the underlying floors at 0.45 / 0.75 stand). Open: ambiguous-set expansion to ~70 queries to characterize variance at larger N before any floor raise; rewrite the synthetic scale generator to produce realistic rule text length and embedding diversity (the v1.0.0 synthetic curve underpredicts real-corpus per-query cost, per the v1.1.0 Item 2 investigation); multi-query session simulation work; consider a Qdrant-backed vector store for corpora over 100K rules; consider an optional remote-graph mode and distributed sub-agent dispatch.
 
 ## TL;DR by audience
 

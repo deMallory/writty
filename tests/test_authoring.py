@@ -22,8 +22,6 @@ NEO4J_URI = get_neo4j_uri()
 NEO4J_USER = get_neo4j_user()
 NEO4J_PASSWORD = get_neo4j_password()
 
-pytestmark = pytest.mark.asyncio(loop_scope="module")
-
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def db():
@@ -88,7 +86,6 @@ def _make_new_rule_data() -> dict:
 # ---------------------------------------------------------------------------
 
 class TestAuthoringValidation:
-    pytestmark = []  # Override module-level asyncio mark for sync tests.
 
     def test_valid_rule_passes_schema(self) -> None:
         data = _make_new_rule_data()
@@ -125,6 +122,7 @@ class TestAuthoringValidation:
 # ---------------------------------------------------------------------------
 
 class TestRelationshipSuggestion:
+    pytestmark = pytest.mark.asyncio(loop_scope="module")
 
     async def test_suggest_returns_top5(self, pipeline) -> None:
         from writ.authoring import suggest_relationships
@@ -160,6 +158,8 @@ class TestRedundancyDetection:
 
     Boundary behavior: >= 0.95 is flagged, < 0.95 is not flagged.
     """
+
+    pytestmark = pytest.mark.asyncio(loop_scope="module")
 
     THRESHOLD = 0.95
 
@@ -206,6 +206,7 @@ class TestRedundancyDetection:
 # ---------------------------------------------------------------------------
 
 class TestConflictDetection:
+    pytestmark = pytest.mark.asyncio(loop_scope="module")
 
     async def test_conflict_path_detected(self, db, cache) -> None:
         from writ.authoring import check_conflicts
@@ -244,6 +245,7 @@ class TestConflictDetection:
 # ---------------------------------------------------------------------------
 
 class TestAuthoringGraphWrite:
+    pytestmark = pytest.mark.asyncio(loop_scope="module")
 
     async def test_add_creates_rule_in_neo4j(self, db) -> None:
         data = _make_new_rule_data()
@@ -270,6 +272,7 @@ class TestAuthoringGraphWrite:
 # ---------------------------------------------------------------------------
 
 class TestAuthoringEdit:
+    pytestmark = pytest.mark.asyncio(loop_scope="module")
 
     async def test_edit_updates_existing_rule(self, db) -> None:
         # Create initial.

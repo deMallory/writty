@@ -22,8 +22,6 @@ from writ.retrieval.pipeline import build_pipeline, compute_graph_proximity
 from writ.retrieval.ranking import RankingWeights, compute_score
 from writ.retrieval.traversal import AdjacencyCache
 
-pytestmark = pytest.mark.asyncio(loop_scope="module")
-
 NEO4J_URI = get_neo4j_uri()
 NEO4J_USER = get_neo4j_user()
 NEO4J_PASSWORD = get_neo4j_password()

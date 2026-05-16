@@ -29,6 +29,15 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-rag-inject.sh"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-context-watcher.sh"
+          }
+        ]
       }
     ],
     "SubagentStart": [
@@ -167,6 +176,15 @@
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-context-watcher.sh"
+          }
+        ]
+      },
       {
         "matcher": "ExitPlanMode",
         "hooks": [
