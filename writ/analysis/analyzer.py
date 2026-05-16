@@ -116,7 +116,16 @@ async def run_analysis(
     if verdict == "pass":
         summary = f"No violations found across {total_checked} rules checked."
     elif verdict == "warn":
-        summary = f"{violation_count} potential issues found but unconfirmed. Manual review recommended."
+        if violation_count == 0:
+            summary = (
+                f"No confirmed violations; {len(all_findings)} uncertain finding(s) "
+                f"need manual review."
+            )
+        else:
+            summary = (
+                f"{violation_count} potential issues found but unconfirmed. "
+                f"Manual review recommended."
+            )
     else:
         summary = f"{violation_count} violation(s) found across {total_checked} rules checked."
 

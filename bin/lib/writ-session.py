@@ -69,6 +69,7 @@ def _read_cache(session_id: str) -> dict:
         "loaded_rules": [],
         "remaining_budget": DEFAULT_SESSION_BUDGET,
         "context_percent": 0,
+        "context_warning_emitted_at_pct": 0,
         "queries": 0,
         "mode": None,
         "is_subagent": False,
@@ -116,6 +117,7 @@ def _read_cache(session_id: str) -> dict:
         data.setdefault("loaded_rule_ids", [])
         data.setdefault("remaining_budget", DEFAULT_SESSION_BUDGET)
         data.setdefault("context_percent", 0)
+        data.setdefault("context_warning_emitted_at_pct", 0)
         data.setdefault("queries", 0)
         data.setdefault("pending_violations", [])
         data.setdefault("invalidation_history", {})
@@ -185,6 +187,22 @@ def cmd_update(session_id: str, args: list[str]) -> None:
         elif args[i] == "--context-percent" and i + 1 < len(args):
             cache["context_percent"] = int(args[i + 1])
             i += 2
+        elif args[i] == "--context-warning-emitted-at-pct" and i + 1 < len(args):
+            cache["context_warning_emitted_at_pct"] = int(args[i + 1])
+            i += 2
+        elif args[i] == "--is-subagent" and i + 1 < len(args):
+            value = args[i + 1].strip().lower()
+            cache["is_subagent"] = value in ("true", "1", "yes")
+            i += 2
+        elif args[i] == "--set-gates-approved":
+            # Consume all following tokens that are not another --flag as gate names.
+            gates: list[str] = []
+            j = i + 1
+            while j < len(args) and not args[j].startswith("--"):
+                gates.append(args[j])
+                j += 1
+            cache["gates_approved"] = sorted(set(gates))
+            i = j
         elif args[i] == "--inc-queries":
             cache["queries"] = cache.get("queries", 0) + 1
             i += 1
@@ -635,6 +653,9 @@ def cmd_reset_after_compaction(session_id: str) -> None:
     cache["remaining_budget"] = DEFAULT_SESSION_BUDGET
     # Clear sticky rules preference (stale after compaction)
     cache["last_injected_rule_ids"] = []
+    # Re-arm context-watcher debounce: PostCompact frees the window, so the
+    # 50% / 75% bands should re-fire on the next crossing.
+    cache["context_warning_emitted_at_pct"] = 0
     _write_cache(session_id, cache)
     _log_friction_event(
         session_id, cache.get("mode"), "post_compaction",

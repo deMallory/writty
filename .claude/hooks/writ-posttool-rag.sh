@@ -29,16 +29,16 @@ if [ -z "$SESSION_ID" ]; then
     SESSION_ID=$(detect_session_id "")
 fi
 
-# Orchestrator suppression: no RAG for orchestrator writes (metadata only)
-IS_ORCHESTRATOR=$(python3 -c "
-import sys, json, os, tempfile
-cache_dir = os.environ.get('WRIT_CACHE_DIR', tempfile.gettempdir())
-path = os.path.join(cache_dir, f'writ-session-${SESSION_ID}.json')
+# Orchestrator suppression: no RAG for orchestrator writes (metadata only).
+# Item 4a: replaced direct cache-file Python read with `_writ_session read`
+# (curl fast path, ~3ms vs ~50ms subprocess) followed by a single JSON parse.
+IS_ORCHESTRATOR=$(_writ_session read "$SESSION_ID" 2>/dev/null | python3 -c "
+import sys, json
 try:
-    with open(path) as f:
-        print('true' if json.load(f).get('is_orchestrator') else 'false')
+    cache = json.load(sys.stdin)
 except Exception:
-    print('false')
+    cache = {}
+print('true' if cache.get('is_orchestrator') else 'false')
 " 2>/dev/null || echo "false")
 if [ "$IS_ORCHESTRATOR" = "true" ]; then
     exit 0
@@ -163,20 +163,29 @@ if [ -z "$FILE_PATH" ] || [ -z "$QUERY" ]; then
     exit 0
 fi
 
-# Read session cache for budget and exclusion list
+# Read session cache for budget and exclusion list. Item 4a: one python3
+# spawn emits both fields on separate stdout lines so the shell parses them
+# without a second spawn.
 CACHE=$(_writ_session read "$SESSION_ID" 2>/dev/null || echo '{}')
-
-LOADED_RULE_IDS=$(echo "$CACHE" | python3 -c "
+CACHE_PARSE=$(echo "$CACHE" | python3 -c "
 import sys, json
-cache = json.load(sys.stdin)
+try:
+    cache = json.load(sys.stdin)
+except Exception:
+    cache = {}
 by_phase = cache.get('loaded_rule_ids_by_phase', {})
 current_phase = cache.get('current_phase', '')
 if by_phase and current_phase:
-    print(json.dumps(by_phase.get(current_phase, [])))
+    rule_ids = by_phase.get(current_phase, [])
 else:
-    print(json.dumps(cache.get('loaded_rule_ids', [])))
-" 2>/dev/null || echo '[]')
-REMAINING_BUDGET=$(echo "$CACHE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('remaining_budget',8000))" 2>/dev/null || echo '8000')
+    rule_ids = cache.get('loaded_rule_ids', [])
+print(json.dumps(rule_ids))
+print(cache.get('remaining_budget', 8000))
+" 2>/dev/null)
+LOADED_RULE_IDS=$(echo "$CACHE_PARSE" | sed -n '1p')
+LOADED_RULE_IDS="${LOADED_RULE_IDS:-[]}"
+REMAINING_BUDGET=$(echo "$CACHE_PARSE" | sed -n '2p')
+REMAINING_BUDGET="${REMAINING_BUDGET:-8000}"
 
 MAX_POSTTOOL_BUDGET=1500
 POSTTOOL_BUDGET=$((REMAINING_BUDGET < MAX_POSTTOOL_BUDGET ? REMAINING_BUDGET : MAX_POSTTOOL_BUDGET))
@@ -210,33 +219,24 @@ if [ -z "$RESPONSE" ]; then
     exit 0
 fi
 
-# Check for errors
-HAS_ERROR=$(echo "$RESPONSE" | python3 -c "
+# Combined error + relevance check in one python3 spawn. Item 4a: was two
+# separate json.load() invocations in v1.1.0.
+RESPONSE_CHECK=$(echo "$RESPONSE" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
-    print('yes' if 'error' in d else 'no')
 except Exception:
-    print('yes')
-" 2>/dev/null || echo "yes")
+    print('error')
+    sys.exit(0)
+if 'error' in d:
+    print('error')
+    sys.exit(0)
+rules = d.get('rules', [])
+relevant = [r for r in rules if r.get('score', 0) >= 0.4]
+print('relevant' if relevant else 'irrelevant')
+" 2>/dev/null || echo "error")
 
-if [ "$HAS_ERROR" = "yes" ]; then
-    exit 0
-fi
-
-# Check relevance threshold
-HAS_RELEVANT=$(echo "$RESPONSE" | python3 -c "
-import sys, json
-try:
-    resp = json.load(sys.stdin)
-    rules = resp.get('rules', [])
-    relevant = [r for r in rules if r.get('score', 0) >= 0.4]
-    print('yes' if relevant else 'no')
-except Exception:
-    print('no')
-" 2>/dev/null || echo "no")
-
-if [ "$HAS_RELEVANT" != "yes" ]; then
+if [ "$RESPONSE_CHECK" != "relevant" ]; then
     exit 0
 fi
 

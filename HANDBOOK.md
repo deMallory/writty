@@ -298,6 +298,30 @@ The `writ review` command shows you all the AI provisional rules. You can promot
 
 The result is a rulebook that grows from observed patterns, gets vetted by humans, and is weighted by data rather than guesses.
 
+## Friction-log schema: the `mode` field and when it is null
+
+Every JSON line in `workflow-friction.log` carries a `mode` field. Most lines
+record one of the four canonical lowercase values (`work`, `debug`, `review`,
+`conversation`). Some events legitimately record `mode: null`, and the
+dashboard should treat the null bucket as a distinct, expected category
+rather than dirty data.
+
+`mode: null` is correct for events emitted before a mode has been set in
+the session, specifically:
+
+- `pre_write_decision` -- the PreToolUse hook ran before the user typed
+  `mode set work`. The dispatch hook fires on every write attempt; it does
+  not wait for a mode declaration.
+- `phase_advance` -- gate approvals can be issued via the `/writ-approve`
+  slash command before the session cache has cached a mode (legitimate when
+  the workflow advances right after `/plan` produces a plan.md, before any
+  hook has read the mode for that session).
+- `memory_policy_deny` -- the memory-policy guard fires on writes to the
+  global memory store; mode is irrelevant to its decision.
+- `post_compaction` -- emitted by `writ-postcompact.sh` from the
+  PostCompact event, which fires regardless of mode (compaction is a
+  Claude Code-level action, not a Writ-mode-scoped one).
+
 ## By the numbers
 
 Live measurement on 2026-05-15 (v1.1.0) against the production corpus (276 rules, 30 mandatory, post Phase 1-5 expansion). 100 samples for the E2E test (10 prompts x 10 iterations) with warmup, 100 samples per per-stage test.

@@ -7,14 +7,14 @@
   },
   "description": "Writ: hybrid-RAG rule retrieval plus session-aware workflow enforcement for Claude Code",
   "metadata": {
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "plugins": [
     {
       "name": "writ",
       "source": "./",
       "description": "Hybrid RAG rule retrieval (5-stage pipeline over Neo4j) plus mode-based workflow gates (30 hook scripts + session state machine)",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "category": "tooling",
       "tags": ["rag", "rules", "enforcement", "hooks", "neo4j", "workflow"],
       "strict": true,

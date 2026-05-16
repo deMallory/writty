@@ -4,7 +4,7 @@ A Claude Code harness that gives every coding session two helpers: a fast librar
 
 At the live 276-rule production corpus (post Phase 1-5 public-rulebook expansion), the librarian returns ranked results in **0.590 ms at the 95th percentile**. At the 10,000-rule synthetic scale, it still holds at 0.557 ms while reducing context tokens by **726 times** versus loading the whole rulebook every turn.
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the v1.1.0 release notes (gate enforcement, lean install profile, the corpus-quality and cold-start fixes) and the v1.0.0 + v1.0.1 history of capabilities shipped.
+See [`CHANGELOG.md`](CHANGELOG.md) for the v1.2.0 release notes (proactive context-window management, hook hot-path latency consolidation, friction-log mode canonicalization, PostToolUse banner fix) and the v1.0.0 + v1.0.1 + v1.1.0 history of capabilities shipped.
 
 ## Install as a Claude Code plugin
 
@@ -290,7 +290,7 @@ The benchmark suite has four files:
 
 ## Status
 
-**Released as v1.1.0 on 2026-05-15.** Builds on the v1.0.0 release (2026-05-10) and v1.0.1 plugin-distribution patch (2026-05-11). v1.1.0 closes the regressions identified in the v1.0.0 critique: hard-blocking PR-checks workflow against a Neo4j service container, lean install profile (~5 GB of unused production dependencies moved to a `[fallback]` extras group), explicit three-state ONNX contract with no silent fallback, regression-floor consolidation, domain-hit-rate enforcement gate, HNSW cache short-circuit that drops warm-cache cold-start from O(N) to O(1). All five retrieval stages still have budget headroom at every level. Mode and gate enforcement. AI rule proposal with the 5-check structural gate. Frequency-driven graduation logic. Sub-agent isolation (`is_subagent`) and orchestrator suppression (`is_orchestrator`). ONNX-optimized embedding inference verified identical to PyTorch on every test query. HNSW persistence with corpus-hash invalidation. 1,512 tests. Friction log analytics with a dashboard. See `CHANGELOG.md` for the full v1.1.0 entry.
+**Released as v1.2.0 on 2026-05-15.** Builds on v1.1.0 (2026-05-15) and the v1.0.0 / v1.0.1 history. v1.2.0 adds proactive context-window management (a watcher hook that emits a soft directive at 50% of the configured window and hard-blocks PreToolUse calls at 75% so the agent runs `/compact` before declaring work complete under context pressure), collapses hook-hot-path Python spawns to bring per-write latency floors into a recorded regression-floor test, repairs case-drift in the friction log's `mode` field so the dashboard groups modes cleanly, and replaces a cosmetic "0 potential issues found but unconfirmed" PostToolUse banner that had been firing on every clean Write/Edit in v1.1.0. Benchmark baselines (retrieval p95, MRR@5, hit rate, cold-start) are unchanged from v1.1.0; the v1.2.0 work targets workflow latency and observability, not retrieval quality. See `CHANGELOG.md` for the full v1.2.0 entry.
 
 **Public out-of-the-box rulebook seeded.** 198 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, and Documentation, plus 19 new mandatory rules each backed by a cross-language regex analyzer in `bin/run-analysis.sh`. See `out-of-the-box-rules.md` for the canonical rule list.
 

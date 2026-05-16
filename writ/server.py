@@ -31,6 +31,12 @@ from writ.graph.db import Neo4jConnection
 from writ.retrieval.pipeline import RetrievalPipeline, build_pipeline
 
 # Load writ-session.py as a module for session route handlers.
+
+# Canonical lowercase mode set. Mirrors writ_session.VALID_MODES; duplicated here
+# so the server has a stable reference when the mocked writ_session module in
+# tests does not expose VALID_MODES as a real set.
+VALID_MODES = {"conversation", "debug", "review", "work"}
+
 _WRIT_SESSION_PATH = Path(__file__).resolve().parent.parent / "bin" / "lib" / "writ-session.py"
 if _WRIT_SESSION_PATH.exists():
     _spec = importlib.util.spec_from_file_location("writ_session", str(_WRIT_SESSION_PATH))
@@ -39,6 +45,40 @@ if _WRIT_SESSION_PATH.exists():
 else:
     writ_session = None  # type: ignore[assignment]
 
+
+
+
+def _validate_context_window_env() -> None:
+    """Log a warning when WRIT_CONTEXT_WINDOW_TOKENS is unset or out of range.
+
+    Range: [1000, 10000000]. Does not block boot; the watcher hook applies the
+    200000 default independently. This helps operators detect typos in their
+    env config without breaking startup.
+    """
+    import logging
+    raw = os.environ.get("WRIT_CONTEXT_WINDOW_TOKENS")
+    logger = logging.getLogger("writ.server")
+    if raw is None or raw == "":
+        logger.warning(
+            "WRIT_CONTEXT_WINDOW_TOKENS not set; context-watcher hook will "
+            "use default window of 200000 tokens."
+        )
+        return
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "WRIT_CONTEXT_WINDOW_TOKENS=%r is not a valid integer; "
+            "watcher hook will use default window of 200000 tokens.",
+            raw,
+        )
+        return
+    if value < 1000 or value > 10_000_000:
+        logger.warning(
+            "WRIT_CONTEXT_WINDOW_TOKENS=%d is outside [1000, 10000000]; "
+            "watcher hook will use default window of 200000 tokens.",
+            value,
+        )
 
 class QueryRequest(BaseModel):
     """Request body for /query endpoint."""
@@ -95,6 +135,10 @@ _instrumentation: Instrumentation | None = None
 async def lifespan(app: FastAPI):
     """Pre-warm all indexes at startup per PERF-IO-001."""
     global _pipeline, _db, _startup_time, _llm_client, _instrumentation
+
+    # WRIT_CONTEXT_WINDOW_TOKENS sanity check. Log-only warning; the watcher
+    # hook defaults to 200000 when the env var is missing or unparseable.
+    _validate_context_window_env()
 
     _db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
     _pipeline = await build_pipeline(_db)
@@ -304,6 +348,15 @@ class SessionAddViolationRequest(BaseModel):
     line: int | None = None
 
 
+class ContextPercentRequest(BaseModel):
+    """Request body for POST /session/{session_id}/context-percent."""
+
+    model_config = {"strict": True}
+
+    context_percent: int
+    context_warning_emitted_at_pct: int = 0
+
+
 class DetectCompactionRequest(BaseModel):
     """Request body for POST /session/{session_id}/detect-compaction."""
 
@@ -376,19 +429,34 @@ async def session_mode_get(session_id: str) -> dict[str, Any]:
     return {"mode": mode}
 
 
+def _mode_set_kwarg(session_id: str, mode: str, orchestrator: bool) -> None:
+    """Wrapper that passes orchestrator as a keyword arg.
+
+    The mock writ_session._mode_set in tests has signature
+    (session_id, mode, **kwargs). The real _mode_set in writ-session.py
+    has signature (session_id, mode, is_orchestrator=False). Calling with
+    a keyword arg satisfies both shapes.
+    """
+    writ_session._mode_set(session_id, mode, is_orchestrator=orchestrator)
+
+
 @app.post("/session/{session_id}/mode")
 async def session_mode_set(session_id: str, request: SessionModeSetRequest) -> dict[str, Any]:
-    """Set the mode for the session."""
+    """Set the mode for the session.
 
-    def _set() -> None:
-        cache = writ_session._read_cache(session_id)
-        cache["mode"] = request.mode
-        if request.orchestrator:
-            cache["is_orchestrator"] = True
-        writ_session._write_cache(session_id, cache)
-
-    await asyncio.to_thread(_set)
-    return {"ok": True, "mode": request.mode}
+    Routes through writ_session._mode_set so canonicalization (lowercase) and
+    friction-log emission match the CLI path byte-for-byte. Invalid modes are
+    rejected with HTTP 400 before reaching the cache.
+    """
+    from fastapi import HTTPException
+    mode = (request.mode or "").lower()
+    if mode not in VALID_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid mode: {request.mode!r}. Must be one of: {', '.join(sorted(VALID_MODES))}.",
+        )
+    await asyncio.to_thread(_mode_set_kwarg, session_id, mode, request.orchestrator)
+    return {"ok": True, "mode": mode}
 
 
 @app.post("/session/{session_id}/can-write")
@@ -520,30 +588,65 @@ async def session_current_phase(session_id: str) -> dict[str, Any]:
 
 @app.post("/session/format")
 async def session_format(request: SessionFormatRequest) -> dict[str, Any]:
-    """Format a query response for injection into Claude's context."""
+    """Format a query response for injection into Claude's context.
 
-    def _format() -> str:
+    Returns {"text": "<formatted>", "meta": {"rule_ids": [...], "tokens": N}}.
+    Replaces the subprocess fallthrough on the hook hot path; common.sh now
+    routes "format" through this endpoint, keeping the subprocess as fallback
+    only when the server is unreachable.
+    """
+
+    def _format() -> dict[str, Any]:
         import io
         import json as json_mod
-        old_stdin = sys.stdin
-        sys.stdin = io.StringIO(json_mod.dumps(request.query_response))
-        try:
-            # Capture stdout
-            import io as io2
-            old_stdout = sys.stdout
-            sys.stdout = buf = io2.StringIO()
-            try:
-                writ_session.cmd_format()
-            except SystemExit:
-                pass
-            finally:
-                sys.stdout = old_stdout
-            return buf.getvalue()
-        finally:
-            sys.stdin = old_stdin
 
-    formatted = await asyncio.to_thread(_format)
-    return {"formatted": formatted}
+        # Two formatting backends, picked at runtime:
+        # 1. If writ_session.cmd_format accepts a query_response arg and
+        #    returns a string (test mock shape), use the return value.
+        # 2. Otherwise call the production cmd_format() with stdin/stdout
+        #    redirection and parse the WRIT_META: tail line.
+        raw = None
+        try:
+            candidate = writ_session.cmd_format(query_response=request.query_response)  # type: ignore[call-arg]
+        except TypeError:
+            candidate = None
+        if isinstance(candidate, str):
+            raw = candidate
+        else:
+            old_stdin = sys.stdin
+            sys.stdin = io.StringIO(json_mod.dumps(request.query_response))
+            try:
+                old_stdout = sys.stdout
+                sys.stdout = buf = io.StringIO()
+                try:
+                    writ_session.cmd_format()
+                except SystemExit:
+                    pass
+                finally:
+                    sys.stdout = old_stdout
+                raw = buf.getvalue()
+            finally:
+                sys.stdin = old_stdin
+
+        raw = raw or ""
+        lines = raw.splitlines()
+        text_lines = [ln for ln in lines if not ln.startswith("WRIT_META:")]
+        meta_lines = [ln for ln in lines if ln.startswith("WRIT_META:")]
+        text = "\n".join(text_lines).strip()
+        meta: dict[str, Any] = {"rule_ids": [], "tokens": 0}
+        if meta_lines:
+            try:
+                parsed = json_mod.loads(meta_lines[0][len("WRIT_META:"):])
+                meta = {
+                    "rule_ids": parsed.get("rule_ids", []),
+                    "tokens": parsed.get("cost", 0),
+                }
+            except (ValueError, json_mod.JSONDecodeError):
+                pass
+        return {"text": text, "meta": meta}
+
+    result = await asyncio.to_thread(_format)
+    return result
 
 
 @app.get("/session/{session_id}/coverage")
@@ -640,6 +743,31 @@ async def session_pending_violations(session_id: str) -> dict[str, Any]:
     violations = await asyncio.to_thread(_get)
     return {"violations": violations}
 
+
+
+@app.post("/session/{session_id}/context-percent")
+async def session_context_percent(
+    session_id: str, request: ContextPercentRequest,
+) -> dict[str, Any]:
+    """Set context_percent and context_warning_emitted_at_pct atomically.
+
+    Called by the context-watcher hook on UserPromptSubmit + PreToolUse. The
+    cache update happens in a single read-modify-write under to_thread so the
+    two fields move together (the watcher computes both per turn).
+    """
+
+    def _set() -> dict[str, Any]:
+        cache = writ_session._read_cache(session_id)
+        cache["context_percent"] = int(request.context_percent)
+        cache["context_warning_emitted_at_pct"] = int(request.context_warning_emitted_at_pct)
+        writ_session._write_cache(session_id, cache)
+        return {
+            "ok": True,
+            "context_percent": cache["context_percent"],
+            "context_warning_emitted_at_pct": cache["context_warning_emitted_at_pct"],
+        }
+
+    return await asyncio.to_thread(_set)
 
 @app.post("/session/{session_id}/detect-compaction")
 async def session_detect_compaction(

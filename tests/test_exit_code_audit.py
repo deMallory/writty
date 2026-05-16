@@ -96,57 +96,65 @@ class TestValidateRulesExitCodes:
     def test_per_write_advisory_boundary_not_reached_exits_1(self) -> None:
         """Per-write path when phase boundary has not been reached exits 1 (advisory).
 
-        Verifies via source inspection that the boundary-not-reached path uses exit 1.
-        This path is at ~line 362 (after 'Per-write warning mode').
+        Anchors on the literal guard `if [ "$BOUNDARY_MODE" != "boundary" ]`
+        and asserts the very next exit statement is `exit 1`. This guard is
+        the canonical boundary-not-reached branch in the v1.2.0 sentinel-driven
+        exit map.
         """
         with open(VALIDATE_RULES_SH) as f:
-            content = f.read()
-        lines = content.split("\n")
+            lines = f.read().split("\n")
 
-        # Find the boundary-not-reached comment and verify the exit is 1
-        found_boundary = False
+        guard_idx = None
         for i, line in enumerate(lines):
-            if "Per-write warning" in line or "boundary" in line.lower() and "warning" in line.lower():
-                stripped = line.strip()
-                # Check if this line or next few lines have exit 1
-                for j in range(i, min(i + 5, len(lines))):
-                    s = lines[j].strip()
-                    if s.startswith("exit "):
-                        assert s == "exit 1", (
-                            f"Boundary-not-reached advisory path must use exit 1, got '{s}' "
-                            f"at line {j + 1}"
-                        )
-                        found_boundary = True
-                        break
-                if found_boundary:
-                    break
+            if 'BOUNDARY_MODE' in line and '!= "boundary"' in line:
+                guard_idx = i
+                break
+        assert guard_idx is not None, (
+            'validate-rules.sh must guard the boundary-not-reached branch with '
+            '[ "$BOUNDARY_MODE" != "boundary" ]'
+        )
 
-        assert found_boundary, (
-            "validate-rules.sh must have a per-write warning path with exit 1 "
-            "for the boundary-not-reached case"
+        for j in range(guard_idx + 1, min(guard_idx + 8, len(lines))):
+            s = lines[j].strip()
+            if s.startswith("exit "):
+                assert s == "exit 1", (
+                    f"Boundary-not-reached path must use exit 1, got '{s}' at line {j + 1}"
+                )
+                return
+        raise AssertionError(
+            f"No exit statement found within 8 lines of the boundary guard at line {guard_idx + 1}"
         )
 
     def test_gate_invalidation_path_exits_2(self) -> None:
-        """Phase-boundary gate invalidation path exits 2 (blocking).
+        """Phase-boundary gate-invalidation path exits 2 (blocking).
 
-        This test verifies the source code directly -- the gate invalidation
-        path at the end of validate-rules.sh must use 'exit 2'.
+        v1.2.0 made this sentinel-driven: the script writes a per-session
+        sentinel file when at least one finding is routed to invalidate-gate,
+        and the tail-end check exits 2 only when that sentinel exists. This
+        test verifies the sentinel-conditional `exit 2` is present (it sits
+        inside `if [ -f "$SENTINEL_PATH" ]`, not as the unconditional final
+        exit). The literal final exit is now `exit 0` -- the no-sentinel
+        default that fixed the cosmetic non-blocking banner.
         """
         with open(VALIDATE_RULES_SH) as f:
-            lines = f.readlines()
+            lines = f.read().split("\n")
 
-        # Find the last exit statement in the file
-        last_exit_line = None
-        for i, line in enumerate(lines, 1):
-            stripped = line.strip()
-            if stripped.startswith("exit "):
-                last_exit_line = (i, stripped)
+        sentinel_guard_idx = None
+        for i, line in enumerate(lines):
+            if '[ -f "$SENTINEL_PATH" ]' in line and 'if' in line:
+                sentinel_guard_idx = i
+        assert sentinel_guard_idx is not None, (
+            'validate-rules.sh must guard the v1.2.0 gate-invalidation exit '
+            'with `if [ -f "$SENTINEL_PATH" ]`'
+        )
 
-        assert last_exit_line is not None, "validate-rules.sh must have exit statements"
-        line_no, exit_stmt = last_exit_line
-        assert exit_stmt == "exit 2", (
-            f"Last exit in validate-rules.sh (line {line_no}) must be 'exit 2' "
-            f"(gate invalidation path), got '{exit_stmt}'"
+        for j in range(sentinel_guard_idx + 1, min(sentinel_guard_idx + 6, len(lines))):
+            s = lines[j].strip()
+            if s == "exit 2":
+                return
+        raise AssertionError(
+            f"sentinel-guarded block at line {sentinel_guard_idx + 1} must contain `exit 2` "
+            f"for the gate-invalidation path"
         )
 
     def test_pass_path_exits_0(self) -> None:

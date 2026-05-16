@@ -36,6 +36,7 @@
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/validate-test-file.sh)",
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/validate-design-doc.sh)",
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-memory-policy-guard.sh)",
+      "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-context-watcher.sh)",
       "Bash(python3 *writ-session.py *)",
       "Bash(bash *writ/bin/check-gates.sh*)",
       "Bash(bash *writ/bin/verify-files.sh*)",
@@ -86,6 +87,15 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-rag-inject.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-context-watcher.sh"
           }
         ]
       }
@@ -226,6 +236,15 @@
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-context-watcher.sh"
+          }
+        ]
+      },
       {
         "matcher": "ExitPlanMode",
         "hooks": [
@@ -373,5 +392,7 @@
         ]
       }
     ]
-  }
+  },
+  "autoCompactEnabled": false,
+  "remoteControlAtStartup": false
 }
