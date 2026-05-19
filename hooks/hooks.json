@@ -98,6 +98,15 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-verify-before-claim.sh"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-run-pending-tests.sh"
+          }
+        ]
       }
     ],
     "PostToolUseFailure": [
@@ -328,6 +337,15 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-quality-judge.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-mark-pending-test.sh"
           }
         ]
       }

@@ -37,6 +37,8 @@
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/validate-design-doc.sh)",
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-memory-policy-guard.sh)",
       "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-context-watcher.sh)",
+      "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-mark-pending-test.sh)",
+      "Bash(bash $HOME/.claude/skills/writ/.claude/hooks/writ-run-pending-tests.sh)",
       "Bash(python3 *writ-session.py *)",
       "Bash(bash *writ/bin/check-gates.sh*)",
       "Bash(bash *writ/bin/verify-files.sh*)",
@@ -156,6 +158,15 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-verify-before-claim.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-run-pending-tests.sh"
           }
         ]
       }
@@ -388,6 +399,15 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-quality-judge.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-mark-pending-test.sh"
           }
         ]
       }

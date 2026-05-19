@@ -23,7 +23,7 @@ MODE=$(python3 "$SESSION_HELPER" mode get "$SESSION_ID" 2>/dev/null | tr -d '[:s
 FILE=$(parsed_field "$PARSED" "file_path")
 [ -z "$FILE" ] && exit 0
 
-DENY=$(python3 <<'PY'
+DENY=$(python3 - "$FILE" <<'PY'
 import os, re, sys
 f = sys.argv[1]
 ext = os.path.splitext(f)[1].lstrip(".")
@@ -64,7 +64,7 @@ for c in candidates:
 # No test file with assertions found.
 print(f"ENF-PROC-TDD-001: writing '{os.path.relpath(f, repo)}' requires a test file with assertions. Expected at one of: {', '.join(candidates)}. Bypass: set session.mode=prototype for throwaway work.")
 PY
-"$FILE")
+)
 
 if [ -n "$DENY" ]; then
     python3 -c "
