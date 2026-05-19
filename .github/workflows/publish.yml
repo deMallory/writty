@@ -75,3 +75,10 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Both `push: tags: v*` and `release: published` fire on a tagged
+          # release; the first run uploads successfully, the second hits a 400
+          # "File already exists" from PyPI. skip-existing turns the duplicate
+          # upload into a silent no-op so the loser-of-the-race run also goes
+          # green. The artifact is still the same one PyPI already accepted.
+          skip-existing: true
