@@ -168,7 +168,10 @@ detect_language() {
 # Usage: log_friction_event "$SESSION_ID" "$MODE" "event_name" '{"key":"val"}'
 # Extra fields arg is optional JSON object to merge.
 log_friction_event() {
-  local session_id="$1" mode="$2" event="$3" extra="${4:-{}}"
+  # `"${4:-"{}"}"` is required: `${4:-{}}` parses the second `}` as the
+  # closing brace of the parameter expansion, leaving a stray `}` appended
+  # to the value. Quoting the default makes `{}` literal.
+  local session_id="$1" mode="$2" event="$3" extra="${4:-"{}"}"
   python3 -c "
 import json, sys, os
 from datetime import datetime, timezone

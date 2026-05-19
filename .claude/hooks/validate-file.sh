@@ -45,25 +45,19 @@ python3 "$SKILL_DIR/bin/lib/writ-session.py" update "$SESSION_ID" \
     --add-file-result "$FILE" "$ANALYSIS_RESULT" 2>/dev/null || true
 
 if [ $EXIT_CODE -ne 0 ]; then
-  # Build error summary and send to stderr (PostToolUse exit 1 = error context)
-  ERRORS=$(echo "$OUTPUT" | python3 -c "
-import json, sys
-try:
-    findings = json.load(sys.stdin)
-    errors = []
-    for f in findings:
-        if f.get('severity') == 'error':
-            tool = f.get('tool', 'unknown')
-            msg = f.get('message', '')
-            errors.append(f'{tool}: {msg}')
-    if errors:
-        print('[ENF-POST-007] Static analysis errors in $FILE: ' + '; '.join(errors[:5]) + '. Fix all errors before proceeding.')
-    else:
-        print('[ENF-POST-007] Static analysis failed for $FILE. Fix all errors before proceeding.')
-except Exception:
-    print('[ENF-POST-007] Static analysis failed for $FILE. Check bin/run-analysis.sh output.')
-" 2>/dev/null)
-  echo "${ERRORS:-Static analysis failed}" >&2
+  # Full linter output -> per-session log; terse summary -> stderr.
+  # emit-summary.py reads the log, surfaces the first error, references the
+  # log path. Claude reads the full log only if the first error is ambiguous.
+  SAFE_NAME=$(echo "$FILE" | tr '/' '_')
+  LOG_DIR="$SKILL_DIR/cache/$SESSION_ID"
+  mkdir -p "$LOG_DIR"
+  LOG_FILE="$LOG_DIR/${SAFE_NAME}.lint.json"
+  echo "$OUTPUT" > "$LOG_FILE"
+  python3 "$SKILL_DIR/bin/lib/emit-summary.py" \
+    --format json \
+    --log "$LOG_FILE" \
+    --rule "ENF-POST-007" \
+    --label "static-analysis errors in $FILE"
   exit 1
 fi
 

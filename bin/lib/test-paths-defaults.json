@@ -1,0 +1,71 @@
+{
+  "patterns": [
+    {
+      "name": "python-generic",
+      "src_match": ["*/src/*.py"],
+      "test_match": ["*/tests/test_*.py"],
+      "src_to_test_regex": "^(.*)/src/(.+)\\.py$",
+      "src_to_test_replace": "{1}/tests/test_{2}.py",
+      "runner_command": "pytest --tb=line -q"
+    },
+    {
+      "name": "js-ts-generic",
+      "src_match": ["*/src/*.js", "*/src/*.ts"],
+      "test_match": [
+        "*/tests/*.test.js",
+        "*/tests/*.test.ts",
+        "*/tests/*.spec.js",
+        "*/tests/*.spec.ts"
+      ],
+      "src_to_test_regex": "^(.*)/src/(.+)\\.(js|ts)$",
+      "src_to_test_replace": "{1}/tests/{2}.test.{3}",
+      "runner_command": "npx jest"
+    },
+    {
+      "name": "go-generic",
+      "src_match": ["*.go"],
+      "test_match": ["*_test.go"],
+      "src_to_test_regex": "^(.+)\\.go$",
+      "src_to_test_replace": "{1}_test.go",
+      "runner_command": "go test"
+    },
+    {
+      "name": "rust-generic",
+      "src_match": ["*/src/*.rs"],
+      "test_match": ["*/tests/*.rs"],
+      "src_to_test_regex": "^(.*)/src/(.+)\\.rs$",
+      "src_to_test_replace": "{1}/tests/{2}.rs",
+      "runner_command": "cargo test"
+    },
+    {
+      "name": "php-generic",
+      "src_match": ["*/src/*.php"],
+      "test_match": ["*/tests/Unit/*Test.php", "*/tests/*Test.php"],
+      "src_to_test_regex": "^(.*)/src/(.+)\\.php$",
+      "src_to_test_replace": "{1}/tests/Unit/{2}Test.php",
+      "runner_command": "vendor/bin/phpunit"
+    },
+    {
+      "name": "magento",
+      "src_match": [
+        "*/app/code/*/Model/*.php",
+        "*/app/code/*/Block/*.php",
+        "*/app/code/*/Cron/*.php",
+        "*/app/code/*/Plugin/*.php",
+        "*/app/code/*/Observer/*.php",
+        "*/app/code/*/Helper/*.php",
+        "*/app/code/*/Setup/*.php",
+        "*/app/code/*/Console/*.php",
+        "*/app/code/*/Service/*.php",
+        "*/app/code/*/ViewModel/*.php",
+        "*/app/code/*/Api/*.php",
+        "*/app/code/*/Controller/*.php"
+      ],
+      "test_match": ["*/app/code/*/Test/Unit/*.php"],
+      "src_to_test_regex": "^(.*)/app/code/([^/]+)/([^/]+)/(.+)\\.php$",
+      "src_to_test_replace": "{1}/app/code/{2}/{3}/Test/Unit/{4}Test.php",
+      "runner_command": "vendor/bin/phpunit --cache-directory=/tmp/writ-phpunit-cache --do-not-cache-result",
+      "runner_config_file": "dev/tests/unit/phpunit.xml.dist"
+    }
+  ]
+}

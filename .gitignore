@@ -42,6 +42,7 @@ Thumbs.db
 workflow-friction.log
 .claude/gates/
 .friction-snapshot
+cache/
 
 # Per-Work-cycle workflow artifacts (overwritten each cycle)
 plan.md
@@ -50,3 +51,4 @@ capabilities.md
 # Plugin distribution: never ship
 .claude/settings.local.json
 writ.egg-info/
+.jolli/
