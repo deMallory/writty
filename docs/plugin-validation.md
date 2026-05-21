@@ -13,7 +13,6 @@ validator checks:
 
 - `.claude-plugin/marketplace.json` schema conformance
 - `.claude-plugin/plugin.json` schema conformance
-- Skill frontmatter in `SKILL.md`
 - Hooks JSON syntax in `hooks/hooks.json`
 - Agent and command frontmatter in `.claude/agents/`, `.claude/commands/`
 

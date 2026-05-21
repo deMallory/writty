@@ -130,12 +130,10 @@ class TestPluginManifestPhaseB:
         return json.loads(MANIFEST_PATH.read_text())
 
     def test_plugin_json_skills_field(self, manifest: dict) -> None:
-        """skills must be ['./'] or contain './' so SKILL.md is auto-discovered."""
-        if "skills" not in manifest:
-            pytest.skip("Phase B: skills field not yet added to plugin.json")
-        skills = manifest["skills"]
-        assert "./" in skills, (
-            f"plugin.json skills must contain './', got {skills}"
+        """skills must NOT be a top-level key. Writ no longer ships as a Skill plugin."""
+        assert "skills" not in manifest, (
+            "plugin.json must not contain a 'skills' key; Writ no longer ships "
+            "as a Skill plugin (SKILL.md removed in v1.4.0)"
         )
 
     def test_plugin_json_commands_field(self, manifest: dict) -> None:

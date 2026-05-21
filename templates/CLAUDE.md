@@ -4,74 +4,9 @@ Loaded in every session, every project.
 
 **Always read at session start:** `~/.claude/memory/GLOBAL.md`
 
----
+Workflow rules, the mode system, gate enforcement, and orchestrator dispatch are no longer described here. They are delivered on demand via RAG-retrieved Methodology nodes (`SKL-PROC-MODE-001`, `PBK-PROC-WORK-WORKFLOW-001`, `PBK-PROC-ORCHESTRATOR-001`, `SKL-PROC-WRIT-FAILURE-001`). The `writ-rag-inject.sh` hook surfaces them at the right trigger.
 
-## Memory tiers
-
-| Tier | Location | Use for |
-|---|---|---|
-| Global | This file + `~/.claude/memory/` | Cross-project facts, preferences, corrections |
-| Skill | Committed files in `~/.claude/skills/` | Domain knowledge: versioned rulebooks, not memory files |
-| Project | `~/.claude/projects/{encoded}/memory/MEMORY.md` | Project-specific context only |
-
-When something is learned that should persist:
-- Applies to all projects -> update this file or `~/.claude/memory/GLOBAL.md`
-- Applies whenever Writ skill is active -> commit to the skill's knowledge base
-- Applies to one project -> write to that project's auto-memory dir
-
----
-
-## Mandatory workflow before any task
-
-Rules are injected automatically by hooks. Your job is to follow the workflow.
-
-### Step 1: Set the mode
-
-Before writing ANY code, set the session mode. The RAG inject hook prints the
-exact `mode set` command with paths filled in. Run it.
-
-| Mode | Purpose | Code generation |
-|------|---------|-----------------|
-| Conversation | Discussion, brainstorming, questions | No |
-| Debug | Investigating a specific problem | No |
-| Review | Evaluating code against rules | No |
-| Work | Building or modifying code | Yes (full workflow) |
-
-If you skip this, gate hooks deny all writes (except plan.md). Setting a mode
-unblocks the workflow.
-
-### Step 2: Follow the mode's workflow
-
-- **Conversation:** No ceremony. Discuss, answer questions, brainstorm.
-- **Debug:** Investigate. Read logs, trace execution, form hypothesis. When fix
-  is identified, recommend switching to Work mode.
-- **Review:** Evaluate code against Writ rules. Produce structured findings per file.
-  When findings require code changes, recommend switching to Work mode.
-- **Work:** Full workflow. Enter /plan, write plan.md TO THE PROJECT ROOT
-  (## Files, ## Analysis, ## Rules Applied, ## Capabilities) + capabilities.md.
-  Exit /plan (format auto-validated, but gate is NOT created yet).
-  Present plan, WAIT for user approval (gate created on approval).
-  Write test skeleton FILES TO DISK, WAIT for approval. Then implement.
-  Update capabilities.md to check off completed items.
-
-### Step 3: Wait for user approval (Work mode only)
-
-After presenting the plan or test skeletons, STOP and tell the user:
-"Say **approved** to proceed."
-When the user says "approved", a hook automatically creates the gate file.
-NEVER create gate files yourself or run commands to approve gates.
-
-### When Writ is unavailable
-
-If the server is not running, hooks fall back gracefully. You will see a warning.
-Proceed normally.
-
-### Project-specific routing
-
-If the project has its own `.claude/CLAUDE.md` with mode-specific or phase-specific
-instructions, follow those. They override the generic workflow above.
-
----
+If you see no `--- WRIT RULES ---` block in your context, the Writ server is unavailable. Proceed with normal engineering judgment; hooks will block destructive writes if mode is unset.
 
 ## Global preferences
 

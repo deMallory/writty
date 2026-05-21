@@ -217,7 +217,7 @@ if [ "$IS_ORCHESTRATOR" = "true" ]; then
 Conversation: discussion, no code. Debug: investigating a problem, no code.
 Review: evaluating code against rules, no code. Work: building/modifying code (full workflow).
 Declare: python3 $SESSION_HELPER mode set <conversation|debug|review|work> $SESSION_ID
-Full definitions: see SKILL.md "Mode system" section.
+Full definitions: see HANDBOOK.md "Mode system" section.
 MODE_DIRECTIVE
     fi
     # Compact status line for orchestrator
@@ -582,7 +582,7 @@ if [ -z "$CURRENT_MODE" ]; then
 Conversation: discussion, no code. Debug: investigating a problem, no code.
 Review: evaluating code against rules, no code. Work: building/modifying code (full workflow).
 Declare: python3 $SESSION_HELPER mode set <conversation|debug|review|work> $SESSION_ID
-Full definitions: see SKILL.md "Mode system" section.
+Full definitions: see HANDBOOK.md "Mode system" section.
 MODE_DIRECTIVE
     debug "injected mode classification directive"
 fi
@@ -638,7 +638,7 @@ esac
 # 10. Append proposal nudge if low relevance (only when tier is set -- don't mix directives)
 if [ "$PROPOSAL_NUDGE" = "NO_RULES" ]; then
     echo ""
-    echo "[Writ: no matching rules found for this task. If you discover a pattern, constraint, or gotcha during this work that would help future tasks, propose it via POST /propose. See SKILL.md for the format and trigger conditions.]"
+    echo "[Writ: no matching rules found for this task. If you discover a pattern, constraint, or gotcha during this work that would help future tasks, propose it via POST /propose. See HANDBOOK.md for the format and trigger conditions.]"
 elif [ "$PROPOSAL_NUDGE" = "LOW_SCORES" ]; then
     echo ""
     echo "[Writ: retrieved rules have low relevance scores (< $LOW_RELEVANCE_THRESHOLD). The knowledge base may not cover this area well. If you discover a pattern worth codifying, propose it via POST /propose.]"

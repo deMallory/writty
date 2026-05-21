@@ -1,7 +1,8 @@
-"""Cross-cutting: version string consistency across all four manifest files.
+"""Cross-cutting: version string consistency across all three manifest files.
 
-All of pyproject.toml, SKILL.md frontmatter, .claude-plugin/marketplace.json,
-and .claude-plugin/plugin.json must declare version 1.3.0.
+All of pyproject.toml, .claude-plugin/marketplace.json, and
+.claude-plugin/plugin.json must declare version 1.5.0. SKILL.md no longer
+participates (deleted in v1.5.0).
 """
 
 from __future__ import annotations
@@ -35,61 +36,34 @@ def plugin_json() -> dict:
         return json.load(f)
 
 
-@pytest.fixture(scope="module")
-def skill_md_text() -> str:
-    return (SKILL_DIR / "SKILL.md").read_text()
-
-
 class TestPyprojectVersion:
-    """pyproject.toml declares version 1.3.0."""
+    """pyproject.toml declares version 1.5.0."""
 
-    def test_pyproject_version_is_1_3_0(self, pyproject: dict) -> None:
-        """pyproject.toml [project.version] must be '1.3.0'."""
+    def test_pyproject_version_is_1_4_0(self, pyproject: dict) -> None:
+        """pyproject.toml [project.version] must be '1.5.0'."""
         version = pyproject.get("project", {}).get("version")
         assert version == EXPECTED_VERSION, (
             f"pyproject.toml version must be '{EXPECTED_VERSION}'; got {version!r}"
         )
 
 
-class TestSkillMdVersion:
-    """SKILL.md frontmatter declares version 1.3.0."""
-
-    def test_skill_md_frontmatter_version_is_1_3_0(
-        self, skill_md_text: str
-    ) -> None:
-        """SKILL.md YAML frontmatter 'version:' field must be '1.3.0'."""
-        # Match: version: "1.3.0" or version: 1.3.0
-        match = re.search(
-            r'^\s*version\s*:\s*["\']?(\d+\.\d+\.\d+)["\']?',
-            skill_md_text,
-            re.MULTILINE,
-        )
-        assert match is not None, (
-            "SKILL.md must have a 'version:' field in its frontmatter"
-        )
-        found = match.group(1)
-        assert found == EXPECTED_VERSION, (
-            f"SKILL.md version must be '{EXPECTED_VERSION}'; got {found!r}"
-        )
-
-
 class TestMarketplaceJsonVersion:
-    """marketplace.json declares version 1.3.0 in both locations."""
+    """marketplace.json declares version 1.5.0 in both locations."""
 
-    def test_marketplace_metadata_version_is_1_3_0(
+    def test_marketplace_metadata_version_is_1_4_0(
         self, marketplace: dict
     ) -> None:
-        """marketplace.json metadata.version must be '1.3.0'."""
+        """marketplace.json metadata.version must be '1.5.0'."""
         version = marketplace.get("metadata", {}).get("version")
         assert version == EXPECTED_VERSION, (
             f"marketplace.json metadata.version must be '{EXPECTED_VERSION}'; "
             f"got {version!r}"
         )
 
-    def test_marketplace_plugins_version_is_1_3_0(
+    def test_marketplace_plugins_version_is_1_4_0(
         self, marketplace: dict
     ) -> None:
-        """marketplace.json plugins[0].version must be '1.3.0'."""
+        """marketplace.json plugins[0].version must be '1.5.0'."""
         plugins = marketplace.get("plugins", [])
         assert len(plugins) > 0, "marketplace.json must have at least one plugin entry"
         version = plugins[0].get("version")
@@ -100,10 +74,10 @@ class TestMarketplaceJsonVersion:
 
 
 class TestPluginJsonVersion:
-    """plugin.json declares version 1.3.0."""
+    """plugin.json declares version 1.5.0."""
 
-    def test_plugin_json_version_is_1_3_0(self, plugin_json: dict) -> None:
-        """plugin.json 'version' field must be '1.3.0'."""
+    def test_plugin_json_version_is_1_4_0(self, plugin_json: dict) -> None:
+        """plugin.json 'version' field must be '1.5.0'."""
         version = plugin_json.get("version")
         assert version == EXPECTED_VERSION, (
             f"plugin.json version must be '{EXPECTED_VERSION}'; got {version!r}"
@@ -111,16 +85,15 @@ class TestPluginJsonVersion:
 
 
 class TestVersionConsistencyAcrossFiles:
-    """All four manifest files agree on the same version string."""
+    """All three manifest files agree on the same version string."""
 
-    def test_all_four_manifests_agree(
+    def test_all_three_manifests_agree(
         self,
         pyproject: dict,
         marketplace: dict,
         plugin_json: dict,
-        skill_md_text: str,
     ) -> None:
-        """pyproject, marketplace (both fields), plugin.json, SKILL.md all say 1.3.0."""
+        """pyproject, marketplace (both fields), and plugin.json all say 1.5.0."""
         versions = {
             "pyproject.toml": pyproject.get("project", {}).get("version"),
             "marketplace.json:metadata.version": marketplace.get("metadata", {}).get("version"),
@@ -130,12 +103,6 @@ class TestVersionConsistencyAcrossFiles:
             ),
             "plugin.json:version": plugin_json.get("version"),
         }
-
-        skill_match = re.search(
-            r'^\s*version\s*:\s*["\']?(\d+\.\d+\.\d+)["\']?',
-            skill_md_text, re.MULTILINE,
-        )
-        versions["SKILL.md:version"] = skill_match.group(1) if skill_match else None
 
         wrong = {k: v for k, v in versions.items() if v != EXPECTED_VERSION}
         assert not wrong, (

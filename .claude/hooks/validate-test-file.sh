@@ -30,8 +30,24 @@ ext = os.path.splitext(f)[1].lstrip(".")
 # Only apply to source files.
 if ext not in {"py", "js", "ts", "php", "go", "rs", "java"}:
     sys.exit(0)
-# Only apply to files under src/, lib/, app/, or similar.
-if not re.search(r"/(src|lib|app|writ)/", f):
+# Compute a repo-relative path so the regex below doesn't false-positive
+# on absolute paths whose parent directories happen to be named src/lib/app/writ
+# (e.g. the Writ skill itself lives under .../skills/writ/, which previously
+# caused this gate to misfire on tests/ writes).
+repo = os.getcwd()
+try:
+    rel = os.path.relpath(f, repo)
+except ValueError:
+    rel = f
+# Test files are never production code -- exempt them up front so files under
+# tests/ never trip the "production code without a failing test" gate.
+norm = rel.replace(os.sep, "/")
+if norm.startswith("tests/") or "/tests/" in norm or norm.startswith("test/") or "/test/" in norm:
+    sys.exit(0)
+# Only apply to files under src/, lib/, app/, or writ/ at the repo root or
+# immediately under a recognized package directory. Anchor the regex to the
+# repo-relative path so /writ/ as an ancestor of the repo does not match.
+if not re.match(r"^(src|lib|app|writ)/", norm):
     sys.exit(0)
 # Derive plausible test paths. Convention: tests/test_X.{py} for src/X.py; specs, etc.
 base = os.path.basename(f)

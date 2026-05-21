@@ -1,11 +1,11 @@
 """Tests for documentation and version-bump deliverables.
 
-Verifies README, CHANGELOG, pyproject.toml, SKILL.md, and the
+Verifies README, CHANGELOG, pyproject.toml, and the
 docs/plugin-validation.md all reflect the current release. Originally
 added for the v1.0.1 plugin distribution work; refactored 2026-05-15
 during the v1.1.0 release prep to read the current version dynamically
 from pyproject.toml so future bumps do not require per-release test
-edits.
+edits. SKILL.md removed in v1.4.0.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from tests.plugin.conftest import REPO_ROOT
 README = REPO_ROOT / "README.md"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
-SKILL_MD = REPO_ROOT / "SKILL.md"
 PLUGIN_VALIDATION_DOC = REPO_ROOT / "docs" / "plugin-validation.md"
 
 
@@ -104,7 +103,8 @@ class TestVersionBumps:
     the v1.1.0 release prep to read the current version from
     pyproject.toml so future bumps do not require per-release test
     edits. The plugin.json and marketplace.json tests use the same
-    pattern; this file covers pyproject self-shape + SKILL.md.
+    pattern; this file covers pyproject self-shape only (SKILL.md
+    removed in v1.4.0).
     """
 
     def test_pyproject_declares_semver_version(self) -> None:
@@ -116,19 +116,6 @@ class TestVersionBumps:
         assert re.match(r"^\d+\.\d+\.\d+", version), (
             f"pyproject.toml version {version!r} must be semver-shaped "
             f"(MAJOR.MINOR.PATCH)."
-        )
-
-    def test_skill_md_version_matches_pyproject(self) -> None:
-        """SKILL.md frontmatter metadata.version must equal pyproject's
-        [project].version. Manifests move in lockstep with pyproject."""
-        assert SKILL_MD.exists(), "SKILL.md must exist"
-        expected = _pyproject_version()
-        content = SKILL_MD.read_text()
-        pattern = re.escape(expected)
-        assert re.search(rf'version[:\s]+["\']?{pattern}["\']?', content), (
-            f"SKILL.md frontmatter must have version: {expected!r} "
-            f"(from pyproject.toml). The manifests must move in "
-            f"lockstep with pyproject.toml."
         )
 
 

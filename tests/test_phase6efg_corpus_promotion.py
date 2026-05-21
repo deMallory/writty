@@ -35,12 +35,14 @@ OLD_FIXTURE_PATH = WRIT_ROOT / "tests" / "fixtures" / "synthetic_methodology"
 # Per-prefix counts. Originally captured pre-rename for Phase 6e/6f/6g
 # promotion verification. Updated 2026-05-09 for two additions:
 # SKL-PROC-WORKTREE-001 (post-PSR-008 methodology-gap closure) and
-# PBK-AUTHOR-001 (skill-authoring playbook). When you add a new
+# PBK-AUTHOR-001 (skill-authoring playbook). Updated 2026-05-21 for
+# v1.4.0 additions: PBK-PROC-WORK-WORKFLOW-001, PBK-PROC-ORCHESTRATOR-001,
+# SKL-PROC-MODE-001, SKL-PROC-WRIT-FAILURE-001. When you add a new
 # methodology file in this corpus, bump the corresponding count here
 # so the snapshot stays honest.
 EXPECTED_FILE_COUNTS = {
-    "PBK": 8,   # Playbooks (+1: PBK-AUTHOR-001 added 2026-05-09)
-    "SKL": 8,   # Skills (+1: SKL-PROC-WORKTREE-001 added 2026-05-09)
+    "PBK": 10,  # Playbooks (+2 v1.4.0: PBK-PROC-WORK-WORKFLOW-001, PBK-PROC-ORCHESTRATOR-001)
+    "SKL": 10,  # Skills (+2 v1.4.0: SKL-PROC-MODE-001, SKL-PROC-WRIT-FAILURE-001)
     "ANT": 10,  # AntiPatterns
     "ROL": 3,   # SubagentRoles
     "FRB": 2,   # ForbiddenResponses

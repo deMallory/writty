@@ -246,9 +246,9 @@ Many of the original navigation targets (`docs/phase-0-*.md`, `docs/phase-2-self
 | Performance targets, measurement | `HANDBOOK.md` "By the numbers" | doc 08, `SCALE_BENCHMARK_RESULTS.md` |
 | Technology decision rationale | `HANDBOOK.md` (architecture section) | -- |
 | Glossary | `HANDBOOK.md` (glossary section) | -- |
-| Hooks inventory + roles | `SKILL.md` | doc 06 |
-| Mode system, gate criteria, phase model | `SKILL.md`, `~/.claude/CLAUDE.md`, `rules/writ-workflow.md` | doc 06, doc 12 |
-| Sub-agent orchestration | `rules/writ-orchestrator.md` | `.claude/agents/writ-*.md`, doc 12 |
+| Hooks inventory + roles | `HANDBOOK.md` | doc 06 |
+| Mode system, gate criteria, phase model | `HANDBOOK.md`, Methodology node `SKL-PROC-MODE-001`, `SKL-PROC-WRIT-FAILURE-001` | doc 06, doc 12 |
+| Sub-agent orchestration | Methodology node `PBK-PROC-ORCHESTRATOR-001` | `.claude/agents/writ-*.md`, doc 12 |
 | Authority + frequency model | `HANDBOOK.md` (mandatory-rule section) | doc 11, `writ/frequency.py`, `writ/authoring.py` |
 | Public out-of-the-box rulebook (220 rules across 12 domains) | `out-of-the-box-rules.md` | doc 07 |
 | Monthly review cadence | `CONTRIBUTING.md`, `docs/monthly-reviews/TEMPLATE.md` | `docs/monthly-reviews/2026-05.md` |
@@ -283,4 +283,4 @@ Spot-check: `writ/frequency.py` (plain ratio, no Wilson CI).
 
 - All 12 extraction documents in `extraction/` cover specific facets in detail; this doc is the navigation map.
 - Test counts and phase status drift between docs — see Discrepancy Catalog above.
-- Phase-6 sub-phase status: 6e/6f/6g were file-system-only promotions; live Neo4j ingestion was added 2026-05-09 via `scripts/migrate.py --methodology-dir bible/methodology` (50 new-type + 10 methodology-Rule nodes, 120 edges).
+- Phase-6 sub-phase status: 6e/6f/6g were file-system-only promotions; live Neo4j ingestion was added 2026-05-09 via `writ import-markdown bible/` (50 new-type + 10 methodology-Rule nodes, 120 edges).
