@@ -437,7 +437,7 @@ class TestEmbeddingModelSelection:
         try:
             count = await db.count_rules()
             if count == 0:
-                pytest.skip("Neo4j has no rules. Run scripts/migrate.py first.")
+                pytest.skip("Neo4j has no rules. Run `writ import-markdown` first.")
 
             with pytest.raises(RuntimeError) as excinfo:
                 await build_pipeline(db)
@@ -499,7 +499,7 @@ class TestEmbeddingModelSelection:
         try:
             count = await db.count_rules()
             if count == 0:
-                pytest.skip("Neo4j has no rules. Run scripts/migrate.py first.")
+                pytest.skip("Neo4j has no rules. Run `writ import-markdown` first.")
 
             with pytest.raises(RuntimeError) as excinfo:
                 await build_pipeline(db)
@@ -537,7 +537,7 @@ class TestEmbeddingModelSelection:
         try:
             count = await db.count_rules()
             if count == 0:
-                pytest.skip("Neo4j has no rules. Run scripts/migrate.py first.")
+                pytest.skip("Neo4j has no rules. Run `writ import-markdown` first.")
 
             # Should NOT raise -- the override grants permission to fall back.
             pipeline = await build_pipeline(db)

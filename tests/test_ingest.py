@@ -463,17 +463,26 @@ class TestMigrationIntegration:
             pytest.skip("bible/ directory not found")
 
         files = discover_rule_files(bible_dir)
-        total_rules = 0
+        # `create_rule` is MERGE-on-rule_id, so the post-migration DB count
+        # is the count of UNIQUE rule_ids across all files. bible/ contains
+        # duplicate rule_ids between bible/methodology/<topic>/rules.md and
+        # bible/<topic>/rules.md (e.g. ENF-COMMS-001 appears in both
+        # bible/communication/rules.md and bible/methodology/communication/
+        # rules.md). Counting raw create_rule calls would over-count; counting
+        # unique IDs is the right post-MERGE expectation.
+        unique_ids: set[str] = set()
         for f in files:
             parsed = parse_rules_from_file(f)
             for rule_data in parsed:
                 validated = validate_parsed_rule(rule_data)
                 clean = {k: v for k, v in rule_data.items() if not k.startswith("_")}
                 await db.create_rule(clean)
-                total_rules += 1
+                unique_ids.add(rule_data["rule_id"])
 
         count = await db.count_rules()
-        assert count == total_rules
+        assert count == len(unique_ids), (
+            f"Expected {len(unique_ids)} unique rule_ids in DB, got {count}"
+        )
         assert count > 0
         print(f"\nMigrated {count} rules from {len(files)} files")
 
@@ -490,13 +499,21 @@ class TestMigrationIntegration:
                     clean = {k: v for k, v in rule_data.items() if not k.startswith("_")}
                     await db.create_rule(clean)
 
-        # Count once -- should match single-pass count.
-        all_rules = []
+        # Idempotency contract: re-ingesting must not duplicate. The DB count
+        # after two passes equals the count of UNIQUE rule_ids -- not the raw
+        # parsed-record count, which over-counts duplicate IDs that legitimately
+        # appear in both bible/<topic>/rules.md and bible/methodology/<topic>/
+        # rules.md (MERGE collapses them to one node).
+        unique_ids: set[str] = set()
         for f in files:
-            all_rules.extend(parse_rules_from_file(f))
+            for rule_data in parse_rules_from_file(f):
+                unique_ids.add(rule_data["rule_id"])
 
         count = await db.count_rules()
-        assert count == len(all_rules)
+        assert count == len(unique_ids), (
+            f"Expected {len(unique_ids)} unique rule_ids in DB after "
+            f"idempotent re-ingest, got {count}"
+        )
 
     @pytest.mark.asyncio
     async def test_skeleton_edges_created(self, db: Neo4jConnection) -> None:

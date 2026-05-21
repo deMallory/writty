@@ -105,7 +105,7 @@ The `tests/conftest.py` provides shared fixtures.
 ### Benchmark contracts
 
 12 benchmark tests in `benchmarks/bench_targets.py`. These require Neo4j running
-with the 80-rule corpus migrated (`python scripts/migrate.py`).
+with the 80-rule corpus migrated (`writ import-markdown`).
 
 | Benchmark | Target | What breaks it |
 |-----------|--------|----------------|

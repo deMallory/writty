@@ -282,8 +282,8 @@ Renders `templates/settings.json` and `templates/CLAUDE.md` with `envsubst '$HOM
 ### `scripts/install-user-commands.sh` (47 lines)
 Copies `templates/commands/*.md` into `~/.claude/commands/`. Always exits 0.
 
-### `scripts/migrate.py` (255 lines)
-One-time migration of Markdown rules → Neo4j. Supports both rule corpus and methodology fixtures. Calls `db.apply_constraints()`, then for each parsed rule: `db.create_rule(clean)`. Methodology nodes routed via `db.create_methodology_node`. Filters dangling edge endpoints. Idempotent (MERGE).
+### `scripts/migrate.py` (thin shim, ~71 lines)
+Backward-compat shim over `writ.graph.methodology_ingest.ingest_path` (introduced v1.5.0). Re-exports `run_migration` and `run_methodology_migration` so `from scripts.migrate import ...` keeps working; the argparse surface (`--bible-dir`, `--methodology-dir`, `--dry-run`) is preserved. All parse / validate / DB-write logic lives in `writ/graph/methodology_ingest.py`. Canonical user-facing entry point is now `writ import-markdown`.
 
 ### `scripts/populate_mechanical_paths.py` (deleted 2026-05-10)
 Was a one-shot script that hardcoded `mechanical_enforcement_path` values for has-path mandatory rules from the audit doc. The paths it set are now persisted in the graph and the bible/ export; the script and its source audit doc have both been removed.
@@ -476,7 +476,7 @@ Bash hooks query the Writ server via httpx with `timeout_ms = 50`. On timeout/re
 | `scripts/ingest_subagent_roles.py` | 143 |
 | `scripts/install-harness-config.sh` | 92 |
 | `scripts/install-user-commands.sh` | 47 |
-| `scripts/migrate.py` | 255 |
+| `scripts/migrate.py` (shim) | ~71 |
 | `scripts/profile_hotpath.py` | 67 |
 | `scripts/seed_phase_*.py` (10 files) | ~3,400 total |
 | `scripts/stop-server.sh` | 31 |
@@ -495,7 +495,7 @@ Bash hooks query the Writ server via httpx with `timeout_ms = 50`. On timeout/re
 - `writ/analysis/analyzer.py` ↔ `writ/retrieval/pipeline.py` — analyzer uses `pipeline.query(query_text=...)`.
 - `writ/analysis/friction.py:resolve_log_path` ↔ `bin/lib/common.sh` — both honor `WRIT_FRICTION_LOG`.
 - `writ/analysis/llm.py` model IDs: `claude-haiku-4-5-20251001` and `claude-sonnet-4-6-20250514` are pinned in code.
-- `scripts/migrate.py` ↔ `tests/conftest.py` — conftest's `pytest_sessionfinish` calls migrate.py to restore methodology corpus after `pipeline_db` wipes shared graph (commit 2d7c028).
+- `writ.graph.methodology_ingest` ↔ `tests/conftest.py` — conftest's `pytest_sessionfinish` shells out to `writ import-markdown bible/` (canonical entry point as of v1.5.0) to restore methodology corpus after `pipeline_db` wipes shared graph. `scripts/migrate.py` is a thin shim retained for backward compat.
 - `scripts/seed_phase_*.py` — Phase 1-5 public-rulebook ingestion chain; idempotent (MERGE on rule_id); each cites the section of `out-of-the-box-rules.md` it seeds.
 - `scripts/ingest_subagent_roles.py` and `export_subagent_roles.py` — bidirectional sync of `.claude/agents/*.md` ↔ `SubagentRole` nodes.
 - `Makefile bench` ↔ `.pre-commit-config.yaml stages: [pre-push]`.

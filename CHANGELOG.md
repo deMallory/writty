@@ -2,6 +2,63 @@
 
 All notable changes to Writ are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-05-21
+
+Two coordinated structural changes shipped together. (1) Static workflow content -- the mode-system tutorial, failure-mode rules, orchestrator dispatch playbook, and SKILL.md hook breadcrumbs -- migrates into Methodology nodes that the existing hybrid-RAG pipeline surfaces on demand. The six places that previously described the mode workflow collapse to one canonical source (Neo4j, surfaced via RAG); per-session static token cost drops from ~2000 to ~250 (CLAUDE.md trimmed to user preferences plus a server-down fallback paragraph). (2) `writ import-markdown` becomes the single canonical entry point for ingesting every node type under `bible/` (Rules plus methodology: Skill, Playbook, AntiPattern, Phase, Technique, Rationalization, SubagentRole, WorkedExample, ForbiddenResponse). The duplicate parse-validate-write loop that previously lived in both `writ/cli.py::import_markdown` (Rule-only) and `scripts/migrate.py` (methodology-aware) collapses into a single library module, `writ/graph/methodology_ingest.py`, that both the CLI and the migrate-shim consume (DRY-DUP-002). Per-node-type dispatch becomes a registry lookup instead of an if/elif chain (SOLID-OCP-002); validation failures surface as typed `IngestError(file, node_type, node_id, field, reason)` records instead of raw Pydantic tracebacks (API-ERROR-002).
+
+### Removed
+
+- `SKILL.md`. Hooks-inventory content is now sourced from `HANDBOOK.md`; the mode-system, gate-enforcement, and sub-agent sections move into the four new Methodology nodes listed under **Added**.
+- The `"skills": ["./"]` declaration in `.claude-plugin/plugin.json`. Writ no longer ships as a Claude Code Skill plugin; the plugin remains fully functional via its `commands`, `agents`, and `hooks` declarations.
+- The `## Memory tiers` table and `## Mandatory workflow before any task` section of `templates/CLAUDE.md`. Workflow rules now arrive via RAG injection, not static template prose.
+- `tests/test_version_consistency.py::TestSkillMdVersion` (and the `skill_md_text` fixture).
+- `tests/plugin/test_documentation.py::test_skill_md_version_matches_pyproject` and the `SKILL_MD = REPO_ROOT / "SKILL.md"` constant.
+- The `- Skill frontmatter in \`SKILL.md\`` bullet from `docs/plugin-validation.md`.
+
+### Added
+
+- `writ/graph/methodology_ingest.py` -- new library module exposing `ingest_path`, `ingest_edges`, `INGESTER_REGISTRY`, `KNOWN_NODE_TYPES`, `IngestReport`, and `IngestError`. Both the unified CLI and the `scripts/migrate.py` shim delegate here.
+- `writ import-markdown --only TYPE[,TYPE,...]` flag. Filters ingestion to the named node types; unknown types produce a clean error naming the offending token and listing valid types, with `typer.Exit(code=2)` and no Python traceback.
+- `writ import-markdown --dry-run` flag. Parses and validates without writing to Neo4j; reports per-type counts and any validation errors. Composable with `--only`.
+- `IngestReport.render()` -- multi-line per-type breakdown plus totals line and edge-creation summary. Powers the CLI's stdout output.
+- `bible/methodology/SKL-PROC-MODE-001.md` -- Skill node teaching the mode-set workflow. Trigger: new session before the first writable tool call.
+- `bible/methodology/PBK-PROC-WORK-WORKFLOW-001.md` -- Playbook node for the three-gate Work-mode pipeline (plan -> test skeletons -> implementation). `preconditions: [SKL-PROC-MODE-001]`. Edges: TEACHES `SKL-PROC-WRIT-FAILURE-001`, GATES `ENF-PROC-PLAN-001`, PRECEDES `PBK-PROC-TDD-001`.
+- `bible/methodology/PBK-PROC-ORCHESTRATOR-001.md` -- Playbook replacing `rules/writ-orchestrator.md`. Covers the `--orchestrator` flag rationale, the four-worker dispatch sequence (explore -> plan -> test -> implement), and the foreground-only execution constraint.
+- `bible/methodology/SKL-PROC-WRIT-FAILURE-001.md` -- Skill replacing `rules/writ-workflow.md`. Covers gate-denial handling, /plan UI approval semantics, plan.md timing, and the test-presentation format.
+- `tests/_writ_cmd.py` -- shared CLI resolver. Provides `WRIT_CMD_PREFIX` that prefers `.venv/bin/writ` and falls back to `python -m writ.cli`. Used by every test that subprocess-invokes the CLI.
+- `tests/test_import_markdown_unified.py` -- 27 acceptance tests across 7 classes covering default no-flag behavior, `--only` filtering, `--dry-run`, structured error reporting, edge creation, idempotence, subdirectory scoping, the auto-export scope guard, the `scripts/migrate.py` shim contract, and the version bumps.
+- `tests/test_methodology_ingest.py` -- 14 unit tests for the new library module (registry coverage, `IngestError.__str__`, `IngestReport.render`).
+- `tests/test_methodology_migration.py` -- 26 acceptance tests for the SKILL.md removal, the four new Methodology nodes, the slimmed `templates/CLAUDE.md`, the rules-file stubs, and the docs cross-reference updates.
+
+### Changed
+
+- `writ import-markdown` (no flags) now imports every node type under the target directory, not just Rule nodes. Pre-1.5.0 the command was Rule-only; methodology had to be loaded via `scripts/migrate.py --methodology-dir bible/methodology/`. The CLI walks the path recursively, parses each `*.md`, routes each node through `INGESTER_REGISTRY[node_type]`, and creates inter-node edges.
+- `writ migrate` Typer command now calls the new library function in-process instead of shelling out to `scripts/migrate.py`. Exit-code contract preserved.
+- `scripts/migrate.py` reduced from 257 lines to a ~71-line thin shim. Keeps the argparse surface (`--bible-dir`, `--methodology-dir`, `--dry-run`) for backward compat; re-exports `run_migration` and `run_methodology_migration` for the existing import contract.
+- `rules/writ-workflow.md` reduced from a 41-line failure-mode tutorial to a 5-line stub pointing at `SKL-PROC-WRIT-FAILURE-001`. Stub retained (not deleted) so the platform's automatic `~/.claude/rules/*.md` global-load slot continues to surface something.
+- `rules/writ-orchestrator.md` reduced from a 65-line orchestrator playbook to a 5-line stub pointing at `PBK-PROC-ORCHESTRATOR-001`. Stub preserves the `--orchestrator` flag string and the `suppress` keyword that `tests/test_orchestrator_hardening.py:31-48` greps for.
+- `.claude/hooks/writ-rag-inject.sh` breadcrumbs at the former lines 220, 585, 641 repointed from `SKILL.md` to `HANDBOOK.md`.
+- `templates/CLAUDE.md` trimmed to 17 lines: the `## Global preferences` block is retained verbatim, a server-down bootstrap-fallback paragraph is added, and a one-paragraph pointer documents that workflow rules now arrive via RAG injection.
+- `tests/plugin/test_plugin_manifest.py::test_plugin_json_skills_field` flipped polarity: now asserts `"skills"` is NOT a top-level key on the manifest.
+- `tests/test_version_consistency.py::test_all_four_manifests_agree` renamed to `test_all_three_manifests_agree`; SKILL.md drops out of the comparison set.
+- `tests/conftest.py::pytest_sessionfinish`, `tests/test_retrieval.py::pipeline_db` teardown, `tests/test_post_suite_neo4j_restoration.py`, `tests/test_graph_proximity.py`, `tests/test_embeddings.py` -- shell out to `writ import-markdown bible/` (was: `scripts/migrate.py --methodology-dir bible/methodology`).
+- `.github/actions/setup-writ/action.yml` "Migrate rule corpus" step now invokes `writ import-markdown bible/`. CI gains methodology corpus coverage on the same wall-clock budget.
+- `bible/methodology/PBK-AUTHOR-001.md`, `README.md`, `docs/extraction/{01,04,08,09}-*.md`, `benchmarks/bench_targets.py`, `scripts/instrument-cold-start.py`, `.claude/CODEBASE.md`, `.github/workflows/pr.yml` -- every `scripts/migrate.py` and `SKILL.md` user-facing reference repointed at `writ import-markdown` and `HANDBOOK.md` / Methodology node IDs.
+- Version `1.3.0` -> `1.5.0` across `pyproject.toml`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (both `metadata.version` and `plugins[0].version`).
+
+### Fixed
+
+- `.claude/hooks/validate-test-file.sh` TDD-gate regex misfired when the absolute path contained `/writ/` as an ancestor directory (the skill's own install root). The regex now computes a repo-relative path first, exempts `tests/` paths up front, and anchors `^(src|lib|app|writ)/` to the repo-relative path so absolute paths whose parents happen to contain `writ` no longer trigger a "production code without a failing test" gate. Regression tests in `tests/test_phase2_hooks.py::TestValidateTestFileRegexScoping` cover both branches.
+- `writ import-markdown` no longer auto-exports the full graph when invoked against a subdirectory. Pre-fix, running `writ import-markdown bible/methodology/` triggered an auto-export whose file-location lookup only scanned within the subdir; rules whose original files lived outside scope fell through to `<output_dir>/<domain>/rules.md`, creating bogus duplicates like `bible/methodology/process/rules.md`. Auto-export is now gated on `path.resolve() == DEFAULT_BIBLE_DIR.resolve()`. Regression tests in `tests/test_import_markdown_unified.py::TestImportMarkdownEdgeCases` cover the subdir-skip and default-root-still-fires cases.
+- `tests/test_phase6efg_corpus_promotion.py` corpus counts updated for the new Methodology nodes: 62 -> 66 methodology files, 8 -> 10 Playbook nodes, 8 -> 10 Skill nodes.
+- `tests/plugin/test_hooks_routing.py` hook count updated 34 -> 36 (renamed from `test_hooks_json_covers_all_33_registrations` to `test_hooks_json_covers_all_36_registrations`).
+- `tests/test_ingest.py::TestMigrationIntegration` uses the MERGE-aware unique-`rule_id` count instead of the raw parse-call count; the 286-vs-276 disparity was the 10 enforcement-rule IDs that legitimately exist in both `bible/<topic>/rules.md` and `bible/methodology/<topic>/rules.md`.
+
+### Notes
+
+- Backwards compat: `python scripts/migrate.py [--bible-dir ...] [--methodology-dir ...] [--dry-run]` and `from scripts.migrate import run_migration` continue to work unchanged. The shim prints a deprecation notice to stderr on direct invocation but does not change exit codes. `writ migrate` keeps its exit-code contract.
+- Intentional behavior change: `writ import-markdown` with no flags now imports methodology too. Pre-1.5.0 invocations relying on the Rule-only side effect should add `--only Rule` to preserve the old scope.
+
 ## [1.3.0] - 2026-05-19
 
 Per-turn test-execution pipeline. PostToolUse mark + Stop-hook runner batch the writes from a single agent turn, resolve source paths to their tests via a config-driven path matcher (generic conventions + Magento layout by default; project override via `.claude/writ.json`), invoke pytest / go test / phpunit grouped by runner, and surface real failures via the existing emit-summary helper. Silent on pass, terse on fail, per-runner friction telemetry. Path knowledge is no longer hardcoded in the bash hooks: a new `bin/lib/test_paths.py` helper owns `match-src` / `match-test` / `resolve-test` / `runner-for` and reads the bundled `test-paths-defaults.json` plus any project file. Behind that surface this release also repairs a long-standing JSON-quoting bug in `log_friction_event` (the `${4:-{}}` default-value form was appending a stray `}` to every JSON extras argument, breaking the `json.loads` for every caller that passed extras) and fixes a `set -e` interaction in the run hook's `run_group` that silently aborted the script when phpunit returned non-zero, before the friction event or summary-emission could fire.

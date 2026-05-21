@@ -91,7 +91,7 @@ async def db():
     conn = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
     count = await conn.count_rules()
     if count == 0:
-        pytest.skip("Neo4j has no rules. Run: python scripts/migrate.py")
+        pytest.skip("Neo4j has no rules. Run: `writ import-markdown`")
     yield conn
     await conn.close()
 

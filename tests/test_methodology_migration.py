@@ -505,58 +505,57 @@ class TestDocsUpdates:
 # ---------------------------------------------------------------------------
 
 
-class TestChangelog140:
+class TestChangelogAbsorptionInV150:
+    """The absorption work (SKILL.md removal, Methodology nodes, slimmed
+    CLAUDE.md, hook breadcrumb repointing) ships as part of the combined
+    [1.5.0] release entry. These assertions verify the [1.5.0] section
+    documents the absorption work and uses the established subsection format."""
+
     @pytest.fixture()
     def content(self) -> str:
         path = REPO_ROOT / "CHANGELOG.md"
         assert path.exists(), "CHANGELOG.md must exist"
         return path.read_text()
 
-    def test_changelog_has_140_entry(self, content: str) -> None:
-        """CHANGELOG.md must contain a '## [1.4.0] - 2026-05-20' heading
-        that appears BEFORE the '## [1.3.0]' heading."""
-        assert "## [1.4.0]" in content, (
-            "CHANGELOG.md must have a '## [1.4.0]' section"
+    def test_changelog_150_entry_covers_absorption(self, content: str) -> None:
+        """The [1.5.0] section must reference the SKILL.md removal and each of
+        the four absorption-introduced Methodology nodes by ID."""
+        assert "## [1.5.0]" in content, (
+            "CHANGELOG.md must have a '## [1.5.0]' section"
         )
-        assert "## [1.3.0]" in content, (
-            "CHANGELOG.md must still have a '## [1.3.0]' section"
-        )
-        idx_140 = content.index("## [1.4.0]")
-        idx_130 = content.index("## [1.3.0]")
-        assert idx_140 < idx_130, (
-            "## [1.4.0] must appear BEFORE ## [1.3.0] in CHANGELOG.md; "
-            f"got indices {idx_140} and {idx_130}"
-        )
-
-    def test_changelog_140_entry_has_removed_changed_added_subsections(
-        self, content: str
-    ) -> None:
-        """The 1.4.0 CHANGELOG section must contain ### Removed, ### Changed,
-        ### Added subsections in that order."""
-        assert "## [1.4.0]" in content, "CHANGELOG.md must have a '## [1.4.0]' section"
-        idx_start = content.index("## [1.4.0]")
+        idx_start = content.index("## [1.5.0]")
         idx_next = content.find("\n## [", idx_start + 1)
         section = content[idx_start:idx_next] if idx_next != -1 else content[idx_start:]
 
-        assert "### Removed" in section, (
-            "CHANGELOG.md 1.4.0 section must contain '### Removed'"
+        assert "SKILL.md" in section, (
+            "CHANGELOG.md [1.5.0] section must reference SKILL.md "
+            "(the absorption work removes it)"
         )
-        assert "### Changed" in section, (
-            "CHANGELOG.md 1.4.0 section must contain '### Changed'"
-        )
-        assert "### Added" in section, (
-            "CHANGELOG.md 1.4.0 section must contain '### Added'"
-        )
+        for node_id in (
+            "SKL-PROC-MODE-001",
+            "PBK-PROC-WORK-WORKFLOW-001",
+            "PBK-PROC-ORCHESTRATOR-001",
+            "SKL-PROC-WRIT-FAILURE-001",
+        ):
+            assert node_id in section, (
+                f"CHANGELOG.md [1.5.0] section must reference {node_id} "
+                f"(absorption work adds this Methodology node)"
+            )
 
-        # Verify ordering: Removed before Changed before Added
-        idx_removed = section.index("### Removed")
-        idx_changed = section.index("### Changed")
-        idx_added = section.index("### Added")
-        assert idx_removed < idx_changed < idx_added, (
-            "CHANGELOG.md 1.4.0 subsections must be in order: "
-            "### Removed, ### Changed, ### Added; "
-            f"got positions removed={idx_removed}, changed={idx_changed}, added={idx_added}"
-        )
+    def test_changelog_150_entry_has_required_subsections(
+        self, content: str
+    ) -> None:
+        """The [1.5.0] CHANGELOG section must contain ### Removed, ### Added,
+        and ### Changed subsections."""
+        assert "## [1.5.0]" in content, "CHANGELOG.md must have a '## [1.5.0]' section"
+        idx_start = content.index("## [1.5.0]")
+        idx_next = content.find("\n## [", idx_start + 1)
+        section = content[idx_start:idx_next] if idx_next != -1 else content[idx_start:]
+
+        for subsection in ("### Removed", "### Added", "### Changed"):
+            assert subsection in section, (
+                f"CHANGELOG.md [1.5.0] section must contain '{subsection}'"
+            )
 
     def test_changelog_preserves_130_entry(self, content: str) -> None:
         """CHANGELOG.md must still contain the 1.3.0 section (historical entry,

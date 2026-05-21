@@ -273,7 +273,7 @@ class TestGraphBoostRegression:
         raised from 10ms -> 15ms 2026-05-09 to accommodate the larger
         post-Phase-6 candidate pool (Rule + 5 retrievable methodology
         labels). Steady-state p95 observed ~11ms after methodology
-        ingestion landed via `scripts/migrate.py --methodology-dir`."""
+        ingestion landed via `writ import-markdown bible/`."""
         import time
 
         queries = [
