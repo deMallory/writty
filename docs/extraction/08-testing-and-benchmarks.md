@@ -20,18 +20,16 @@ def pytest_sessionfinish(session, exitstatus):
     (Skill / Playbook / etc.) missing post-suite -- the symptom was
     `/always-on?mode=work` returning empty after `pytest -q`.
 
-    New approach: shell out to scripts/migrate.py unconditionally.
+    New approach: shell out to `writ import-markdown bible/` unconditionally.
     """
     skill_dir = Path(__file__).resolve().parent.parent
-    migrate = skill_dir / "scripts" / "migrate.py"
-    methodology = skill_dir / "bible" / "methodology"
-    if not migrate.exists() or not methodology.exists():
+    bible = skill_dir / "bible"
+    if not bible.exists():
         return  # not a writ checkout; nothing to restore.
 
     try:
         subprocess.run(
-            [sys.executable, str(migrate),
-             "--methodology-dir", str(methodology)],
+            ["writ", "import-markdown", "bible/"],
             cwd=str(skill_dir),
             capture_output=True,
             timeout=60,
@@ -42,7 +40,7 @@ def pytest_sessionfinish(session, exitstatus):
 ```
 
 Key invariants:
-- Unconditional shell-out to `scripts/migrate.py --methodology-dir bible/methodology`.
+- Unconditional shell-out to `writ import-markdown bible/`.
 - Never raises out of `pytest_sessionfinish` (would flip `exitstatus` and mask test results).
 - Pre-fix `if count == 0:` gate is gone; `test_post_suite_neo4j_restoration.py::TestSessionFinishRestoresMethodology::test_conftest_sessionfinish_does_not_gate_on_count_zero` greps the source to enforce that.
 
@@ -169,7 +167,7 @@ Drafted 2026-04-21 from per-query rankings. Per-id verdicts: `keep` / `relabel-p
 
 ### D.2 Retrieval pipeline
 
-- `test_retrieval.py` (261) — `TestPipeline`, `TestRanking`, `TestContextBudget`, `TestAdjacencyCache`. Fixture `pipeline_db` wipes Neo4j, ingests `bible/`, yields, wipes, restores via `scripts/migrate.py`.
+- `test_retrieval.py` (261) — `TestPipeline`, `TestRanking`, `TestContextBudget`, `TestAdjacencyCache`. Fixture `pipeline_db` wipes Neo4j, ingests `bible/`, yields, wipes, restores via `writ import-markdown bible/`.
 - `test_methodology_retrieval.py` (216) — Phase 0 methodology benchmark. `TestPhase0Blockers::test_mrr_at_5` (>=0.78), `test_hit_rate` (>=0.90), `test_bundle_completeness` (>=0.85), `test_p95_latency` (<=5ms). 7 module-scoped fixtures. `pytest.importorskip("onnxruntime")`.
 - `test_embeddings.py` (185) — `TestOnnxEmbeddingModel`, `TestCachedEncoder`, `TestOnnxRankingStability`.
 - `test_hnsw_persistence.py` (300) — `TestRoundTripSaveLoad`, `TestSidecarSchema`, `TestCorpusHashMismatch`, `TestAtomicWrite`, `TestMaxElementsHeadroom`, `TestMissingSidecar`, `TestCorruptedSidecar`.
@@ -284,7 +282,7 @@ Drafted 2026-04-21 from per-query rankings. Per-id verdicts: `keep` / `relabel-p
 **Configuration discovery:** `pyproject.toml` declares pytest as dev/benchmark extra (`pytest>=8,<9`, `pytest-benchmark>=4,<5`, `pytest-asyncio>=0.23,<1`). NO `[tool.pytest.ini_options]`, NO `pytest.ini`, NO `setup.cfg` — pytest uses defaults.
 
 **Entry points:**
-- `pytest -q` from skill root — full suite. End-of-run, `pytest_sessionfinish` shells out to `scripts/migrate.py --methodology-dir bible/methodology`.
+- `pytest -q` from skill root — full suite. End-of-run, `pytest_sessionfinish` shells out to `writ import-markdown bible/`.
 - `pytest tests/test_methodology_retrieval.py` — Phase 0 retrieval benchmark with MRR/hit/completeness/latency blockers. Skips if onnxruntime not installed.
 - `pytest tests/test_retrieval.py` — Phase 5 pipeline; requires Neo4j running.
 
@@ -351,10 +349,10 @@ These exercise the quality-judge rubric across structural-skeleton, filler-text,
 
 ## H. Cross-References Noted
 
-- **conftest → migrate.py**: post-suite contract pinned by `tests/test_post_suite_neo4j_restoration.py`.
+- **conftest → `writ import-markdown`**: post-suite contract pinned by `tests/test_post_suite_neo4j_restoration.py`. The shim `scripts/migrate.py` is no longer on the call path.
 - **methodology_loader → bible/methodology**: Phase 6e/f/g promoted from `tests/fixtures/synthetic_methodology/`.
 - **methodology_loader → writ.retrieval.keyword**: imports `_TANTIVY_RESERVED`, `_TANTIVY_SPECIAL`.
-- **test_retrieval.py teardown → migrate.py**: `pipeline_db` fixture wipes Neo4j and re-runs `scripts/migrate.py` on teardown.
+- **test_retrieval.py teardown → `writ import-markdown`**: `pipeline_db` fixture wipes Neo4j and re-runs `writ import-markdown bible/` on teardown.
 - **ground_truth_proc.json provenance**: `.candidates.json` → `.curation-proposal.json` → `.json`.
 - **Quality-judge cross-refs**: gamed artifacts scored by `writ-quality-judge.sh`; FP rate measured by `test_phase5_analyzers.py::TestQualityJudgeFalsePositives`.
 - **No `pytest_configure` / `pytest_collection_modifyitems`** — only `pytest_sessionfinish` exists.

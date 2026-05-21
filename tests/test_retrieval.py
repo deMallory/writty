@@ -43,6 +43,8 @@ async def pipeline_db():
     import sys
     from pathlib import Path
 
+    from tests._writ_cmd import WRIT_CMD_PREFIX
+
     db = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
     await db.clear_all()
 
@@ -75,8 +77,7 @@ async def pipeline_db():
     # isolation bug); we surface that via stderr but do not raise.
     try:
         subprocess.run(
-            [sys.executable, "scripts/migrate.py",
-             "--methodology-dir", "bible/methodology"],
+            [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
             cwd="/home/lucio.saldivar/.claude/skills/writ",
             capture_output=True,
             timeout=60,
@@ -84,7 +85,7 @@ async def pipeline_db():
         )
     except (subprocess.SubprocessError, OSError) as e:
         sys.stderr.write(
-            f"[test_retrieval teardown] migrate.py restore failed: {e}\n"
+            f"[test_retrieval teardown] writ import-markdown restore failed: {e}\n"
         )
 
 

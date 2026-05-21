@@ -24,6 +24,8 @@ import sys
 
 import pytest
 
+from tests._writ_cmd import WRIT_CMD_PREFIX
+
 
 SKILL_DIR = "/home/lucio.saldivar/.claude/skills/writ"
 
@@ -62,15 +64,14 @@ class TestSessionFinishRestoresMethodology:
     def test_migrate_restores_skill_nodes(self) -> None:
         # Run the same migration the conftest hook should be running.
         result = subprocess.run(
-            [sys.executable, "scripts/migrate.py",
-             "--methodology-dir", "bible/methodology"],
+            [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
             cwd=SKILL_DIR,
             capture_output=True,
             text=True,
             timeout=60,
         )
         assert result.returncode == 0, (
-            f"migrate.py failed: stderr={result.stderr[:500]}"
+            f"writ import-markdown failed: stderr={result.stderr[:500]}"
         )
 
         # After migration, methodology labels MUST be populated.

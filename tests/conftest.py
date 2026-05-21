@@ -15,9 +15,9 @@ def pytest_sessionfinish(session, exitstatus):
     (Skill / Playbook / etc.) missing post-suite -- the symptom was
     `/always-on?mode=work` returning empty after `pytest -q`.
 
-    New approach: shell out to scripts/migrate.py unconditionally.
-    The script is MERGE-only (idempotent), runs in <2s, and is the
-    canonical migration path used in production. Single source of
+    New approach: shell out to `writ import-markdown bible/` unconditionally.
+    The command is MERGE-only (idempotent), runs in <2s, and is the
+    canonical import path used in production. Single source of
     truth -- the inline duplicate is gone.
     """
     import os
@@ -25,16 +25,16 @@ def pytest_sessionfinish(session, exitstatus):
     import sys
     from pathlib import Path
 
+    from tests._writ_cmd import WRIT_CMD_PREFIX
+
     skill_dir = Path(__file__).resolve().parent.parent
-    migrate = skill_dir / "scripts" / "migrate.py"
-    methodology = skill_dir / "bible" / "methodology"
-    if not migrate.exists() or not methodology.exists():
+    bible = skill_dir / "bible"
+    if not bible.exists():
         return  # not a writ checkout; nothing to restore.
 
     try:
         subprocess.run(
-            [sys.executable, str(migrate),
-             "--methodology-dir", str(methodology)],
+            [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
             cwd=str(skill_dir),
             capture_output=True,
             timeout=60,

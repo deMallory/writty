@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 SKILL_DIR = Path("/home/lucio.saldivar/.claude/skills/writ")
-EXPECTED_VERSION = "1.3.0"
+EXPECTED_VERSION = "1.5.0"
 
 
 @pytest.fixture(scope="module")

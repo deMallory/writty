@@ -146,7 +146,7 @@ Output: `# {role_id}  (name=..., model=...)` + blank line + prompt template body
 
 ### `writ migrate` (800-810)
 
-No flags. `subprocess.run([sys.executable, "scripts/migrate.py"], capture_output=False)`. `Exit(result.returncode)`. Output streams direct.
+No flags. Calls `writ.graph.methodology_ingest.ingest_path(Path('bible/'), db, only=None, dry_run=False)` in-process. Backward-compat shim for `writ import-markdown`. Exits with code 1 if any `IngestError`s are reported; 0 otherwise.
 
 ### `writ query <query_text>` (813-843)
 
@@ -255,4 +255,4 @@ All commands except `writ status` and `writ serve` open their own `Neo4jConnecti
 - `writ.retrieval.pipeline.build_pipeline`.
 - `writ.retrieval.traversal.AdjacencyCache.build_from_db`.
 - `writ.server.app` — imported by `writ serve`.
-- `scripts/migrate.py` — invoked as a subprocess by `writ migrate`.
+- `scripts/migrate.py` — thin shim (~71 lines) re-exporting `run_migration` / `run_methodology_migration` for backward compat; the canonical in-process path is `writ.graph.methodology_ingest.ingest_path` called by both `writ import-markdown` and `writ migrate`.

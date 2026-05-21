@@ -213,7 +213,7 @@ async def main(args: argparse.Namespace) -> None:
     conn = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
     count = await conn.count_rules()
     if count == 0:
-        print("ERROR: Neo4j has no rules. Run scripts/migrate.py first.")
+        print("ERROR: Neo4j has no rules. Run `writ import-markdown` first.")
         await conn.close()
         return
     print(f"Corpus: {count} rules. Running {args.runs} iterations of build_pipeline().")

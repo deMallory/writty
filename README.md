@@ -229,7 +229,8 @@ Same problem space, different optimization frontiers.
 | `writ propose ...` | Submit AI authored rule through structural gate. |
 | `writ review [rule_id] [--promote --reject --downweight --stats]` | Triage AI provisional rules. |
 | `writ feedback <rule_id> <positive\|negative>` | Record feedback signal. |
-| `writ migrate` | Run `scripts/migrate.py` (initial bootstrap). |
+| `writ import-markdown [PATH] [--only TYPE[,...]] [--dry-run]` | Import Markdown bible (Rules + methodology) into Neo4j. Default path `bible/`; `--only` filters node types; `--dry-run` validates without writing. |
+| `writ migrate` | Backward-compat shim. Delegates in-process to `writ import-markdown` with defaults (full corpus, write-through). |
 | `writ analyze-friction [flags]` | Analyze `workflow-friction.log`: rule effectiveness, skill usage, playbook compliance, graduation candidates, trim candidates, quality judge false positives. |
 | `writ audit-session <session_id>` | Per-session timeline and summary. |
 | `writ role-prompt <name>` | Print canonical SubagentRole prompt template from graph. |
@@ -283,7 +284,7 @@ Environment variables read by hooks: `WRIT_HOST` (default `localhost`), `WRIT_PO
 
 ## Testing
 
-90 test files, 1,192 test functions. The end-of-suite hook in `tests/conftest.py` shells out to `scripts/migrate.py --methodology-dir bible/methodology` to restore the production graph after tests run.
+90 test files, 1,192 test functions. The end-of-suite hook in `tests/conftest.py` shells out to `writ import-markdown bible/` to restore the production graph after tests run.
 
 ```bash
 make test          # pytest tests/ -x -q

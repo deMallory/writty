@@ -4,7 +4,7 @@ Loaded in every session, every project.
 
 **Always read at session start:** `~/.claude/memory/GLOBAL.md`
 
-Workflow rules, the mode system, gate enforcement, and orchestrator dispatch are no longer described here. They are delivered on demand via RAG-retrieved Methodology nodes (`SKL-PROC-MODE-001`, `PBK-PROC-WORK-WORKFLOW-001`, `PBK-PROC-ORCHESTRATOR-001`, `SKL-PROC-WRIT-FAILURE-001`). The `writ-rag-inject.sh` hook surfaces them at the right trigger.
+Workflow rules, the mode system, gate enforcement, and orchestrator dispatch are delivered on demand via RAG-retrieved Methodology nodes (`SKL-PROC-MODE-001`, `PBK-PROC-WORK-WORKFLOW-001`, `PBK-PROC-ORCHESTRATOR-001`, `SKL-PROC-WRIT-FAILURE-001`). The `writ-rag-inject.sh` hook surfaces them at the right trigger.
 
 If you see no `--- WRIT RULES ---` block in your context, the Writ server is unavailable. Proceed with normal engineering judgment; hooks will block destructive writes if mode is unset.
 

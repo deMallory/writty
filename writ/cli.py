@@ -352,40 +352,85 @@ def serve(
 
 @app.command(name="import-markdown")
 def import_markdown(
-    path: Path = typer.Argument(Path(DEFAULT_BIBLE_DIR), help="Path to Markdown rule source directory."),
+    path: Path = typer.Argument(Path(DEFAULT_BIBLE_DIR), help="Path to Markdown source directory."),
+    only: str | None = typer.Option(
+        None,
+        "--only",
+        help="Comma-separated node_types to import (e.g. 'Rule', 'Skill,Playbook'). Default: import all.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Parse and validate without writing to the database.",
+    ),
 ) -> None:
-    """Import rules from Markdown files into the graph. Validates schema. Triggers export."""
+    """Import bible content (Rules + methodology) into the graph. Validates schema. Triggers export."""
     from writ.graph.db import Neo4jConnection
-    from writ.graph.ingest import discover_rule_files, parse_rules_from_file, validate_parsed_rule
+    from writ.graph.methodology_ingest import (
+        KNOWN_NODE_TYPES,
+        ingest_path,
+    )
 
-    async def _run() -> None:
+    # Parse --only CSV.
+    parsed_only: set[str] | None = None
+    if only is not None:
+        parsed_only = {tok.strip() for tok in only.split(",") if tok.strip()}
+        if not parsed_only:
+            parsed_only = None
+
+    # Validate every --only token before any DB work; surface a clean error
+    # with the unknown token AND the sorted list of valid types (API-ERROR-002).
+    if parsed_only:
+        unknown = sorted(parsed_only - KNOWN_NODE_TYPES)
+        if unknown:
+            valid = sorted(KNOWN_NODE_TYPES)
+            typer.echo(
+                f"Error: unknown --only type(s): {', '.join(unknown)}. "
+                f"Valid types: {', '.join(valid)}.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+    async def _run() -> int:
         db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         try:
-            files = discover_rule_files(path)
-            count = 0
-            errors = 0
-            for f in files:
-                for rule_data in parse_rules_from_file(f):
-                    try:
-                        validate_parsed_rule(rule_data)
-                        clean = {k: v for k, v in rule_data.items() if not k.startswith("_")}
-                        await db.create_rule(clean)
-                        count += 1
-                    except ValueError as e:
-                        typer.echo(f"  Error: {e}")
-                        errors += 1
-            typer.echo(f"Imported {count} rules ({errors} errors)")
+            report = await ingest_path(
+                path, db, only=parsed_only, dry_run=dry_run,
+            )
+            typer.echo(report.render())
+            for err in report.errors:
+                typer.echo(str(err), err=True)
 
-            # Auto-export after successful ingest (Phase 7).
-            if count > 0 and errors == 0:
+            total_nodes = sum(report.counts_by_type.values())
+            # Auto-export only on a full-corpus import against the canonical
+            # bible root. On a subdirectory import (e.g. `bible/methodology/`)
+            # the exporter would write the WHOLE graph back through a
+            # file-location lookup that only sees files inside that subdir;
+            # rules whose original files live outside the scope fall through
+            # to `<output_dir>/<domain>/rules.md` and create bogus duplicates.
+            is_default_root = (
+                path.resolve() == Path(DEFAULT_BIBLE_DIR).resolve()
+            )
+            if (
+                not dry_run
+                and not report.errors
+                and total_nodes > 0
+                and parsed_only is None
+                and is_default_root
+            ):
                 from writ.export import export_rules_to_markdown
 
                 export_result = await export_rules_to_markdown(db, path)
-                typer.echo(f"Exported {export_result['rules_exported']} rules to {path}")
+                typer.echo(
+                    f"Exported {export_result['rules_exported']} rules to {path}"
+                )
+            return 1 if report.errors else 0
         finally:
             await db.close()
 
-    asyncio.run(_run())
+    exit_code = asyncio.run(_run())
+    if exit_code:
+        raise typer.Exit(code=exit_code)
 
 
 @app.command()
@@ -834,15 +879,29 @@ def role_prompt(
 
 @app.command()
 def migrate() -> None:
-    """One-time migration of existing rules into graph."""
-    import subprocess
-    import sys
+    """One-time migration of existing rules into graph.
 
-    result = subprocess.run(
-        [sys.executable, "scripts/migrate.py"],
-        capture_output=False,
-    )
-    raise typer.Exit(code=result.returncode)
+    Backward-compat shim: delegates to `writ import-markdown` with default args.
+    """
+    from writ.graph.db import Neo4jConnection
+    from writ.graph.methodology_ingest import ingest_path
+
+    path = Path(DEFAULT_BIBLE_DIR)
+
+    async def _run() -> int:
+        db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
+        try:
+            report = await ingest_path(path, db, only=None, dry_run=False)
+            typer.echo(report.render())
+            for err in report.errors:
+                typer.echo(str(err), err=True)
+            return 1 if report.errors else 0
+        finally:
+            await db.close()
+
+    code = asyncio.run(_run())
+    if code:
+        raise typer.Exit(code=code)
 
 
 @app.command()

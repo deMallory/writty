@@ -25,7 +25,7 @@ runs:
 
     - name: Migrate rule corpus into Neo4j
       shell: bash
-      run: .venv/bin/python scripts/migrate.py
+      run: .venv/bin/writ import-markdown bible/
 
     - name: Verify rule corpus migrated
       shell: bash
@@ -50,7 +50,7 @@ runs:
         ')
         echo "Rules in Neo4j after migration: $count"
         if [ "$count" -lt 250 ]; then
-          echo "::error::Expected >= 250 rules after migration; got $count. scripts/migrate.py may have silently produced an incomplete corpus." >&2
+          echo "::error::Expected >= 250 rules after migration; got $count. `writ import-markdown` may have silently produced an incomplete corpus." >&2
           exit 1
         fi
 

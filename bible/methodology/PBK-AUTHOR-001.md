@@ -69,7 +69,7 @@ Apply `META-AUTH-001`: the trigger field describes WHEN, not WHAT. No action ver
 
 ## Step 4 -- Re-run the scenario WITH the new node (GREEN)
 
-Migrate the new node into Neo4j: `python3 scripts/migrate.py --methodology-dir bible/methodology`. Restart Writ if needed.
+Migrate the new node into Neo4j: `writ import-markdown bible/`. Restart Writ if needed.
 
 Re-run the scenario in a fresh session. Observe the agent's response.
 
