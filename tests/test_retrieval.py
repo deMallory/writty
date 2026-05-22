@@ -23,6 +23,7 @@ from writ.retrieval.ranking import (
     normalize_ranks,
 )
 from writ.retrieval.traversal import AdjacencyCache
+from pathlib import Path
 
 NEO4J_URI = get_neo4j_uri()
 NEO4J_USER = get_neo4j_user()
@@ -78,7 +79,7 @@ async def pipeline_db():
     try:
         subprocess.run(
             [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
-            cwd="~/.claude/skills/writ",
+            cwd=str(Path.home() / ".claude/skills/writ"),
             capture_output=True,
             timeout=60,
             check=False,

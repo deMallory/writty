@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path("~/.claude/skills/writ")
+SKILL_DIR = (Path.home() / ".claude/skills/writ")
 PYPROJECT = SKILL_DIR / "pyproject.toml"
 
 

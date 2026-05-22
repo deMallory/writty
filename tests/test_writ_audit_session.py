@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 SHIM = f"{SKILL_DIR}/bin/writ"
 
 

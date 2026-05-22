@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-REPO_ROOT = Path("~/.claude/skills/writ")
+REPO_ROOT = (Path.home() / ".claude/skills/writ")
 METHODOLOGY_DIR = REPO_ROOT / "bible" / "methodology"
 
 # Required SKL frontmatter keys (from SKL-PROC-BRAIN-001.md schema)

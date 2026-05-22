@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 
-REPO_ROOT = Path("~/.claude/skills/writ")
+REPO_ROOT = (Path.home() / ".claude/skills/writ")
 
 
 def _expand_plugin_root(path: str, root: Path) -> Path:

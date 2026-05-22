@@ -26,13 +26,14 @@ except ImportError:
     pytestmark = pytest.mark.skip(reason="httpx not installed")
 
 from writ.server import app  # type: ignore[import]
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 SESSION_ID = "test-compaction-hooks-session"
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 SETTINGS_JSON = f"{SKILL_DIR}/../../settings.json"
 

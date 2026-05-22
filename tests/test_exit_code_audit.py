@@ -18,8 +18,9 @@ import tempfile
 from typing import Any
 
 import pytest
+from pathlib import Path
 
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 VALIDATE_RULES_SH = f"{SKILL_DIR}/.claude/hooks/validate-rules.sh"
 VALIDATE_FILE_SH = f"{SKILL_DIR}/.claude/hooks/validate-file.sh"
 VALIDATE_HANDOFF_SH = f"{SKILL_DIR}/.claude/hooks/validate-handoff.sh"

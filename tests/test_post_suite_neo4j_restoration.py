@@ -25,9 +25,10 @@ import sys
 import pytest
 
 from tests._writ_cmd import WRIT_CMD_PREFIX
+from pathlib import Path
 
 
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 
 
 def _count(label: str) -> int:

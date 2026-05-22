@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path("~/.claude/skills/writ")
+SKILL_DIR = (Path.home() / ".claude/skills/writ")
 POSTCOMPACT_HOOK = SKILL_DIR / ".claude" / "hooks" / "writ-postcompact.sh"
 SESSION_HELPER = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")
 

@@ -17,8 +17,9 @@ import stat
 import subprocess
 
 import pytest
+from pathlib import Path
 
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 SHIM = f"{SKILL_DIR}/bin/writ"
 
 

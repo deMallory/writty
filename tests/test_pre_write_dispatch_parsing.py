@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-SKILL_DIR = Path("~/.claude/skills/writ")
+SKILL_DIR = (Path.home() / ".claude/skills/writ")
 DISPATCH_HOOK = SKILL_DIR / ".claude" / "hooks" / "writ-pre-write-dispatch.sh"
 SESSION_HELPER = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")
 

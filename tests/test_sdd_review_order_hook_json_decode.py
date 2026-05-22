@@ -24,8 +24,9 @@ import os
 import subprocess
 
 import pytest
+from pathlib import Path
 
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 HOOK = f"{SKILL_DIR}/.claude/hooks/writ-sdd-review-order.sh"
 
 

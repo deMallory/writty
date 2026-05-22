@@ -15,8 +15,9 @@ import time
 from typing import Any
 
 import pytest
+from pathlib import Path
 
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 SESSION_END_HOOK = f"{SKILL_DIR}/.claude/hooks/writ-session-end.sh"
 CONTEXT_TRACKER_HOOK = f"{SKILL_DIR}/.claude/hooks/writ-context-tracker.sh"
 

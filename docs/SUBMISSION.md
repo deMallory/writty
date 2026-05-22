@@ -110,8 +110,8 @@ the submission form's dropdown, prefer that.
 
 - Name: Lucio Saldivar
 - GitHub: https://github.com/infinri
-- Email: public-facing-alias@example.com (use a public-facing alias if
-  you'd rather not expose this to the marketplace listing)
+- Email: <public-facing-alias@example.com> (replace with a public-facing
+  alias before submitting to the marketplace listing)
 
 ### URLs
 

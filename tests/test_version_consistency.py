@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path("~/.claude/skills/writ")
+SKILL_DIR = (Path.home() / ".claude/skills/writ")
 EXPECTED_VERSION = "1.5.0"
 
 

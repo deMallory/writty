@@ -26,6 +26,7 @@ except ImportError:
     pytestmark = pytest.mark.skip(reason="httpx not installed")
 
 from writ.server import app  # type: ignore[import]
+from pathlib import Path
 
 try:
     from writ.server import DetectCompactionRequest  # type: ignore[import]
@@ -37,7 +38,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 SESSION_ID = "test-compaction-session"
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 
 

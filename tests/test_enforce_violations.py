@@ -15,8 +15,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pathlib import Path
 
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 HOOK_PATH = f"{SKILL_DIR}/.claude/hooks/enforce-violations.sh"
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 

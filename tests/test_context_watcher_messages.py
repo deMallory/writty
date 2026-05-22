@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path("~/.claude/skills/writ")
+SKILL_DIR = (Path.home() / ".claude/skills/writ")
 WATCHER_HOOK = SKILL_DIR / ".claude" / "hooks" / "writ-context-watcher.sh"
 
 # ---------------------------------------------------------------------------

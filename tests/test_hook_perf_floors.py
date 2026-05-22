@@ -30,7 +30,7 @@ from typing import Sequence
 
 import pytest
 
-SKILL_DIR = Path("~/.claude/skills/writ")
+SKILL_DIR = (Path.home() / ".claude/skills/writ")
 SESSION_HELPER = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")
 
 # Post-fix p95 floors in milliseconds. Headroom is intentional: floors catch

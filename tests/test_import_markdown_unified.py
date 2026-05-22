@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path("~/.claude/skills/writ")
+SKILL_DIR = (Path.home() / ".claude/skills/writ")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Shared resolver -- one source of truth for invoking `writ` from tests.

@@ -97,7 +97,7 @@ Capabilities checklist updated. Workflow complete.
 > stay).
 
 Files written:
-- `~/.claude/projects/-home-infinri-workspaces-MageContextABTest/memory/feedback_trust_signal.md`
+- `~/.claude/projects/-home-<user>-workspaces-MageContextABTest/memory/feedback_trust_signal.md`
   — 17 lines codifying the bypass policy
 - `~/.claude/projects/.../memory/MEMORY.md` — index updated to include
   the entry

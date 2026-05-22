@@ -18,16 +18,17 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Constants / helpers
 # ---------------------------------------------------------------------------
 
 SESSION_ID = "test-instructions-session"
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 HOOK_PATH = f"{SKILL_DIR}/.claude/hooks/writ-instructions-loaded.sh"
-SETTINGS_PATH = "~/.claude/settings.json"
+SETTINGS_PATH = str(Path.home() / ".claude/settings.json")
 
 # Standard Writ rule ID format: [A-Z]+-[A-Z]+-\d{3} (e.g. ARCH-ORG-001, SEC-UNI-001)
 VALID_RULE_IDS = [

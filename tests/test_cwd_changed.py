@@ -24,10 +24,10 @@ import pytest
 # ---------------------------------------------------------------------------
 
 SESSION_ID = "test-cwd-session"
-SKILL_DIR = "~/.claude/skills/writ"
+SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 HOOK_PATH = f"{SKILL_DIR}/.claude/hooks/writ-cwd-changed.sh"
-SETTINGS_PATH = "~/.claude/settings.json"
+SETTINGS_PATH = str(Path.home() / ".claude/settings.json")
 
 MARKER_TO_DOMAIN: dict[str, str] = {
     "composer.json": "php",

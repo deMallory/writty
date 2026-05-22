@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -43,8 +44,10 @@ class TestTemplatesAreParameterized:
 
     def test_settings_has_no_hardcoded_home(self) -> None:
         content = (TEMPLATES_DIR / "settings.json").read_text()
-        assert "~" not in content, (
-            "templates/settings.json must not contain a hardcoded home path"
+        leak = re.search(r"/home/[^/\s\"']+/", content)
+        assert leak is None, (
+            f"templates/settings.json must not contain a hardcoded /home/<user>/ path "
+            f"(found: {leak.group(0)!r})"
         )
         assert "$HOME" in content, (
             "templates/settings.json must use $HOME for home paths"
@@ -52,8 +55,10 @@ class TestTemplatesAreParameterized:
 
     def test_claude_md_has_no_hardcoded_home(self) -> None:
         content = (TEMPLATES_DIR / "CLAUDE.md").read_text()
-        assert "~" not in content, (
-            "templates/CLAUDE.md must not contain a hardcoded home path"
+        leak = re.search(r"/home/[^/\s\"']+/", content)
+        assert leak is None, (
+            f"templates/CLAUDE.md must not contain a hardcoded /home/<user>/ path "
+            f"(found: {leak.group(0)!r})"
         )
 
     def test_settings_is_valid_json_after_render(self, tmp_path: Path) -> None:
