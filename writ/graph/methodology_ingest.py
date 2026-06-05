@@ -327,23 +327,28 @@ async def ingest_edges(
     db: Neo4jConnection,
 ) -> tuple[int, int]:
     """Create methodology + cross-reference edges; return (created, dangling)."""
-    # Build the set of node IDs that are known to the graph: parsed-this-run
-    # union pre-existing Rule corpus.
+    # Build ID-to-(Label, id_field) lookup for label-aware batch queries.
+    id_to_label: dict[str, tuple[str, str]] = {}
     parsed_ids: set[str] = set()
     for node in parsed_nodes:
         nt = node.get("node_type", "Rule")
         id_field = NODE_ID_FIELDS.get(nt)
         if id_field and id_field in node:
-            parsed_ids.add(node[id_field])
+            nid = node[id_field]
+            parsed_ids.add(nid)
+            id_to_label[nid] = (nt, id_field)
 
     try:
         existing_rule_ids = {r["rule_id"] for r in await db.get_all_rules()}
     except Exception:
         existing_rule_ids = set()
+    for rid in existing_rule_ids:
+        if rid not in id_to_label:
+            id_to_label[rid] = ("Rule", "rule_id")
     known_ids = parsed_ids | existing_rule_ids
 
-    created = 0
     dangling = 0
+    batch: list[tuple[str, str, str]] = []
 
     # Front-matter declared edges.
     for edge in parsed_edges:
@@ -356,11 +361,7 @@ async def ingest_edges(
         if src not in known_ids or tgt not in known_ids:
             dangling += 1
             continue
-        try:
-            await db.create_edge(etype, src, tgt)
-            created += 1
-        except ValueError:
-            dangling += 1
+        batch.append((etype, src, tgt))
 
     # Legacy RELATED_TO skeleton edges from cross-references on Rule nodes.
     rule_ids = {
@@ -375,10 +376,11 @@ async def ingest_edges(
             continue
         for ref_id in node.get("_cross_references", []):
             if ref_id in rule_ids:
-                try:
-                    await db.create_edge("RELATED_TO", own_id, ref_id)
-                    created += 1
-                except ValueError:
-                    dangling += 1
+                batch.append(("RELATED_TO", own_id, ref_id))
+
+    created, batch_skipped = await db.create_edges_batch(
+        batch, id_to_label=id_to_label,
+    )
+    dangling += batch_skipped
 
     return created, dangling

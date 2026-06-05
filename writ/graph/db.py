@@ -72,6 +72,11 @@ class GraphConnection(Protocol):
     async def get_rule(self, rule_id: str) -> dict | None: ...
     async def create_rule(self, rule_data: dict) -> str: ...
     async def create_edge(self, edge_type: str, source_id: str, target_id: str) -> None: ...
+    async def create_edges_batch(
+        self,
+        edges: list[tuple[str, str, str]],
+        id_to_label: dict[str, tuple[str, str]] | None = None,
+    ) -> tuple[int, int]: ...
     async def traverse_neighbors(self, rule_id: str, hops: int) -> list[dict]: ...
     async def close(self) -> None: ...
 
@@ -126,9 +131,6 @@ class Neo4jConnection:
         """
         if edge_type not in ALLOWED_EDGE_TYPES:
             raise ValueError(f"Unknown edge type: {edge_type}")
-        # Cypher does not support parameterized relationship types, but edge_type
-        # is validated against the allowed set above. Match any labeled node that
-        # carries a primary-id property matching source_id / target_id.
         query = f"""
             MATCH (a) WHERE a.rule_id = $source_id
                 OR a.skill_id = $source_id OR a.playbook_id = $source_id
@@ -146,6 +148,65 @@ class Neo4jConnection:
         """
         async with self._driver.session(database=self._database) as session:
             await session.run(query, source_id=source_id, target_id=target_id)
+
+    async def create_edges_batch(
+        self,
+        edges: list[tuple[str, str, str]],
+        id_to_label: dict[str, tuple[str, str]] | None = None,
+    ) -> tuple[int, int]:
+        """Create edges in bulk using label-aware queries, batched by edge type.
+
+        Each entry in `edges` is (edge_type, source_id, target_id).
+        `id_to_label` maps node IDs to (Label, id_field) for index-backed lookups.
+        Returns (created, skipped).
+        """
+        if not edges:
+            return 0, 0
+
+        for etype, _, _ in edges:
+            if etype not in ALLOWED_EDGE_TYPES:
+                raise ValueError(f"Unknown edge type: {etype}")
+
+        created = 0
+        skipped = 0
+
+        groups: dict[tuple[str, str, str, str, str], list[tuple[str, str]]] = {}
+        fallback: list[tuple[str, str, str]] = []
+
+        for etype, src, tgt in edges:
+            src_info = id_to_label.get(src) if id_to_label else None
+            tgt_info = id_to_label.get(tgt) if id_to_label else None
+            if src_info and tgt_info:
+                key = (etype, src_info[0], src_info[1], tgt_info[0], tgt_info[1])
+                groups.setdefault(key, []).append((src, tgt))
+            else:
+                fallback.append((etype, src, tgt))
+
+        async with self._driver.session(database=self._database) as session:
+            for (etype, s_label, s_field, t_label, t_field), pairs in groups.items():
+                query = f"""
+                    UNWIND $pairs AS pair
+                    MATCH (a:{s_label} {{{s_field}: pair[0]}})
+                    MATCH (b:{t_label} {{{t_field}: pair[1]}})
+                    MERGE (a)-[:{etype}]->(b)
+                    RETURN count(*) AS cnt
+                """
+                result = await session.run(
+                    query, pairs=[[s, t] for s, t in pairs],
+                )
+                record = await result.single()
+                cnt = record["cnt"] if record else 0
+                created += cnt
+                skipped += len(pairs) - cnt
+
+            for etype, src, tgt in fallback:
+                try:
+                    await self.create_edge(etype, src, tgt)
+                    created += 1
+                except ValueError:
+                    skipped += 1
+
+        return created, skipped
 
     async def create_methodology_node(self, node_type: str, data: dict) -> str:
         """Create or update a methodology node (non-Rule type). Idempotent via MERGE.
