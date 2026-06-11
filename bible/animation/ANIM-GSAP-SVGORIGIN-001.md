@@ -11,7 +11,7 @@ statement: |
   Use either svgOrigin or transformOrigin on an SVG element, never both. Only one applies; the other is silently ignored. svgOrigin uses the SVG's global coordinate space (e.g., "250 100") and is useful when multiple elements should rotate around a common point. transformOrigin is element-local. svgOrigin does not accept percentage values.
 violation: |
   ```javascript
-  // Both set: one silently ignored, unpredictable behavior
+  // Both set: transformOrigin takes precedence; svgOrigin is ignored
   gsap.to(svgEl, { rotation: 90, svgOrigin: "100 100", transformOrigin: "50% 50%" });
   ```
 pass_example: |
@@ -25,7 +25,7 @@ pass_example: |
 enforcement: |
   Code review. Flag GSAP tween vars that contain both svgOrigin and transformOrigin on an SVG target.
 rationale: |
-  SVG coordinate systems differ from HTML. transformOrigin operates in the element's local coordinate space; svgOrigin operates in the SVG viewBox's global coordinate space. Both set the CSS transform-origin, so the second write silently overrides the first. The developer sees one origin value and assumes it is active when the other is actually applied.
+  SVG coordinate systems differ from HTML. transformOrigin operates in the element's local coordinate space; svgOrigin operates in the SVG viewBox's global coordinate space. If both are specified, transformOrigin takes precedence and svgOrigin is ignored, which can hide the intended pivot.
 tags: [animation, gsap, rule, svg, svgorigin, transform-origin]
 confidence: peer-reviewed
 authority: ai-provisional

@@ -33,7 +33,7 @@ Must match `^[a-z][a-z0-9_-]*$`. Examples: `layout`, `component`, `task`, `sessi
 | `authority` | string | no | `human` |
 | `last_validated` | date (YYYY-MM-DD) | yes | -- |
 | `staleness_window` | int | no | 365 |
-| `evidence` | string | no | `doc:original-bible` |
+| `evidence` | string | no | `peer-reviewed` |
 | `source_attribution` | string | no | null |
 | `source_commit` | string | no | null |
 | `body` | string | no | "" (parsed from markdown body) |

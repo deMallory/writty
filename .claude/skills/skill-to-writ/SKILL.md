@@ -138,7 +138,7 @@ See [EDGE-CATALOG.md](EDGE-CATALOG.md) for edge type semantics.
 Run Pydantic validation on all generated files:
 
 ```bash
-cd /Users/david.malinen/Documents/laarge/dev/niet-zsh/writty
+cd "$(git rev-parse --show-toplevel)"
 .venv/bin/python -c "
 import sys
 from pathlib import Path
