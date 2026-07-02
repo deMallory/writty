@@ -666,10 +666,10 @@ try:
     with open(path) as f:
         cache = json.load(f)
     cache['last_injected_rule_ids'] = new_rule_ids
-    tmp = path + '.tmp'
-    with open(tmp, 'w') as f:
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=os.path.basename(path) + '.')
+    with os.fdopen(fd, 'w') as f:
         json.dump(cache, f)
-    os.rename(tmp, path)
+    os.replace(tmp, path)
 except Exception:
     pass
 " "$SESSION_ID" "$NEW_RULE_IDS" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true
@@ -932,10 +932,10 @@ try:
     with open(path) as f:
         cache = json.load(f)
     cache.setdefault('escalation', {})['feedback_sent'] = True
-    tmp = path + '.tmp'
-    with open(tmp, 'w') as f:
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=os.path.basename(path) + '.')
+    with os.fdopen(fd, 'w') as f:
         json.dump(cache, f)
-    os.rename(tmp, path)
+    os.replace(tmp, path)
 except Exception:
     pass
 " "$SESSION_ID" 2>>"${WRIT_HOOK_LOG:-/tmp/writ-hooks.log}" || true

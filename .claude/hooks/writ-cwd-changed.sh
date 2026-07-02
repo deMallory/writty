@@ -79,10 +79,10 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     cache = {}
 cache['detected_domain'] = domain
-tmp = path + '.tmp'
-with open(tmp, 'w') as f:
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=os.path.basename(path) + '.')
+with os.fdopen(fd, 'w') as f:
     json.dump(cache, f)
-os.rename(tmp, path)
+os.replace(tmp, path)
 " "$SESSION_ID" "$DETECTED_DOMAIN" 2>/dev/null || true
 
 # Log friction event
