@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# SubagentStop hook -- logs sub-agent completion metrics.
+# SubagentStop hook -- logs sub-agent completion metrics and gates
+# completion claims for writer agents.
 #
 # When a sub-agent completes, this hook logs the event to the friction log
-# for observability and rule coverage analysis.
+# for observability and rule coverage analysis. For writ-implementer and
+# writ-test-writer, it additionally cross-checks file paths claimed in
+# last_assistant_message (2.1.183 envelope field) against the filesystem;
+# a claim naming files that do not exist blocks the stop with exit 2, which
+# keeps the subagent working. stop_hook_active guards against re-block
+# loops: at most one forced continuation per stop chain.
 #
 # Hook type: SubagentStop
-# Exit: always 0
+# Exit: 0 (normal), 2 (writer agent claimed nonexistent files)
 
 set -euo pipefail
 
@@ -38,6 +44,23 @@ if [ -z "$AGENT_TYPE" ]; then
     log_friction_event "$AGENT_ID" "" "subagent_type_fallback" \
         "{\"hook\":\"writ-subagent-stop\",\"parent_session\":\"$PARENT_SESSION\"}"
 fi
+
+# Completion-claim gate for writer agents: any path-like token in the
+# final message that resolves nowhere on disk is a claim the agent cannot
+# back. Only tokens containing a directory separator count, so prose
+# mentions of bare filenames ("update package.json later") never block.
+case "$AGENT_TYPE" in
+    writ-implementer|writ-test-writer)
+        STOP_ACTIVE=$(echo "$STDIN_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('stop_hook_active', False))" 2>/dev/null || echo "False")
+        MISSING=$(echo "$STDIN_JSON" | python3 "$WRIT_DIR/bin/lib/claim-check.py" 2>/dev/null || echo "")
+        if [ -n "$MISSING" ] && [ "$STOP_ACTIVE" != "True" ]; then
+            log_friction_event "$AGENT_ID" "" "subagent_claim_mismatch" \
+                "{\"hook\":\"writ-subagent-stop\",\"agent_type\":\"$AGENT_TYPE\",\"missing\":\"$MISSING\"}"
+            echo "SubagentStop gate: your completion report names files that do not exist on disk: $MISSING. Create them or correct the report before finishing." >&2
+            exit 2
+        fi
+        ;;
+esac
 
 # Read the agent's session cache for summary metrics
 CACHE=$(_writ_session read "$AGENT_ID" 2>/dev/null || echo '{}')

@@ -68,6 +68,15 @@ def parse() -> None:
             "tool_result_is_error",
             os.environ.get("HOOK_TOOL_IS_ERROR") == "1",
         ),
+        # Pass-throughs verified against the 2.1.183 envelope capture:
+        # PostToolUseFailure carries `error` (a string); Stop/SubagentStop
+        # carry `stop_hook_active`; PostToolUse carries `tool_response`;
+        # SubagentStop carries `last_assistant_message`.
+        "error": envelope.get("error", ""),
+        "stop_hook_active": envelope.get("stop_hook_active", False),
+        "tool_response": envelope.get("tool_response"),
+        "last_assistant_message": envelope.get("last_assistant_message", ""),
+        "cwd": envelope.get("cwd", ""),
         # Flattened fields -- the ones hooks actually need
         "file_path": tool_input.get(
             "file_path", tool_input.get("path", "")

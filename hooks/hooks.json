@@ -118,6 +118,15 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/track-failed-writes.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-bash-failure.sh"
+          }
+        ]
       }
     ],
     "PreCompact": [
@@ -301,6 +310,15 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/inject-tier-workflow.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-output-rewrite.sh"
           }
         ]
       },

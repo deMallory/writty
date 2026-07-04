@@ -16,6 +16,28 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
 fi
 WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"
 WRIT_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}"
+
+# Hook-map version canary. Every force-swap hook is built against the
+# envelope map captured on one Claude Code build (hooks/hookmap-version);
+# field names and events drift between builds. On mismatch, warn via
+# stdout: SessionStart stdout at exit 0 is added as context the model
+# sees, so the session itself knows the map may be stale. Runs before the
+# early-exit probes below so degraded sessions still get the warning.
+PINNED_FILE="${WRIT_DIR}/hooks/hookmap-version"
+if [ -f "$PINNED_FILE" ]; then
+  PINNED=$(tr -d '[:space:]' < "$PINNED_FILE")
+  CURRENT="${CLAUDE_CODE_VERSION:-}"
+  if [ -z "$CURRENT" ] && command -v claude >/dev/null 2>&1; then
+    if command -v timeout >/dev/null 2>&1; then
+      CURRENT=$(timeout 5 claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    else
+      CURRENT=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    fi
+  fi
+  if [ -n "$PINNED" ] && [ -n "$CURRENT" ] && [ "$PINNED" != "$CURRENT" ]; then
+    echo "[Writ] Hook envelope map pinned to Claude Code ${PINNED}; running ${CURRENT}. Rewrite surfaces may have drifted: re-run the blackbox capture (touch ~/.claude/writ-blackbox.on, exercise tools, diff envelopes) and update hooks/hookmap-version."
+  fi
+fi
 # Venv lives at ${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv so it
 # survives plugin upgrades that rewrite ${CLAUDE_PLUGIN_ROOT}.
 VENV_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv"
