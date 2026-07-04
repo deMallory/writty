@@ -118,6 +118,15 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/track-failed-writes.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-bash-failure.sh"
+          }
+        ]
       }
     ],
     "PreCompact": [
@@ -244,6 +253,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-agent-hotswap.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-sdd-review-order.sh"
           }
         ]
@@ -292,6 +310,15 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/inject-tier-workflow.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-output-rewrite.sh"
           }
         ]
       },

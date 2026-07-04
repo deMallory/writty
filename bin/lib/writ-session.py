@@ -150,10 +150,21 @@ def _read_cache(session_id: str) -> dict:
 
 def _write_cache(session_id: str, data: dict) -> None:
     path = _cache_path(session_id)
-    tmp_path = path + ".tmp"
-    with open(tmp_path, "w") as f:
-        json.dump(data, f)
-    os.rename(tmp_path, path)
+    # Unique temp name per writer: concurrent hooks and server threads write
+    # the same cache, and a shared .tmp name races on the rename.
+    fd, tmp_path = tempfile.mkstemp(
+        dir=os.path.dirname(path), prefix=os.path.basename(path) + "."
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def cmd_read(session_id: str) -> None:

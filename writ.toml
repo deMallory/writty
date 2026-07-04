@@ -43,6 +43,9 @@ w_vector = 0.594
 w_severity = 0.099
 w_confidence = 0.099
 w_graph = 0.01
+# Rules scoring below this floor are dropped before the context budget.
+# 0.0 disables. Tuned against tests/fixtures/ground_truth_queries.json.
+min_relevance_score = 0.30
 
 [ranking.severity_values]
 critical = 1.0

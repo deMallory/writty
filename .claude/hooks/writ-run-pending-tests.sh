@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Stop hook. Runs tests for files marked by writ-mark-pending-test.sh.
-# Silent on pass. On failure, emits one-line summary via emit-summary.py.
-# All test-path knowledge lives in bin/lib/test_paths.py (config-driven).
+# Silent on pass. On failure, exits 2: per the 2.1.183 envelope map, only
+# exit 2 prevents the stop and continues the turn (stderr goes to the model).
+# Guarded by stop_hook_active so a persistent failure blocks at most once
+# per stop chain instead of looping. All test-path knowledge lives in
+# bin/lib/test_paths.py (config-driven).
 set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
@@ -109,4 +112,8 @@ SUMMARY=$(python3 "$WRIT_DIR/bin/lib/emit-summary.py" \
     --label "test failure(s)" 2>&1)
 [ -z "$SUMMARY" ] && exit 0
 echo "$SUMMARY" >&2
-exit 1
+if parsed_bool "$PARSED" "stop_hook_active"; then
+    # Already blocked once this stop chain; report without re-blocking.
+    exit 1
+fi
+exit 2

@@ -4,7 +4,7 @@ A Claude Code harness that gives every coding session two helpers: a fast librar
 
 At the live 276-rule production corpus (post Phase 1-5 public-rulebook expansion), the librarian returns ranked results in **0.590 ms at the 95th percentile**. At the 10,000-rule synthetic scale, it still holds at 0.557 ms while reducing context tokens by **726 times** versus loading the whole rulebook every turn.
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the v1.2.0 release notes (proactive context-window management, hook hot-path latency consolidation, friction-log mode canonicalization, PostToolUse banner fix) and the v1.0.0 + v1.0.1 + v1.1.0 history of capabilities shipped.
+See [`CHANGELOG.md`](CHANGELOG.md) for the v1.5.0 release notes (workflow content migrated into RAG-surfaced Methodology nodes, `writ import-markdown` unified as the single ingestion entry point) and the full release history back to v1.0.0. [`OVERVIEW.md`](OVERVIEW.md) explains the most recent work: in-flight hook envelope rewriting, blocking stop gates, and the retrieval relevance floor.
 
 ## Browse the architecture in your browser
 
@@ -85,9 +85,9 @@ Query text
                                               total p95 budget: 10 ms
 ```
 
-Each retriever covers a blind spot the others have. BM25 catches exact keyword matches. Vectors catch paraphrase ("SQL" versus "database query"). Graph traversal catches rules that share neither but are causally related. The two-pass ranker fuses everything with severity, confidence, and graph-proximity weights.
+Each retriever covers a blind spot the others have. BM25 catches exact keyword matches. Vectors catch paraphrase ("SQL" versus "database query"). Graph traversal catches rules that share neither but are causally related. The two-pass ranker fuses everything with severity, confidence, and graph-proximity weights, then applies a relevance floor (`min_relevance_score` in `writ.toml`, default 0.30) that drops rank-tail candidates whose scores reflect the severity baseline rather than the query.
 
-**The enforcement layer (the process keeper).** 30 hook scripts under `.claude/hooks/`, all wired into Claude Code via `templates/settings.json`, a session state machine in `bin/lib/writ-session.py`, slash commands, and 6 sub-agent role files. The state machine owns mode, phase, and gate state; hooks are thin clients that delegate to it.
+**The enforcement layer (the process keeper).** 36 hook scripts under `.claude/hooks/`, all wired into Claude Code via `templates/settings.json`, a session state machine in `bin/lib/writ-session.py`, slash commands, and 6 sub-agent role files. The state machine owns mode, phase, and gate state; hooks are thin clients that delegate to it. Hooks do more than inject text: they rewrite tool calls and results in flight (agent hot-swap, secret redaction, oversize truncation) and block premature stops with exit-2 gates. See [`OVERVIEW.md`](OVERVIEW.md).
 
 **Mandatory rules (the architectural invariant).** Rules with `mandatory: true` (30 in the live corpus, spanning ENF-* enforcement rules and SEC-*/PERF-*/SCALE-* invariants from the public rulebook) are excluded from the retrieval pipeline at index build time. They are loaded out of band by hooks with their own 5,000 token budget cap. No change to ranking weights, embedding model, BM25 tuning, or graph traversal can cause an enforcement rule to disappear from agent context.
 
@@ -275,7 +275,7 @@ Errors come back as HTTP 200 with `{"error": "..."}` for logical failures, 422 f
 | `pyproject.toml` | Package metadata. Production deps: fastapi, uvicorn, neo4j, tantivy, sentence-transformers, hnswlib, pydantic, typer, rich, httpx. Entry point: `writ = "writ.cli:app"`. |
 | `.claude-plugin/plugin.json` | Plugin manifest. `defaultEnabled: true`. Lifecycle Init invokes `scripts/ensure-server.sh`; Shutdown invokes `scripts/stop-server.sh`. |
 | `docker-compose.yml` | Single `neo4j:5` service on ports 7474 and 7687, health-checked via cypher-shell. |
-| `templates/settings.json` | Canonical hook wiring (30 hooks). |
+| `templates/settings.json` | Canonical hook wiring (35 hook registrations). |
 | `bin/lib/checklists.json` | Phase exit criteria. |
 | `bin/lib/gate-categories.json` | File classification glob patterns plus framework detection. |
 | `writ/shared/budget.json` | Single source of truth for budget constants (default 8000, summary cost 40, standard 120, full 200, always_on_cap 5000). |
@@ -302,12 +302,13 @@ The benchmark suite has four files:
 
 ## Status
 
-**Released as v1.2.0 on 2026-05-15.** Builds on v1.1.0 (2026-05-15) and the v1.0.0 / v1.0.1 history. v1.2.0 adds proactive context-window management (a watcher hook that emits a soft directive at 50% of the configured window and hard-blocks PreToolUse calls at 75% so the agent runs `/compact` before declaring work complete under context pressure), collapses hook-hot-path Python spawns to bring per-write latency floors into a recorded regression-floor test, repairs case-drift in the friction log's `mode` field so the dashboard groups modes cleanly, and replaces a cosmetic "0 potential issues found but unconfirmed" PostToolUse banner that had been firing on every clean Write/Edit in v1.1.0. Benchmark baselines (retrieval p95, MRR@5, hit rate, cold-start) are unchanged from v1.1.0; the v1.2.0 work targets workflow latency and observability, not retrieval quality. See `CHANGELOG.md` for the full v1.2.0 entry.
+**Released as v1.5.0 on 2026-05-21.** Static workflow content (mode tutorial, failure-mode rules, orchestrator playbook) migrated into Methodology nodes surfaced on demand by the retrieval pipeline, dropping per-session static token cost from about 2,000 to about 250, and `writ import-markdown` became the single ingestion entry point for every node type under `bible/`. Builds on v1.3.0 (per-turn test-execution pipeline), v1.2.0 (proactive context-window management and observability fixes), and the v1.0.x / v1.1.0 history. See `CHANGELOG.md` for the full entries, and `OVERVIEW.md` for the post-v1.5.0 work on hook envelope rewriting and the retrieval relevance floor.
 
 **Public out-of-the-box rulebook seeded.** 198 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, and Documentation, plus 19 new mandatory rules each backed by a cross-language regex analyzer in `bin/run-analysis.sh`. See `out-of-the-box-rules.md` for the canonical rule list.
 
 ## Related documents
 
+- `OVERVIEW.md` for the most recent changes: black-box envelope mapping, in-flight rewrite hooks, blocking stop gates, relevance floor.
 - `HANDBOOK.md` for the full architecture, including detailed graph schema, gate mechanics, and the discrepancy catalog.
 - `SCALE_BENCHMARK_RESULTS.md` for the full live measurement plus the synthetic scale curve.
 - `CONTRIBUTING.md` for rule authoring workflow, monthly review cadence, and AI proposal triage.

@@ -91,10 +91,10 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     cache = {}
 cache['instructions_rule_ids'] = rule_ids
-tmp = path + '.tmp'
-with open(tmp, 'w') as f:
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=os.path.basename(path) + '.')
+with os.fdopen(fd, 'w') as f:
     json.dump(cache, f)
-os.rename(tmp, path)
+os.replace(tmp, path)
 " "$SESSION_ID" "$RULE_IDS" 2>/dev/null || true
 
 # Log friction event with count of detected rule IDs
