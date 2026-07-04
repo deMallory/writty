@@ -23,7 +23,7 @@ import os
 import time
 from typing import TYPE_CHECKING
 
-from writ.config import get_hnsw_cache_dir
+from writ.config import get_hnsw_cache_dir, get_min_relevance_score
 from writ.retrieval.embeddings import (
     DEFAULT_ONNX_DIR,
     CachedEncoder,
@@ -38,6 +38,7 @@ from writ.retrieval.ranking import (
     RankingWeights,
     apply_authority_preference,
     apply_context_budget,
+    apply_relevance_floor,
     compute_score,
     filter_proximity_seeds,
     normalize_ranks,
@@ -188,6 +189,7 @@ class RetrievalPipeline:
         weights: RankingWeights | None = None,
         authority_preference_threshold: float = 0.0,
         abstractions: list[dict] | None = None,
+        min_relevance_score: float = 0.0,
     ) -> None:
         self._keyword = keyword_index
         self._vector = vector_store
@@ -197,6 +199,7 @@ class RetrievalPipeline:
         self._weights = weights or RankingWeights()
         self._authority_preference_threshold = authority_preference_threshold
         self._abstractions = abstractions or []
+        self._min_relevance_score = min_relevance_score
 
     def query(
         self,
@@ -392,6 +395,10 @@ class RetrievalPipeline:
 
         # Sort by score descending.
         scored_rules.sort(key=lambda r: r["score"], reverse=True)
+
+        # Relevance floor: drop rank-tail candidates before the budget
+        # fills up on them (hook-token audit 2026-07-02).
+        scored_rules = apply_relevance_floor(scored_rules, self._min_relevance_score)
 
         # Phase 3b: hard authority preference -- human outranks ai-provisional.
         scored_rules = apply_authority_preference(
@@ -730,4 +737,5 @@ async def build_pipeline(
         rule_metadata=rule_metadata,
         weights=weights,
         abstractions=abstractions,
+        min_relevance_score=get_min_relevance_score(),
     )
