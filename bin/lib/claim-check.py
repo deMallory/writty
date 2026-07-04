@@ -10,7 +10,11 @@ agent too, which the 2.1.183 map did not list).
 
 Tokens must contain a directory separator so prose mentions of bare
 filenames ("update package.json later") never count; URLs are stripped
-first. Stdlib only.
+first. A path only counts inside a sentence that asserts completed work
+(past-tense claim verb): hypotheticals like "next step would be creating
+src/foo.py" are not claims. Verbs asserting removal (deleted, removed)
+are deliberately absent, since for those the file is supposed to be
+missing. Stdlib only.
 """
 
 import json
@@ -19,6 +23,12 @@ import re
 import sys
 
 EXTS = r"(?:py|php|js|jsx|ts|tsx|go|rs|sh|yaml|yml|xml|graphql|graphqls|json|md)"
+
+CLAIM_VERBS = re.compile(
+    r"(?i)\b(?:created|wrote|written|added|implemented|updated|edited|"
+    r"fixed|generated|saved|synced|refactored|modified|extended|"
+    r"registered|patched|built|produced)\b"
+)
 
 
 def main() -> None:
@@ -30,9 +40,16 @@ def main() -> None:
     msg = d.get(field) or ""
     cwd = d.get("cwd") or os.getcwd()
     msg = re.sub(r"https?://\S+", "", msg)
-    tokens = re.findall(
-        r"(?:~?/)?[A-Za-z0-9_@.-]+(?:/[A-Za-z0-9_@.-]+)+\." + EXTS + r"\b", msg
-    )
+    tokens = []
+    for sentence in re.split(r"[.!?\n]+(?=\s|$)", msg):
+        if not CLAIM_VERBS.search(sentence):
+            continue
+        tokens.extend(
+            re.findall(
+                r"(?:~?/)?[A-Za-z0-9_@.-]+(?:/[A-Za-z0-9_@.-]+)+\." + EXTS + r"\b",
+                sentence,
+            )
+        )
     missing = []
     for t in dict.fromkeys(tokens[:40]):
         p = os.path.expanduser(t)
