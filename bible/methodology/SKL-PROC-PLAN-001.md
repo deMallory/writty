@@ -17,10 +17,14 @@ always_on: true
 source_attribution: "writ-native"
 source_commit: null
 edges:
+  - { target: ENF-PROC-PLAN-001, type: TEACHES }
   - { target: PBK-PROC-PLAN-001, type: TEACHES }
-  - { target: ENF-PROC-PLAN-001, type: GATES }
-  - { target: PBK-PROC-TDD-001, type: PRECEDES }
   - { target: PBK-PROC-SDD-001, type: PRECEDES }
+  - { target: PBK-PROC-TDD-001, type: PRECEDES }
+  - { target: SKL-PROC-EXEC-001, type: PRECEDES }
+category: CAT-PROC-001
+floor_modes: [conversation, debug, review, work, investigate]
+trigger_keywords: ["placeholder", "implementation plan", "TBD"]
 ---
 
 # Skill: Write a no-placeholder plan

@@ -1,5 +1,7 @@
 # Writ Public Rulebook: Out-of-the-Box Rule Inventory
 
+> **Freshness:** this is a curated catalogue of the shipped *coding* rules, not a live mirror of the graph. Any header counts may lag the live corpus (399 nodes / 1048 edges, project `writ`, as of 2026-06-16). For the authoritative current set, query the graph (`writ query` / Neo4j Browser) or the `/explore` showcase. Framework rules (`FW-M2-*`, `PHP-*`, `PY-*`) live in `bible/frameworks/...` as RULE-START blocks, not as methodology front-matter.
+
 Every rule listed here passes the enforceability test: an AI agent can make a binary pass/fail decision from the rule's trigger, statement, and violation fields without human interpretation.
 
 - **Mandatory** rules are loaded every turn via `/always-on` and are never ranked. They are the safety invariants that cannot be ranked away.

@@ -1,6 +1,8 @@
 # 05 — HTTP API (full extraction)
 
 > **Refresh note (2026-05-10).** Endpoint surface is unchanged. One known drift: the `/pre-write-check` "final-gate" branch (§ "POST /pre-write-check" step 2 below) still denies writes whose `file_path` contains the substring "COMPLETE" with the message `[ENF-GATE-FINAL] Cannot mark module complete without ENF-GATE-FINAL verification` (`writ/server.py:1075-1083`). The `ENF-GATE-FINAL` rule itself was deleted in the 2026-05-10 cleanup along with the Phase A-D workflow. The deny path is therefore citing a rule that no longer exists in the corpus — a leftover the cleanup did not clear from the server code.
+>
+> **Refresh note (2026-06-11, audit #2).** `/can-write` and `/auto-feedback` are no longer stubs. `/can-write` now delegates to the real gate `_can_write_check` (it previously returned `True` unconditionally in work mode — a silent write bypass); `/auto-feedback` now runs `cmd_auto_feedback` (it was a no-op, so the daemon-up session-end feedback loop never ran). The table rows below reflect the wired behavior.
 
 Source: `writ/server.py` (FastAPI). All endpoints `async`. Started via `writ serve` (uvicorn) — defaults `host=localhost`, `port=8765`.
 
@@ -106,13 +108,13 @@ Response on success:
 | `/session/{session_id}/should-skip` | GET | — | `{"should_skip": bool}`. True when `remaining_budget <= 0` or `context_percent >= 75` |
 | `/session/{session_id}/mode` | GET | — | `{"mode": str}` (empty if unset) |
 | `/session/{session_id}/mode` | POST | `SessionModeSetRequest` | Sets `cache["mode"]`; if `orchestrator=True`, also `is_orchestrator` |
-| `/session/{session_id}/can-write` | POST | optional | If `mode != "work"`, returns `mode is not None`; else returns True |
+| `/session/{session_id}/can-write` | POST | `SessionCanWriteRequest` | Runs the real gate `_can_write_check(session_id, {tool_input}, skill_dir)`; returns `{can_write, reason}` (same logic as `/pre-write-check` + CLI) |
 | `/session/{session_id}/advance-phase` | POST | `{confirmation_source}` | See below |
 | `/session/{session_id}/current-phase` | GET | — | `{"phase": <str>}` (default `"planning"`) |
 | `/session/format` | POST | `SessionFormatRequest` | Pipes JSON to `cmd_format()` stdin; captures stdout including `WRIT_META:<json>` line |
 | `/session/{session_id}/coverage` | GET | — | `{"coverage": float}` = `len(loaded_rule_ids) / max(queries, 1)` |
 | `/session/{session_id}/check-escalation` | GET | — | `{"escalation": bool}` from `cache["escalation"]["needed"]` |
-| `/session/{session_id}/auto-feedback` | POST | — | **No-op**. Returns `{"ok": True}` |
+| `/session/{session_id}/auto-feedback` | POST | `SessionAutoFeedbackRequest` | Runs `cmd_auto_feedback(session_id)` (correlate loaded rules to written-file outcomes, POST per-rule signals to `/feedback`); returns `{"ok": True}` |
 | `/session/{session_id}/clear-pending-violations` | POST | — | Sets `cache["pending_violations"] = []` |
 | `/session/{session_id}/add-pending-violation` | POST | `SessionAddViolationRequest` | Appends `{rule_id, detail, file, line}` |
 | `/session/{session_id}/invalidate-gate` | POST | — | Sets `cache.setdefault("invalidation_history", {})`. Effectively a no-op |

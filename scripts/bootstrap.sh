@@ -118,9 +118,11 @@ else
     ok "ONNX model exported to $ONNX_MODEL_PATH"
 fi
 
-# ── 5. Harness config ───────────────────────────────────────────────────────
-step "Installing harness config (~/.claude/settings.json + CLAUDE.md)"
-bash "$SCRIPT_DIR/install-harness-config.sh"
+# ── 5. Global config patch ──────────────────────────────────────────────────
+# Hooks come from the plugin (hooks/hooks.json); this patches the parts a plugin
+# manifest cannot ship: the Writ permission allowlist, the statusLine, and CLAUDE.md.
+step "Patching ~/.claude (permissions + statusLine + CLAUDE.md)"
+bash "$SCRIPT_DIR/patch-global-config.sh"
 
 # ── 6. Symlinks for rules + agents ──────────────────────────────────────────
 step "Linking rules and agent definitions into ~/.claude/"
@@ -203,6 +205,13 @@ else
         echo "   Check log: $WRIT_LOG" >&2
         exit 1
     fi
+fi
+
+# ── 9b. Symlink the writ CLI onto PATH ──────────────────────────────────────
+mkdir -p "$HOME/.local/bin"
+ln -sf "$WRIT_DIR/bin/writ" "$HOME/.local/bin/writ"
+if ! printf '%s' "$PATH" | tr ':' '\n' | grep -qx "$HOME/.local/bin"; then
+    printf "${YELLOW}!${RESET} %s is not on your PATH; add it so 'writ' resolves in new shells.\n" "$HOME/.local/bin"
 fi
 
 # ── 10. Ready banner ───────────────────────────────────────────────────────

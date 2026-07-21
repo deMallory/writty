@@ -6,6 +6,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-blackbox-capture.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-start-bootstrap.sh"
           }
         ]
@@ -17,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/auto-approve-gate.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/auto-approve-gate.sh"
           }
         ]
       },
@@ -26,16 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-rag-inject.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-context-watcher.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-rag-inject.sh"
           }
         ]
       }
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-subagent-start.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-subagent-start.sh"
           }
         ]
       }
@@ -57,7 +57,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-subagent-stop.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-blackbox-capture.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-subagent-stop.sh"
           }
         ]
       }
@@ -68,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-context-tracker.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/friction-logger.sh"
           }
         ]
       },
@@ -77,7 +86,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/friction-logger.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/enforce-violations.sh"
           }
         ]
       },
@@ -86,7 +95,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/enforce-violations.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-verify-before-claim.sh"
           }
         ]
       },
@@ -95,7 +104,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-verify-before-claim.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-run-pending-tests.sh"
           }
         ]
       },
@@ -104,18 +113,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-run-pending-tests.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-comms-output-gate.sh"
           }
         ]
       }
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "Write|Edit",
+        "matcher": ".*",
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/track-failed-writes.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-blackbox-capture.sh"
           }
         ]
       }
@@ -126,7 +135,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-precompact.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-precompact.sh"
           }
         ]
       }
@@ -137,7 +146,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-postcompact.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-blackbox-capture.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-postcompact.sh"
           }
         ]
       }
@@ -148,7 +166,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-session-end.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-session-end.sh"
           }
         ]
       },
@@ -157,7 +175,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-pressure-audit.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-pressure-audit.sh"
           }
         ]
       }
@@ -168,38 +186,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-cwd-changed.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-blackbox-capture.sh"
           }
         ]
-      }
-    ],
-    "InstructionsLoaded": [
+      },
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-instructions-loaded.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-cwd-changed.sh"
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-context-watcher.sh"
-          }
-        ]
-      },
-      {
         "matcher": "ExitPlanMode",
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/validate-exit-plan.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-exit-plan.sh"
           }
         ]
       },
@@ -208,7 +215,34 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-read-rag.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-read-junk-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-read-rag.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep|Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-debug-code-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-pre-write-dispatch.sh"
           }
         ]
       },
@@ -217,25 +251,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-pre-write-dispatch.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/pre-validate-file.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "TodoWrite",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-verify-before-claim.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-validate-file.sh"
           }
         ]
       },
@@ -244,7 +260,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-sdd-review-order.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-dispatch-discipline.sh"
           }
         ]
       },
@@ -253,7 +269,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-worktree-safety.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-worktree-safety.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-bash-write-gate.sh"
           }
         ]
       },
@@ -262,7 +287,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/validate-test-file.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-test-file.sh"
           }
         ]
       },
@@ -271,7 +296,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/validate-design-doc.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-design-doc.sh"
           }
         ]
       },
@@ -280,7 +305,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-memory-policy-guard.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-memory-policy-guard.sh"
           }
         ]
       }
@@ -291,7 +316,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/inject-tier-workflow.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/inject-tier-workflow.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "WebFetch|WebSearch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-web-capture.sh"
           }
         ]
       },
@@ -300,7 +334,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/validate-file.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-file.sh"
           }
         ]
       },
@@ -309,7 +343,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/validate-handoff.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-bible-authoring-push.sh"
           }
         ]
       },
@@ -318,7 +352,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/validate-rules.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-handoff.sh"
           }
         ]
       },
@@ -327,7 +361,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-posttool-rag.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-rules.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-posttool-rag.sh"
           }
         ]
       },
@@ -336,7 +379,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-quality-judge.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-quality-judge.sh"
           }
         ]
       },
@@ -345,7 +388,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/.claude/hooks/writ-mark-pending-test.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-mark-pending-test.sh"
           }
         ]
       }

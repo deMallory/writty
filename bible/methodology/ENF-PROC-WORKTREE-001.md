@@ -29,7 +29,8 @@ source_attribution: "writ-native"
 source_commit: null
 body: ""
 edges:
-  - { target: TEC-PROC-WORKTREE-001, type: TEACHES }
+  - { target: SKL-PROC-WORKTREE-001, type: GATES }
+category: CAT-PROC-001
 ---
 
 # Rule: Worktree gitignore safety

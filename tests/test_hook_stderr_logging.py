@@ -22,8 +22,8 @@ import pytest
 from pathlib import Path
 
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
-INJECT_HOOK = f"{SKILL_DIR}/.claude/hooks/writ-rag-inject.sh"
-POSTTOOL_HOOK = f"{SKILL_DIR}/.claude/hooks/writ-posttool-rag.sh"
+INJECT_HOOK = f"{SKILL_DIR}/hooks/scripts/writ-rag-inject.sh"
+POSTTOOL_HOOK = f"{SKILL_DIR}/hooks/scripts/writ-posttool-rag.sh"
 
 
 class TestHookStderrLogging:

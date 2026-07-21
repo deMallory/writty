@@ -1,7 +1,8 @@
 """Phase 5: Retrieval pipeline tests.
 
 Tests pipeline mechanics, ranking, context budget, and service endpoints.
-MRR@5 evaluation happens via human review sessions, not automated tests.
+MRR@5 evaluation happens via automated regression tests (tests/test_graph_proximity.py
+test_mrr5_no_regression against MRR5_FLOOR), not in this file.
 Requires Neo4j running with migrated rules.
 """
 
@@ -73,13 +74,15 @@ async def pipeline_db():
     await db.close()
 
     # Restore production-like state for downstream tests via the
-    # migration script. Best-effort -- if the script is missing or
-    # fails, downstream tests will hit empty Neo4j (the original
-    # isolation bug); we surface that via stderr but do not raise.
+    # migration script. INC-1: downstream graph tests now depend on the
+    # `corpus_ready` fixture, which self-heals a partial graph -- so a
+    # teardown hiccup here can no longer mask a regression. Use the repo
+    # root derived from this file (not a hardcoded home path) so the
+    # restore runs in any checkout location.
     try:
         subprocess.run(
             [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
-            cwd=str(Path.home() / ".claude/skills/writ"),
+            cwd=str(Path(__file__).resolve().parent.parent),
             capture_output=True,
             timeout=60,
             check=False,

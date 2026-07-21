@@ -74,8 +74,7 @@ class TestPluginManifestSchema:
 
     def test_plugin_json_metadata_fields(self, manifest: dict) -> None:
         """plugin.json must have version matching pyproject.toml's version
-        field, plus description, author.name, homepage, repository,
-        license, keywords."""
+        field, plus description, author.name, license, keywords."""
         expected_version = _pyproject_version()
         assert manifest.get("version") == expected_version, (
             f"plugin.json version must match pyproject.toml [project].version "
@@ -89,27 +88,10 @@ class TestPluginManifestSchema:
         assert isinstance(author, dict) and author.get("name"), (
             "plugin.json must have author.name"
         )
-        assert "homepage" in manifest and manifest["homepage"], (
-            "plugin.json must have a homepage URL"
-        )
-        assert "repository" in manifest and manifest["repository"], (
-            "plugin.json must have a repository URL"
-        )
         assert "license" in manifest, "plugin.json must have a license field"
         keywords = manifest.get("keywords")
         assert isinstance(keywords, list) and len(keywords) > 0, (
             "plugin.json must have a non-empty keywords list"
-        )
-
-    def test_plugin_json_homepage_repository_match_remote(self, manifest: dict) -> None:
-        """Both homepage and repository must reference infinri/Writ on github."""
-        homepage = manifest.get("homepage", "")
-        repository = manifest.get("repository", "")
-        assert "infinri/Writ" in homepage or "infinri/writ" in homepage.lower(), (
-            f"homepage '{homepage}' must reference infinri/Writ on github"
-        )
-        assert "infinri/Writ" in repository or "infinri/writ" in repository.lower(), (
-            f"repository '{repository}' must reference infinri/Writ on github"
         )
 
     def test_plugin_json_license_spdx(self, manifest: dict) -> None:
@@ -146,12 +128,20 @@ class TestPluginManifestPhaseB:
         )
 
     def test_plugin_json_agents_field(self, manifest: dict) -> None:
-        """agents must reference ./.claude/agents for sub-agent discovery."""
+        """agents must reference ./.claude/agents for sub-agent discovery.
+
+        Per the Claude Code plugin schema, ``agents`` is a list of individual
+        ``.md`` file paths (each ``^\\./.*\\.md$``); a bare directory string
+        fails ``claude plugin validate``. Accept either shape and require every
+        entry to live under .claude/agents.
+        """
         if "agents" not in manifest:
             pytest.skip("Phase B: agents field not yet added to plugin.json")
         agents = manifest["agents"]
-        assert ".claude/agents" in agents, (
-            f"plugin.json agents must reference .claude/agents, got '{agents}'"
+        entries = [agents] if isinstance(agents, str) else agents
+        assert entries, "plugin.json agents must not be empty"
+        assert all(".claude/agents" in entry for entry in entries), (
+            f"every plugin.json agents entry must reference .claude/agents, got '{agents}'"
         )
 
     def test_plugin_json_hooks_field(self, manifest: dict) -> None:

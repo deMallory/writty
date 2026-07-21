@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Writ — interactive showcase</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #171d26;
+    --panel-2: #1e2630;
+    --border: #2a3340;
+    --ink: #e6edf3;
+    --ink-dim: #9aa7b4;
+    --accent: #5aa0ff;
+    --accent-2: #7ee3c0;
+    --warn: #ffcf6b;
+    --crit: #ff7a7a;
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.55;
+    font-size: 15px;
+  }
+  a { color: var(--accent); }
+  code, kbd { font-family: var(--mono); font-size: 0.9em; }
+
+  .layout { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+  nav.side {
+    position: sticky; top: 0; align-self: start;
+    height: 100vh; overflow-y: auto;
+    background: var(--panel); border-right: 1px solid var(--border);
+    padding: 22px 18px;
+  }
+  nav.side .brand { font-weight: 700; font-size: 20px; letter-spacing: 0.5px; }
+  nav.side .tag { color: var(--ink-dim); font-size: 12px; margin-bottom: 18px; }
+  nav.side a {
+    display: block; padding: 8px 10px; margin: 2px 0; border-radius: 8px;
+    color: var(--ink-dim); text-decoration: none; font-size: 14px;
+  }
+  nav.side a:hover { background: var(--panel-2); color: var(--ink); }
+  nav.side a .num { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 8px; }
+
+  main { padding: 0 0 80px; }
+  section { padding: 40px 44px 8px; border-bottom: 1px solid var(--border); scroll-margin-top: 12px; }
+  section h2 { font-size: 26px; margin: 0 0 6px; }
+  section .lede { color: var(--ink-dim); margin-top: 0; max-width: 70ch; }
+  h3 { font-size: 17px; margin: 26px 0 8px; }
+  p { max-width: 74ch; }
+  section p { max-width: 880px; }
+
+  .pill {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 12px; font-family: var(--mono); border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--ink-dim); margin: 2px 4px 2px 0;
+  }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 18px 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .card h4 { margin: 0 0 6px; font-size: 15px; }
+  .card p { font-size: 13.5px; color: var(--ink-dim); margin: 0; }
+
+  .stat-row { display: flex; flex-wrap: wrap; gap: 14px; margin: 18px 0; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; min-width: 120px; }
+  .stat .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .k { font-size: 12px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.6px; }
+
+  blockquote.northstar {
+    border-left: 3px solid var(--accent-2); background: var(--panel);
+    margin: 18px 0; padding: 14px 18px; border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 17px;
+  }
+
+  .pipeline { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; margin: 18px 0; }
+  .stage { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+           padding: 12px 14px; flex: 1 1 150px; min-width: 150px; }
+  .stage .n { color: var(--accent); font-family: var(--mono); font-size: 12px; }
+  .stage .t { font-weight: 600; margin: 2px 0; }
+  .stage .d { font-size: 12.5px; color: var(--ink-dim); }
+  .arrow { align-self: center; color: var(--ink-dim); padding: 0 6px; font-size: 20px; }
+
+  .gateflow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0; }
+  .phase { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; }
+  .phase b { display: block; }
+  .phase small { color: var(--ink-dim); }
+  .gate { background: #2a2317; border: 1px solid var(--warn); color: var(--warn);
+          border-radius: var(--radius); padding: 10px 14px; font-size: 13px; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 14px 0; }
+  .controls label { display: flex; flex-direction: column; font-size: 12px; color: var(--ink-dim); gap: 4px; }
+  input[type=text], select {
+    background: var(--panel-2); color: var(--ink); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: var(--sans); min-width: 140px;
+  }
+  input[type=range] { width: 180px; }
+  button {
+    background: var(--accent); color: #06101f; border: 0; border-radius: 8px;
+    padding: 9px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button.ghost { background: var(--panel-2); color: var(--ink); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  .result { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin: 10px 0; }
+  .result .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .result .rid { font-family: var(--mono); font-weight: 700; }
+  .result .score { margin-left: auto; font-family: var(--mono); color: var(--accent-2); }
+  .result .stmt { color: var(--ink-dim); margin-top: 6px; font-size: 14px; }
+  .sev-critical { color: var(--crit); border-color: var(--crit); }
+  .sev-high { color: var(--warn); border-color: var(--warn); }
+
+  .graph-wrap { display: grid; grid-template-columns: 1fr 400px; gap: 16px; margin-top: 14px; }
+  #cy, #req-cy { height: clamp(560px, 78vh, 920px); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .detail { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; height: clamp(560px, 78vh, 920px); overflow-y: auto; }
+  .detail h4 { margin: 0 0 4px; font-family: var(--mono); word-break: break-all; }
+  .detail .field { margin: 8px 0; }
+  .detail .field .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--ink-dim); }
+  .detail .field .val { font-size: 13.5px; white-space: pre-wrap; }
+  .nbr { font-size: 13px; padding: 4px 0; border-top: 1px solid var(--border); }
+  .nbr .dir { font-family: var(--mono); color: var(--ink-dim); }
+  .nbr a { font-family: var(--mono); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; font-size: 12px; }
+  .legend .item { display: flex; align-items: center; gap: 5px; color: var(--ink-dim); }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  .note { background: var(--panel-2); border: 1px dashed var(--border); border-radius: 8px;
+          padding: 10px 12px; font-size: 13px; color: var(--ink-dim); margin: 12px 0; }
+  .muted { color: var(--ink-dim); }
+  table.modes { border-collapse: collapse; width: 100%; max-width: 720px; margin: 12px 0; }
+  table.modes td, table.modes th { border: 1px solid var(--border); padding: 8px 12px; text-align: left; font-size: 14px; }
+  table.modes th { background: var(--panel-2); }
+  table.modes td:first-child { font-family: var(--mono); white-space: nowrap; }
+
+  .lifecycle { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0; }
+  .lc { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-family: var(--mono); font-size: 13px; }
+  .lc.gate { background: #2a2317; border-color: var(--warn); color: var(--warn); }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.side { position: static; height: auto; }
+    .graph-wrap { grid-template-columns: 1fr; }
+    .detail, #cy, #req-cy { height: 420px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="side">
+    <div class="brand">Writ</div>
+    <div class="tag">interactive showcase</div>
+    <a href="#overview"><span class="num">1</span>Overview</a>
+    <a href="#pieces"><span class="num">2</span>The three pieces</a>
+    <a href="#pipeline"><span class="num">3</span>Retrieval pipeline</a>
+    <a href="#modes"><span class="num">4</span>Modes &amp; gates</a>
+    <a href="#corpus"><span class="num">5</span>The corpus (graph)</a>
+    <a href="#authoring"><span class="num">6</span>Self-authoring</a>
+    <a href="#requirements"><span class="num">7</span>Requirements browser</a>
+  </nav>
+
+  <main>
+    <!-- 1. OVERVIEW -->
+    <section id="overview">
+      <h2>Writ</h2>
+      <p class="lede">A local rule-enforcement service for Claude Code. On every prompt and every file
+      write it answers two questions: <em>which rules apply right now</em>, and <em>is this write
+      allowed yet</em>. This page is data-backed — every number and node below is read live from the
+      running daemon.</p>
+
+      <blockquote class="northstar">
+        <strong>Relocate oversight; don't remove it. The gate is the product.</strong>
+      </blockquote>
+
+      <p>Writ never automates self-approval. A human token-gates any write of canon, and the agent
+      cannot forge the approval that advances a workflow phase or promotes a rule into the corpus.
+      Where the agent could otherwise approve its own work, a human-held token sits in the way.</p>
+
+      <div class="stat-row" id="health-stats">
+        <div class="stat"><div class="v" id="s-rules">…</div><div class="k">Rules</div></div>
+        <div class="stat"><div class="v" id="s-mandatory">…</div><div class="k">Mandatory</div></div>
+        <div class="stat"><div class="v" id="s-categories">…</div><div class="k">Categories</div></div>
+        <div class="stat"><div class="v" id="s-index">…</div><div class="k">Index</div></div>
+        <div class="stat"><div class="v" id="s-status">…</div><div class="k">Status</div></div>
+      </div>
+      <p class="muted" id="health-note">Counts read from <code>GET /health</code> on load.</p>
+    </section>
+
+    <!-- 2. THE THREE PIECES -->
+    <section id="pieces">
+      <h2>The three pieces</h2>
+      <p class="lede">One design rule underpins them all: <strong>Neo4j is canonical; the
+      <code>bible/</code> Markdown tree is a derived, exported view.</strong> When they disagree, the
+      graph wins on <code>reconcile</code>.</p>
+      <div class="cards">
+        <div class="card">
+          <h4>Librarian — retrieval</h4>
+          <p>A hybrid RAG pipeline retrieves only the rules relevant to the current task, so rule
+          text stays out of the context window when it does not apply.</p>
+        </div>
+        <div class="card">
+          <h4>Process-keeper — hooks &amp; gates</h4>
+          <p>Thin bash hooks intercept the Claude Code tool lifecycle; a per-session state machine
+          tracks mode / phase / budget / gates and blocks writes until the gate is satisfied.</p>
+        </div>
+        <div class="card">
+          <h4>Canonical store — Neo4j</h4>
+          <p>The knowledge graph holds all rules and methodology nodes: 13 node types joined by
+          19 edge types. The <code>bible/</code> Markdown is a derived view, never authoritative.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. PIPELINE + QUERY PLAYGROUND -->
+    <section id="pipeline">
+      <h2>The 5-stage retrieval pipeline</h2>
+      <p class="lede">A natural-language query becomes a ranked, budget-capped list of rules.
+      Mandatory rules are excluded <em>before</em> Stage 1 — they reach the agent only via the
+      always-on injection bundle.</p>
+
+      <div class="pipeline">
+        <div class="stage"><div class="n">1 · Filter</div><div class="t">Domain pre-filter</div><div class="d">narrow to a candidate subgraph</div></div>
+        <div class="arrow">→</div>
+        <div class="stage"><div class="n">2 · BM25</div><div class="t">Sparse keyword</div><div class="d">Tantivy on trigger/statement/tags</div></div>
+        <div class="arrow">→</div>
+        <div class="stage"><div class="n">3 · ANN</div><div class="t">Dense cosine</div><div class="d">hnswlib, all-MiniLM-L6-v2, 384-dim</div></div>
+        <div class="arrow">→</div>
+        <div class="stage"><div class="n">4 · Traversal</div><div class="t">Graph enrich</div><div class="d">add candidates' neighbors</div></div>
+        <div class="arrow">→</div>
+        <div class="stage"><div class="n">5 · Rank</div><div class="t">Fuse + trim</div><div class="d">RRF + weighted fusion, graph-proximity re-score, budget trim</div></div>
+      </div>
+
+      <p class="muted">This is <strong>Channel 1</strong> — semantic + literal ranking (<code>/query</code>, and <code>/always-on</code> for the mandatory floor). A separate <strong>Channel 2</strong>, <code>/methodology-companion</code>, surfaces workflow methodology (Skills, Playbooks) <em>deterministically</em> by mode / action / keyword rather than by score. See ARCHITECTURE §6–§7.</p>
+
+      <h3>Live query playground</h3>
+      <p>Type a task and watch retrieval run on the real corpus via <code>POST /query</code>.</p>
+      <div class="controls">
+        <label style="flex:1 1 320px;">Query
+          <input type="text" id="q-input" placeholder="e.g. how should I handle auth tokens" value="how should I handle auth tokens" />
+        </label>
+        <label>Domain (optional)
+          <input type="text" id="q-domain" placeholder="any" />
+        </label>
+        <button id="q-run">Run query</button>
+      </div>
+      <div id="q-meta" class="muted"></div>
+      <div id="q-results"></div>
+    </section>
+
+    <!-- 4. MODES & GATES -->
+    <section id="modes">
+      <h2>Modes &amp; gates</h2>
+      <p class="lede">Writ runs a per-session state machine with five modes.</p>
+      <table class="modes">
+        <tr><th>Mode</th><th>What it is for</th></tr>
+        <tr><td>conversation</td><td>Default. No write gating.</td></tr>
+        <tr><td>debug</td><td>Root-cause investigation; source edits blocked until a root cause is populated.</td></tr>
+        <tr><td>investigate</td><td>Evidence-grounded audit / explore / research (one engine, lens set per invocation).</td></tr>
+        <tr><td>review</td><td>Read-and-assess; no gated writes.</td></tr>
+        <tr><td>work</td><td>The gated build workflow.</td></tr>
+      </table>
+
+      <h3>Work mode has two gates</h3>
+      <div class="gateflow">
+        <div class="phase"><b>planning</b><small>writes blocked</small></div>
+        <div class="gate">Gate phase-a · plan validated</div>
+        <div class="phase"><b>testing</b><small>writes blocked</small></div>
+        <div class="gate">Gate test-skeletons</div>
+        <div class="phase"><b>implementation</b><small>writes allowed</small></div>
+        <div class="phase"><b>complete</b></div>
+      </div>
+      <div class="note">
+        <strong>The token (no self-approval).</strong> A phase advance requires a gate token at
+        <code>/tmp/writ-gate-token-&lt;session_id&gt;</code>. The approval hook writes it
+        <em>only</em> when your prompt matches an approval pattern — input the agent cannot
+        fabricate. The token is consumed on a successful advance, so one human approval authorizes
+        exactly one advance. The same token gates promoting a rule into the corpus.
+      </div>
+    </section>
+
+    <!-- 5. CORPUS / GRAPH EXPLORER -->
+    <section id="corpus">
+      <h2>The corpus</h2>
+      <p class="lede">Explore the live knowledge graph via <code>GET /graph</code> and
+      <code>GET /node/{id}</code>. Filter, then click a node for its full detail and neighbors.</p>
+
+      <div class="note" id="cy-cdn-note">
+        The graph view loads <strong>Cytoscape.js from a CDN</strong> (unpkg) and needs internet to
+        render. The rest of this page works offline.
+      </div>
+
+      <div class="controls">
+        <label>Node type
+          <select id="g-type">
+            <option value="">all types</option>
+            <option value="Rule">Rule</option>
+            <option value="Abstraction">Abstraction</option>
+            <option value="Category">Category</option>
+            <option value="Skill">Skill</option>
+            <option value="Playbook">Playbook</option>
+            <option value="Technique">Technique</option>
+            <option value="AntiPattern">AntiPattern</option>
+            <option value="ForbiddenResponse">ForbiddenResponse</option>
+            <option value="Phase">Phase</option>
+            <option value="Rationalization">Rationalization</option>
+            <option value="PressureScenario">PressureScenario</option>
+            <option value="WorkedExample">WorkedExample</option>
+            <option value="SubagentRole">SubagentRole</option>
+          </select>
+        </label>
+        <label>Domain
+          <input type="text" id="g-domain" placeholder="e.g. process, security" />
+        </label>
+        <label>Provenance
+          <select id="g-prov">
+            <option value="">any</option>
+            <option value="hand-authored">hand-authored</option>
+            <option value="proposed">proposed</option>
+            <option value="graduation_pending">graduation_pending</option>
+            <option value="graduated">graduated</option>
+          </select>
+        </label>
+        <label>Mandatory only
+          <select id="g-mandatory">
+            <option value="">no filter</option>
+            <option value="true">mandatory</option>
+          </select>
+        </label>
+        <label>Layout
+          <select id="g-layout">
+            <option value="cose">force (cose)</option>
+            <option value="concentric">concentric</option>
+            <option value="grid">grid</option>
+            <option value="breadthfirst">breadth-first</option>
+            <option value="circle">circle</option>
+          </select>
+        </label>
+        <label>Limit <span id="g-limit-val" class="muted">400</span>
+          <input type="range" id="g-limit" min="20" max="400" step="20" value="400" />
+        </label>
+        <label>Skeleton view
+          <input type="checkbox" id="g-skeleton" />
+        </label>
+        <label>Hide hubs (Category)
+          <input type="checkbox" id="g-hide-hubs" />
+        </label>
+        <button id="g-load">Load graph</button>
+      </div>
+      <div id="g-meta" class="muted"></div>
+
+      <div class="legend" id="g-legend"></div>
+
+      <div class="graph-wrap">
+        <div id="cy"></div>
+        <div class="detail" id="g-detail">
+          <p class="muted">Click a node to see its statement, trigger, examples, severity / scope /
+          provenance, and neighbors. Use <em>Add neighbors</em> to expand the canvas.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. SELF-AUTHORING -->
+    <section id="authoring">
+      <h2>Self-authoring &amp; graduation</h2>
+      <p class="lede">A node's <code>provenance</code> is one of four states. <code>hand-authored</code>
+      is a distinct <em>entry</em> state (the markdown corpus at rest); the other three form the
+      self-authoring path. Statistical crossing is <em>not</em> approval — a human gate stands
+      between a candidate and the corpus.</p>
+      <div class="lifecycle">
+        <div class="lc">hand-authored <span class="muted">(corpus entry state)</span></div>
+      </div>
+      <div class="lifecycle">
+        <div class="lc">proposed</div>
+        <div class="arrow">→</div>
+        <div class="lc">graduation_pending</div>
+        <div class="arrow">→</div>
+        <div class="lc gate">human gate</div>
+        <div class="arrow">→</div>
+        <div class="lc">graduated</div>
+      </div>
+      <p><code>proposed</code> is set by <code>/propose</code> (and <code>writ add</code>). A
+      frequency crossing (50 observations, ≥0.75 positive ratio) flips it to
+      <code>graduation_pending</code> — a statistical flag, never an authority change and never a
+      write to <code>bible/</code>. Promotion to <code>graduated</code> runs through the same
+      agent-unforgeable token gate as a phase advance; the human approves as-is or edits at the gate,
+      and an edit re-runs the structural gate before export.</p>
+    </section>
+
+    <!-- 7. REQUIREMENTS BROWSER -->
+    <section id="requirements">
+      <h2>Requirements browser</h2>
+      <p class="lede">Browse <code>Rule</code> nodes filtered by domain, severity, and mandatory.
+      Backed by <code>GET /graph?node_type=Rule</code>; click a rule for the same detail panel.</p>
+      <div class="controls">
+        <label>Domain
+          <input type="text" id="r-domain" placeholder="e.g. security, process" />
+        </label>
+        <label>Severity
+          <select id="r-severity">
+            <option value="">any</option>
+            <option value="critical">critical</option>
+            <option value="high">high</option>
+            <option value="medium">medium</option>
+            <option value="low">low</option>
+          </select>
+        </label>
+        <label>Mandatory only
+          <select id="r-mandatory">
+            <option value="">no filter</option>
+            <option value="true">mandatory</option>
+          </select>
+        </label>
+        <button id="r-load">List rules</button>
+      </div>
+      <div id="r-meta" class="muted"></div>
+      <div class="graph-wrap">
+        <div id="r-list" class="detail" style="height:520px;">
+          <p class="muted">Click <em>List rules</em> to load.</p>
+        </div>
+        <div class="detail" id="r-detail">
+          <p class="muted">Select a rule to see its detail.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Cytoscape.js from CDN; the graph view needs internet. The rest works offline. -->
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script>
+"use strict";
+
+// All requests are same-origin: this page is served by the daemon at /explore.
+const NODE_TYPES = ["Rule","Abstraction","Category","Skill","Playbook","Technique",
+  "AntiPattern","ForbiddenResponse","Phase","Rationalization","PressureScenario",
+  "WorkedExample","SubagentRole"];
+
+const TYPE_COLORS = {
+  Rule: "#5aa0ff", Abstraction: "#b48cff", Category: "#7ee3c0", Skill: "#ffcf6b",
+  Playbook: "#ff9f6b", Technique: "#6bd1ff", AntiPattern: "#ff7a7a",
+  ForbiddenResponse: "#ff6bd1", Phase: "#9aa7b4", Rationalization: "#c0a36b",
+  PressureScenario: "#d16bff", WorkedExample: "#6bffa3", SubagentRole: "#ffb86b",
+};
+function colorFor(t) { return TYPE_COLORS[t] || "#9aa7b4"; }
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+async function getJSON(url) {
+  const r = await fetch(url, { headers: { "Accept": "application/json" } });
+  return await r.json();
+}
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return await r.json();
+}
+
+// --- 1. Health -------------------------------------------------------------
+async function loadHealth() {
+  try {
+    const h = await getJSON("/health");
+    document.getElementById("s-rules").textContent = h.rule_count ?? "—";
+    document.getElementById("s-mandatory").textContent = h.mandatory_count ?? "—";
+    document.getElementById("s-categories").textContent = h.category_count ?? "—";
+    document.getElementById("s-index").textContent = h.index_state ?? "—";
+    document.getElementById("s-status").textContent = h.status ?? "—";
+    if (h.status === "degraded") {
+      document.getElementById("health-note").textContent =
+        "Daemon reports degraded: " + (h.warning || "");
+    }
+  } catch (e) {
+    document.getElementById("health-note").textContent =
+      "Could not reach GET /health — is the daemon running?";
+  }
+}
+
+// --- 3. Query playground ---------------------------------------------------
+function severityClass(sev) {
+  if (sev === "critical") return "sev-critical";
+  if (sev === "high") return "sev-high";
+  return "";
+}
+async function runQuery() {
+  const q = document.getElementById("q-input").value.trim();
+  const domain = document.getElementById("q-domain").value.trim().toLowerCase();
+  const meta = document.getElementById("q-meta");
+  const out = document.getElementById("q-results");
+  if (!q) { meta.textContent = "Enter a query."; return; }
+  meta.textContent = "Querying…";
+  out.innerHTML = "";
+  const body = { query: q, retrieval_mode: "semantic", project: "writ" };
+  if (domain) body.domain = domain;
+  let res;
+  try { res = await postJSON("/query", body); }
+  catch (e) { meta.textContent = "POST /query failed."; return; }
+  if (res.error) { meta.textContent = res.error; return; }
+  const rules = res.rules || [];
+  meta.textContent = rules.length + " rule(s) · " + (res.total_candidates ?? 0) +
+    " candidates · render mode: " + (res.mode || "—") + " · " + (res.latency_ms ?? "—") + " ms";
+  if (!rules.length) { out.innerHTML = '<p class="muted">No matching rules.</p>'; return; }
+  out.innerHTML = rules.map(function (r) {
+    return '<div class="result">' +
+      '<div class="head">' +
+        '<span class="rid">' + esc(r.rule_id) + '</span>' +
+        '<span class="pill">' + esc(r.node_type || "Rule") + '</span>' +
+        '<span class="pill">' + esc(r.authority || "human") + '</span>' +
+        '<span class="score">score ' + esc(r.score) + '</span>' +
+      '</div>' +
+      (r.trigger ? '<div class="stmt"><strong>WHEN:</strong> ' + esc(r.trigger) + '</div>' : '') +
+      '<div class="stmt">' + esc(r.statement) + '</div>' +
+    '</div>';
+  }).join("");
+}
+
+// --- 5. Graph explorer -----------------------------------------------------
+let cy = null;
+let cyAvailable = (typeof cytoscape !== "undefined");
+
+function renderLegend() {
+  const el = document.getElementById("g-legend");
+  el.innerHTML = NODE_TYPES.map(function (t) {
+    return '<span class="item"><span class="swatch" style="background:' + colorFor(t) +
+      '"></span>' + esc(t) + '</span>';
+  }).join("");
+}
+
+function graphParams() {
+  const p = new URLSearchParams();
+  const type = document.getElementById("g-type").value;
+  const domain = document.getElementById("g-domain").value.trim().toLowerCase();
+  const prov = document.getElementById("g-prov").value;
+  const mand = document.getElementById("g-mandatory").value;
+  const limit = document.getElementById("g-limit").value;
+  if (type) p.set("node_type", type);
+  if (domain) p.set("domain", domain);
+  if (prov) p.set("provenance", prov);
+  if (mand) p.set("mandatory", mand);
+  if (document.getElementById("g-skeleton").checked) {
+    p.set("exclude_edge_types", "RELATED_TO,BELONGS_TO,ABSTRACTS");
+  }
+  p.set("limit", limit);
+  return p;
+}
+
+function cyStyle() {
+  return [
+    { selector: "node", style: {
+      "background-color": function (n) { return colorFor(n.data("ntype")); },
+      "label": "data(label)", "color": "#e6edf3", "font-size": "8px",
+      "min-zoomed-font-size": 11,
+      "text-valign": "center", "text-halign": "right", "text-margin-x": 4,
+      "width": 16, "height": 16,
+    }},
+    { selector: "node:selected", style: { "border-width": 3, "border-color": "#fff" }},
+    { selector: "edge", style: {
+      "width": 1, "opacity": 0.45, "line-color": "#3a4756", "target-arrow-color": "#3a4756",
+      "target-arrow-shape": "triangle", "curve-style": "bezier",
+      "label": "data(etype)", "font-size": "6px", "min-zoomed-font-size": 14, "color": "#6f7d8c",
+    }},
+  ];
+}
+
+function toElements(graph) {
+  const els = [];
+  (graph.nodes || []).forEach(function (n) {
+    els.push({ data: { id: n.id, label: n.id, ntype: n.type, raw: n } });
+  });
+  (graph.edges || []).forEach(function (e) {
+    els.push({ data: { id: e.source + "::" + e.type + "::" + e.target,
+      source: e.source, target: e.target, etype: e.type } });
+  });
+  return els;
+}
+
+async function loadGraph() {
+  const meta = document.getElementById("g-meta");
+  if (!cyAvailable) {
+    meta.textContent = "Cytoscape.js did not load (offline?). Graph view unavailable.";
+    return;
+  }
+  meta.textContent = "Loading graph…";
+  let graph;
+  try { graph = await getJSON("/graph?" + graphParams().toString()); }
+  catch (e) { meta.textContent = "GET /graph failed."; return; }
+  const nodes = graph.nodes || [];
+  meta.textContent = nodes.length + " node(s) · " + (graph.edges || []).length +
+    " edge(s)" + (graph.truncated ? " · truncated (raise the limit)" : "");
+  if (!cy) {
+    cy = cytoscape({ container: document.getElementById("cy"), style: cyStyle(),
+      wheelSensitivity: 0.3, minZoom: 0.08, maxZoom: 3,
+      layout: { name: "cose", animate: false } });
+    cy.on("tap", "node", function (evt) { showNodeDetail(evt.target.id(), "g-detail", true); });
+  }
+  cy.elements().remove();
+  cy.add(toElements(graph));
+  if (document.getElementById("g-hide-hubs").checked) {
+    cy.nodes('[ntype = "Category"]').hide();
+  }
+  runLayout();
+}
+
+// Build a layout config from the #g-layout selector and run it on the current elements.
+function runLayout() {
+  if (!cy) return;
+  const sel = document.getElementById("g-layout");
+  const name = sel ? sel.value : "cose";
+  let cfg;
+  if (name === "concentric") {
+    cfg = { name: "concentric", concentric: function (n) { return n.degree(); },
+      levelWidth: function () { return 2; }, fit: true, padding: 40, animate: false };
+  } else if (name === "breadthfirst") {
+    cfg = { name: "breadthfirst", directed: false, spacingFactor: 1.2, fit: true, padding: 40, animate: false };
+  } else if (name === "grid" || name === "circle") {
+    cfg = { name: name, fit: true, padding: 40, animate: false };
+  } else {
+    cfg = { name: "cose", animate: false, nodeRepulsion: 45000, idealEdgeLength: 130,
+      componentSpacing: 120, nodeOverlap: 16, fit: true, padding: 40 };
+  }
+  // Lay out only VISIBLE elements: a hidden node (e.g. a hubs-hidden Category)
+  // still participates in cy.layout()'s force/position math otherwise, so
+  // visible nodes would cluster around the invisible hub's phantom position.
+  cy.elements(":visible").layout(cfg).run();
+}
+
+async function addNeighbors(nodeId) {
+  if (!cy) return;
+  const detail = await getJSON("/node/" + encodeURIComponent(nodeId));
+  if (detail.error) return;
+  const add = [];
+  (detail.neighbors || []).forEach(function (nb) {
+    if (cy.getElementById(nb.id).empty()) {
+      add.push({ data: { id: nb.id, label: nb.id, ntype: nb.type } });
+    }
+    const src = nb.direction === "out" ? nodeId : nb.id;
+    const tgt = nb.direction === "out" ? nb.id : nodeId;
+    const eid = src + "::" + nb.edge_type + "::" + tgt;
+    if (cy.getElementById(eid).empty()) {
+      add.push({ data: { id: eid, source: src, target: tgt, etype: nb.edge_type } });
+    }
+  });
+  if (add.length) {
+    cy.add(add);
+    runLayout();
+  }
+}
+
+// Shared node-detail renderer (used by graph explorer + requirements browser).
+async function showNodeDetail(nodeId, targetElId, withAddNeighbors) {
+  const el = document.getElementById(targetElId);
+  el.innerHTML = '<p class="muted">Loading ' + esc(nodeId) + '…</p>';
+  let d;
+  try { d = await getJSON("/node/" + encodeURIComponent(nodeId)); }
+  catch (e) { el.innerHTML = '<p class="muted">GET /node failed.</p>'; return; }
+  if (d.error) { el.innerHTML = '<p class="muted">' + esc(d.error) + '</p>'; return; }
+  const p = d.props || {};
+  function field(lbl, val) {
+    if (val == null || val === "") return "";
+    return '<div class="field"><div class="lbl">' + esc(lbl) +
+      '</div><div class="val">' + esc(val) + '</div></div>';
+  }
+  let html = '<h4>' + esc(d.id) + '</h4>' +
+    '<span class="pill">' + esc(d.type) + '</span>' +
+    (p.severity ? '<span class="pill ' + severityClass(p.severity) + '">' + esc(p.severity) + '</span>' : '') +
+    (p.mandatory ? '<span class="pill">mandatory</span>' : '') +
+    (p.provenance ? '<span class="pill">' + esc(p.provenance) + '</span>' : '');
+  if (withAddNeighbors) {
+    html += ' <button class="ghost" id="add-nbrs" data-id="' + esc(d.id) + '">Add neighbors</button>';
+  }
+  html += field("Statement", p.statement);
+  html += field("When (trigger)", p.trigger);
+  html += field("Violation", p.violation);
+  html += field("Pass example", p.pass_example);
+  html += field("Scope", p.scope);
+  html += field("Domain", p.domain);
+  html += field("Rationale", p.rationale);
+  const nbrs = d.neighbors || [];
+  if (nbrs.length) {
+    html += '<div class="field"><div class="lbl">Neighbors (' + nbrs.length + ')</div></div>';
+    html += nbrs.map(function (nb) {
+      return '<div class="nbr"><span class="dir">' + (nb.direction === "out" ? "→" : "←") +
+        " " + esc(nb.edge_type) + '</span> ' +
+        '<a href="#" data-nodeid="' + esc(nb.id) + '" data-target="' + esc(targetElId) +
+        '">' + esc(nb.id) + '</a> <span class="muted">(' + esc(nb.type) + ')</span></div>';
+    }).join("");
+  }
+  el.innerHTML = html;
+  const addBtn = document.getElementById("add-nbrs");
+  if (addBtn) addBtn.addEventListener("click", function () { addNeighbors(addBtn.dataset.id); });
+  el.querySelectorAll("a[data-nodeid]").forEach(function (a) {
+    a.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      showNodeDetail(a.dataset.nodeid, a.dataset.target, withAddNeighbors);
+    });
+  });
+}
+
+// --- 7. Requirements browser ----------------------------------------------
+async function listRules() {
+  const meta = document.getElementById("r-meta");
+  const list = document.getElementById("r-list");
+  const domain = document.getElementById("r-domain").value.trim().toLowerCase();
+  const severity = document.getElementById("r-severity").value;
+  const mand = document.getElementById("r-mandatory").value;
+  const p = new URLSearchParams();
+  p.set("node_type", "Rule");
+  if (domain) p.set("domain", domain);
+  if (mand) p.set("mandatory", mand);
+  p.set("limit", "400");
+  meta.textContent = "Loading rules…";
+  list.innerHTML = "";
+  let graph;
+  try { graph = await getJSON("/graph?" + p.toString()); }
+  catch (e) { meta.textContent = "GET /graph failed."; return; }
+  let nodes = graph.nodes || [];
+  // Severity is filtered client-side (the /graph filters do not include it).
+  if (severity) nodes = nodes.filter(function (n) { return n.severity === severity; });
+  meta.textContent = nodes.length + " rule(s)" +
+    (graph.truncated ? " · server truncated; narrow the filters" : "");
+  if (!nodes.length) { list.innerHTML = '<p class="muted">No matching rules.</p>'; return; }
+  nodes.sort(function (a, b) { return String(a.id).localeCompare(String(b.id)); });
+  list.innerHTML = nodes.map(function (n) {
+    return '<div class="nbr"><a href="#" data-ruleid="' + esc(n.id) + '">' + esc(n.id) + '</a> ' +
+      '<span class="pill ' + severityClass(n.severity) + '">' + esc(n.severity || "?") + '</span>' +
+      (n.mandatory ? '<span class="pill">mandatory</span>' : '') +
+      ' <span class="muted">' + esc(n.domain || "") + '</span></div>';
+  }).join("");
+  list.querySelectorAll("a[data-ruleid]").forEach(function (a) {
+    a.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      showNodeDetail(a.dataset.ruleid, "r-detail", false);
+    });
+  });
+}
+
+// --- Wiring ----------------------------------------------------------------
+document.getElementById("q-run").addEventListener("click", runQuery);
+document.getElementById("q-input").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") runQuery();
+});
+document.getElementById("g-load").addEventListener("click", loadGraph);
+document.getElementById("g-skeleton").addEventListener("change", loadGraph);
+document.getElementById("g-hide-hubs").addEventListener("change", loadGraph);
+document.getElementById("g-layout").addEventListener("change", function () { runLayout(); });
+document.getElementById("g-limit").addEventListener("input", function () {
+  document.getElementById("g-limit-val").textContent = this.value;
+});
+document.getElementById("r-load").addEventListener("click", listRules);
+
+renderLegend();
+loadHealth();
+if (!cyAvailable) {
+  document.getElementById("cy-cdn-note").innerHTML =
+    "<strong>Cytoscape.js failed to load from the CDN.</strong> The graph view needs internet; " +
+    "the rest of this page works offline.";
+}
+// Default to a cohesive view so edges are visible, not isolated dots.
+// Default view: the whole graph (no domain filter, limit 400) so every node renders;
+// narrow with the Domain / Node type / Mandatory filters from there.
+window.addEventListener("load", function () { loadGraph(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,369 @@
+"""P1 logging router: one classify-and-append seam for every Writ writer.
+
+Every event flows through `emit(stream, event, session_id, mode, **fields)`, which
+classifies the event into exactly one typed stream (audit / friction / metrics) via
+`STREAM_MAP`, builds the base record from `writ.shared.friction.base_friction_entry`
+(single-source schema), sanitizes user-derived string values (SEC-INJ-LOG-001), and
+appends one JSON line to `<root>/<project>/<stream>.jsonl` under a central Writ-owned
+root (`WRIT_LOG_ROOT`, default `<skill>/var/logs`).
+
+Project scope reuses the decision-memory identity (`derive_project_identity`) rather
+than re-deriving git identity inline (ARCH-BOUNDARY-002); it stays stdlib-only and
+daemon-free so fire-and-forget hook writers never touch Neo4j.
+
+The router never raises on a write failure (ERR-GRACEFUL-001): an OSError on the
+primary write degrades to a durable `<root>/_fallback.jsonl` (ERR-HANDLE-003) plus a
+single stderr note, so a security event such as `memory_policy_deny` is never lost and
+no hook is ever blocked.
+
+`WRIT_FRICTION_LOG` set routes every stream to that one file (back-compat with the
+test-suite isolation fixture and single-log operators).
+
+stdlib only; lowest shared layer (like `writ.shared.friction`) -- session, analysis,
+and bin writers import DOWN into it (ARCH-LAYER-001).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+from datetime import date, datetime, timezone
+from pathlib import Path
+
+from writ.session.git_identity import NotInRepoError, derive_project_identity
+from writ.shared.friction import base_friction_entry
+
+# Single-source rotation threshold (~50 MB) shared by the router's source-side
+# roll and the scheduled sweep (writ.session.log_rotation imports it DOWN, so the
+# two can never drift; DRY-CONFIG-001 / CLEAN-NAME-001). A stream file at or over
+# this size is rolled into archive/ before the next append.
+ROTATE_SIZE_BYTES = 50 * 1024 * 1024
+
+# Classification taxonomy (## Analysis STREAM_MAP): audit = governance decisions
+# (immutable compliance), friction = "worth fixing" signal, metrics = high-volume
+# operational telemetry. Every event maps to exactly one stream.
+STREAM_MAP: dict[str, str] = {
+    # audit
+    "write_attempt": "audit",
+    "gate_denial": "audit",
+    "gate_deny": "audit",
+    "gate_denied_then_approved": "audit",
+    "mode_change": "audit",
+    "phase_advance": "audit",
+    "phase_transition": "audit",
+    "agent_self_approval_blocked": "audit",
+    "candidate_promoted": "audit",
+    "quality_judgment": "audit",
+    "memory_policy_deny": "audit",
+    "committed_file_not_in_plan": "audit",
+    "read_blocked": "audit",
+    "exitplanmode_allow": "audit",
+    "exitplanmode_denial": "audit",
+    "debug_gate_root_cause_populated": "audit",
+    "debug_gate_source_edit_denied": "audit",
+    "tier_escalated": "audit",
+    "session_end": "audit",
+    # friction
+    "repeated_denial": "friction",
+    "hallucinated_rule_ids": "friction",
+    "approval_pattern_miss": "friction",
+    "approval_pattern_match": "friction",
+    "subagent_type_fallback": "friction",
+    "decision_capture_failed": "friction",
+    "commit_capture_failed": "friction",
+    "recall_failed": "friction",
+    "git_hooks_auto_install_failed": "friction",
+    "debug_to_work_handoff": "friction",
+    "write_failure": "friction",
+    "pre_write_decision": "friction",
+    # metrics
+    "hook_execution": "metrics",
+    "rag_query": "metrics",
+    "always_on_inject": "metrics",
+    "subagent_start": "metrics",
+    "subagent_complete": "metrics",
+    "playbook_step_complete": "metrics",
+    "phase_token_summary": "metrics",
+    "phase_transition_time": "metrics",
+    "token_snapshot": "metrics",
+    "pressure_audit": "metrics",
+    "cwd_changed": "metrics",
+    "instructions_loaded": "metrics",
+    "methodology_push": "metrics",
+}
+
+# Fail-safe default for any event absent from STREAM_MAP: friction (never dropped,
+# never polluting the high-volume metrics or the compliance audit stream).
+_DEFAULT_STREAM = "friction"
+
+# Default log root: the Writ skill install's `var/logs`, so logs are co-located
+# with the install and follow it wherever it lives (standard `var/` runtime
+# convention). Derived from this module's own `__file__` -- not a fixed
+# `Path.home()` layout -- so it tracks the install location. `parents[2]` is the
+# skill dir that CONTAINS the `writ` package: parents[0]=writ/shared,
+# parents[1]=writ (the package), parents[2]=<skill> (e.g. ~/.claude/skills/writ),
+# resolving to <skill>/var/logs. Evaluated once at import; the `WRIT_LOG_ROOT`
+# env override still wins (checked first in `log_root`).
+_DEFAULT_LOG_ROOT = Path(__file__).resolve().parents[2] / "var" / "logs"
+
+
+def log_root() -> Path:
+    """The central Writ-owned log root: `WRIT_LOG_ROOT` env or `<skill>/var/logs`."""
+    override = os.environ.get("WRIT_LOG_ROOT")
+    if override:
+        return Path(override)
+    return _DEFAULT_LOG_ROOT
+
+
+def stream_path(project: str, stream: str) -> Path:
+    """The target file for a project's stream: `<root>/<project>/<stream>.jsonl`."""
+    return log_root() / project / f"{stream}.jsonl"
+
+
+def archive_dir(project: str) -> Path:
+    """The per-project archive dir for rolled generations: `<root>/<project>/archive/`.
+
+    The `project` segment is the one already sanitized by `resolve_project` /
+    `_sanitize_segment`, so a hostile derived identity can never let the archive
+    dir escape the log root (SEC-INJ-PATH-001).
+    """
+    return log_root() / project / "archive"
+
+
+def archive_path(project: str, stream: str, day: date) -> Path:
+    """The archive target for one dated generation: `archive/<stream>-<date>.jsonl`.
+
+    `day` is a `datetime.date` (its ISO `str()` -- e.g. `2025-06-01` -- forms the
+    date token). `stream` and `day` are internal, never user-derived, so only the
+    `project` segment carries any traversal risk, and it is pre-sanitized.
+    """
+    return archive_dir(project) / f"{stream}-{day}.jsonl"
+
+
+def stream_for(event: str) -> str:
+    """Classify an event to its stream, defaulting unknown events to friction."""
+    return STREAM_MAP.get(event, _DEFAULT_STREAM)
+
+
+def _sanitize_segment(name: str) -> str:
+    """Reduce an identity to a safe, non-escaping log-path scope (SEC-INJ-PATH-001).
+
+    Strips CR/LF first. A clone-stable identity like `github.com/org/repo` is a
+    legitimate nested scope, so interior '/' is preserved WHEN every segment is safe
+    (no empty, '.', or '..' component and no leading slash). If any component is a
+    traversal component ('..', '.', empty) the name is treated as hostile and fully
+    flattened: '/' and '..' are removed so it can never escape the log root. Falls
+    back to the 'writ' literal when nothing safe remains.
+    """
+    cleaned = name.replace("\r", "").replace("\n", "")
+
+    segments = cleaned.split("/")
+    unsafe = any(seg in ("", ".", "..") for seg in segments)
+
+    if unsafe:
+        # Hostile / traversal name: collapse to a single flat segment.
+        flat = re.sub(r"[^A-Za-z0-9._-]", "_", cleaned)
+        flat = flat.replace("..", "_")
+        flat = flat.strip("._-")
+        return flat or "writ"
+
+    # Safe nested identity: keep '/' separators, sanitize each segment's chars.
+    safe_segments = []
+    for seg in segments:
+        seg = re.sub(r"[^A-Za-z0-9._-]", "_", seg)
+        seg = seg.strip("._-") or "_"
+        safe_segments.append(seg)
+    result = "/".join(safe_segments)
+    return result or "writ"
+
+
+def resolve_project(cwd: str | None = None) -> str:
+    """Resolve the project scope name for the log path.
+
+    Order: `WRIT_LOG_PROJECT` env override -> `derive_project_identity(cwd).name`
+    (the clone-stable decision-memory identity) -> the literal 'writ'. The result is
+    always sanitized to a safe path segment (SEC-INJ-PATH-001).
+    """
+    override = os.environ.get("WRIT_LOG_PROJECT")
+    if override:
+        return _sanitize_segment(override)
+
+    try:
+        _repo_root, _remote_url, name = derive_project_identity(cwd or os.getcwd())
+    except NotInRepoError:
+        return "writ"
+    except OSError:
+        return "writ"
+
+    return _sanitize_segment(name)
+
+
+def _sanitize_value(value):
+    """Strip raw CR/LF from string field values (SEC-INJ-LOG-001).
+
+    A crafted value with embedded CR/LF must not be able to forge a second JSON log
+    line; non-string values pass through untouched.
+    """
+    if isinstance(value, str):
+        return value.replace("\r", "").replace("\n", "")
+    return value
+
+
+def _build_entry(event: str, session_id: str, mode: str | None, fields: dict) -> dict:
+    """Base schema {ts, session, mode, event} plus sanitized non-None fields."""
+    entry = base_friction_entry(session_id, mode, event)
+    for key, value in fields.items():
+        if value is None:
+            continue
+        entry[key] = _sanitize_value(value)
+    return entry
+
+
+def _append_line(path: Path, line: str) -> None:
+    """Append one line to path, creating the parent dir. Raises OSError on failure."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(line)
+
+
+def _archive_taken(path: Path) -> bool:
+    """True when an archive generation already occupies this path, as either the
+    uncompressed `.jsonl` or the gzipped `.jsonl.gz` the sweep may have produced."""
+    return path.exists() or path.with_suffix(path.suffix + ".gz").exists()
+
+
+def _unique_archive_dest(arc_dir: Path, stream: str, day: date) -> Path:
+    """A collision-safe archive destination inside `arc_dir`: appends a numeric
+    suffix when a `<stream>-<date>` generation already exists (as `.jsonl` or the
+    gzipped `.jsonl.gz`), so a second roll on the same UTC day never clobbers the
+    first.
+
+    Shared, single-source collision logic (DRY-CONFIG-001): the router's
+    source-side roll (via `_unique_archive_path`) and the scheduled sweep
+    (`writ.session.log_rotation._dest_for`) both import DOWN into this helper so
+    the same-day suffixing can never drift between them.
+    """
+    base = arc_dir / f"{stream}-{day}.jsonl"
+    if not _archive_taken(base):
+        return base
+    i = 1
+    while True:
+        candidate = arc_dir / f"{stream}-{day}-{i}.jsonl"
+        if not _archive_taken(candidate):
+            return candidate
+        i += 1
+
+
+def _unique_archive_path(project: str, stream: str, day: date) -> Path:
+    """A collision-safe archive path for a same-day roll under a project's
+    `archive/` dir (delegates to the shared `_unique_archive_dest`)."""
+    return _unique_archive_dest(archive_dir(project), stream, day)
+
+
+def _roll_if_oversize(project: str, stream: str, target: Path) -> None:
+    """Source-side size cap: rename an at/over-threshold live stream file into
+    `archive/<stream>-<UTCdate>.jsonl` before the caller appends, so no single
+    stream file grows without bound.
+
+    The size decision is a single `os.stat` -- never a read of the body
+    (PERF-IO-001). Fail-open (ERR-GRACEFUL-001): a missing file, an uncreatable
+    archive dir, or a failed rename is swallowed and the caller's append still
+    proceeds -- rotation must never block a hook or drop an event.
+    """
+    try:
+        size = os.stat(target).st_size
+    except OSError:
+        return  # nothing on disk yet (or unstattable): no roll needed
+    if size < ROTATE_SIZE_BYTES:
+        return
+    try:
+        today = datetime.now(timezone.utc).date()
+        dest = _unique_archive_path(project, stream, today)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        os.rename(target, dest)
+    except OSError:
+        return  # roll failed: leave the live file in place, append proceeds
+
+
+def emit(
+    stream: str | None,
+    event: str,
+    session_id: str,
+    mode: str | None,
+    /,
+    **fields,
+) -> None:
+    """Classify and append one event; fire-and-forget, never raises.
+
+    When `stream` is None it is resolved from STREAM_MAP (unknown -> friction). With
+    `WRIT_FRICTION_LOG` set, every stream collapses to that single file (back-compat).
+    On an OSError writing the primary, the event is preserved in `<root>/_fallback.jsonl`
+    with a single stderr note, so no event is lost and no caller is blocked.
+    """
+    entry = _build_entry(event, session_id, mode, fields)
+    line = json.dumps(entry) + "\n"
+
+    friction_log = os.environ.get("WRIT_FRICTION_LOG")
+    if friction_log:
+        try:
+            _append_line(Path(friction_log), line)
+        except OSError:
+            _fallback(line, event)
+        return
+
+    resolved_stream = stream if stream is not None else stream_for(event)
+    project = resolve_project()
+    target = stream_path(project, resolved_stream)
+
+    _roll_if_oversize(project, resolved_stream, target)
+
+    try:
+        _append_line(target, line)
+    except OSError:
+        _fallback(line, event)
+
+
+def _fallback(line: str, event: str) -> None:
+    """Preserve an event whose primary write failed (ERR-HANDLE-003).
+
+    Appends to the durable `<root>/_fallback.jsonl` (off /tmp) and emits exactly one
+    stderr note. If even the fallback is unwritable, emit the single note and return
+    without raising (ERR-GRACEFUL-001) so a hook is never blocked by logging.
+    """
+    fallback_path = log_root() / "_fallback.jsonl"
+    try:
+        _append_line(fallback_path, line)
+    except OSError:
+        pass
+    sys.stderr.write(
+        f"writ.logging: primary write failed for event {event!r}; "
+        f"appended to {fallback_path}\n"
+    )
+
+
+def read_streams(project: str, streams) -> list[dict]:
+    """Union + JSON-parse the named stream files for a project.
+
+    Skips malformed lines and missing files (which contribute zero rows); a project
+    with no logs yields an empty list. Used by the analyzers/metrics readers to merge
+    audit + friction + metrics without knowing the on-disk layout (SOLID-DIP-002).
+    """
+    events: list[dict] = []
+    for stream in streams:
+        path = stream_path(project, stream)
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for raw in text.splitlines():
+            if not raw.strip():
+                continue
+            try:
+                events.append(json.loads(raw))
+            except (json.JSONDecodeError, ValueError):
+                continue
+    return events

@@ -178,14 +178,14 @@ def example_data() -> dict:
 @pytest.fixture
 def role_data() -> dict:
     return {
-        "role_id": "ROL-CODE-REVIEWER-001",
+        "role_id": "ROL-REVIEWER-001",
         "domain": "process",
         "scope": "task",
         "trigger": "Code review dispatch",
-        "statement": "Code reviewer subagent template",
+        "statement": "Two-pass reviewer subagent template",
         "rationale": "Fresh context for independent judgment",
         "last_validated": date(2026, 4, 21),
-        "name": "writ-code-reviewer",
+        "name": "writ-reviewer",
         "prompt_template": "You are a code reviewer...",
     }
 
@@ -458,7 +458,7 @@ class TestWorkedExampleValidation:
 class TestSubagentRoleValidation:
     def test_valid_role_parses(self, role_data: dict) -> None:
         r = SubagentRole(**role_data)
-        assert r.name == "writ-code-reviewer"
+        assert r.name == "writ-reviewer"
         assert r.prompt_template.startswith("You are")
 
     def test_role_requires_prompt_template(self, role_data: dict) -> None:
@@ -567,3 +567,36 @@ class TestSourceAttributionUniformity:
         instance = model_cls(**data)
         assert instance.source_attribution == "writ-methodology@1.0"
         assert instance.source_commit == "b557648"
+
+
+# --- Category node (T0.1 schema RED gate) -------------------------------------
+
+
+class TestCategoryNode:
+    """Category model roundtrip + BelongsTo edge roundtrip (pure Pydantic, no database)."""
+
+    def test_category_parses_valid_data(self) -> None:
+        from writ.graph.schema import Category
+
+        cat = Category(
+            category_id="CAT-PROC-001",
+            name="process",
+            routes=["state", "action", "pull"],
+        )
+        dumped = cat.model_dump()
+        cat2 = Category(**dumped)
+        assert cat == cat2
+        assert cat2.category_id == "CAT-PROC-001"
+        assert set(cat2.routes) == {"state", "action", "pull"}
+        assert cat2.parent is None
+        assert cat2.description == ""
+
+    def test_belongs_to_edge_parses(self) -> None:
+        from writ.graph.schema import BelongsTo
+
+        edge = BelongsTo(source_id="PBK-PROC-BRAIN-001", target_id="CAT-PROC-001")
+        dumped = edge.model_dump()
+        edge2 = BelongsTo(**dumped)
+        assert edge == edge2
+        assert edge2.source_id == "PBK-PROC-BRAIN-001"
+        assert edge2.target_id == "CAT-PROC-001"

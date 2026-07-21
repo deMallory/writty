@@ -18,8 +18,8 @@ import pytest
 from pathlib import Path
 
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
-SESSION_END_HOOK = f"{SKILL_DIR}/.claude/hooks/writ-session-end.sh"
-CONTEXT_TRACKER_HOOK = f"{SKILL_DIR}/.claude/hooks/writ-context-tracker.sh"
+SESSION_END_HOOK = f"{SKILL_DIR}/hooks/scripts/writ-session-end.sh"
+HOOKS_JSON = Path(__file__).resolve().parent.parent / "hooks" / "hooks.json"
 
 
 # ---------------------------------------------------------------------------
@@ -157,74 +157,19 @@ class TestSessionEndHookBehavior:
 
 
 # ---------------------------------------------------------------------------
-# TestContextTrackerSimplification -- writ-context-tracker.sh
-# ---------------------------------------------------------------------------
-
-
-class TestContextTrackerSimplification:
-    """writ-context-tracker.sh is now a no-op (env vars it read are not real).
-
-    Updated after the env-var cleanup: the context/token update logic was
-    removed because the env vars feeding it don't exist in Claude Code.
-    The hook stays registered on Stop but does nothing except exit 0.
-    Session-level work runs in writ-session-end.sh on SessionEnd.
-    """
-
-    def test_context_tracker_is_a_noop(self) -> None:
-        """writ-context-tracker.sh no longer contains context/token update logic."""
-        with open(CONTEXT_TRACKER_HOOK) as f:
-            source = f.read()
-        assert "context_percent" not in source, (
-            "writ-context-tracker.sh must not reference context_percent (env var isn't real)"
-        )
-
-    def test_context_tracker_no_token_snapshot_logging(self) -> None:
-        """writ-context-tracker.sh no longer writes token_snapshot events."""
-        with open(CONTEXT_TRACKER_HOOK) as f:
-            source = f.read()
-        assert "token_snapshot" not in source and "token-snapshot" not in source, (
-            "writ-context-tracker.sh must not log token_snapshot (values were always 0)"
-        )
-
-    def test_context_tracker_does_not_call_auto_feedback(self) -> None:
-        """writ-context-tracker.sh no longer contains auto-feedback call."""
-        with open(CONTEXT_TRACKER_HOOK) as f:
-            source = f.read()
-        assert "auto-feedback" not in source, (
-            "writ-context-tracker.sh must NOT call auto-feedback (moved to SessionEnd)"
-        )
-
-    def test_context_tracker_does_not_call_coverage(self) -> None:
-        """writ-context-tracker.sh no longer contains coverage call."""
-        with open(CONTEXT_TRACKER_HOOK) as f:
-            source = f.read()
-        # 'coverage' may appear in comments; check only function call patterns
-        lines_with_coverage = [
-            ln for ln in source.splitlines()
-            if "coverage" in ln and not ln.strip().startswith("#")
-        ]
-        assert len(lines_with_coverage) == 0, (
-            f"writ-context-tracker.sh must NOT call coverage (moved to SessionEnd). "
-            f"Found non-comment lines: {lines_with_coverage}"
-        )
-
-
-# ---------------------------------------------------------------------------
 # TestLogSessionMetricsRemoval -- log-session-metrics.sh deleted
 # ---------------------------------------------------------------------------
 
 
 class TestLogSessionMetricsRemoval:
-    """log-session-metrics.sh must be removed from Stop hooks in settings.json."""
+    """log-session-metrics.sh must be removed from Stop hooks in hooks.json."""
 
     def _load_settings(self) -> dict[str, Any]:
-        home = os.path.expanduser("~")
-        settings_path = os.path.join(home, ".claude", "settings.json")
-        with open(settings_path) as f:
+        with open(HOOKS_JSON) as f:
             return json.load(f)
 
     def test_log_session_metrics_not_in_stop_hooks(self) -> None:
-        """settings.json Stop event must not include log-session-metrics.sh."""
+        """hooks.json Stop event must not include log-session-metrics.sh."""
         settings = self._load_settings()
         hooks = settings.get("hooks", {})
         stop_hooks = hooks.get("Stop", [])
@@ -246,7 +191,10 @@ class TestLogSessionMetricsRemoval:
 
     def test_log_session_metrics_bash_permission_removed(self) -> None:
         """settings.json Bash permission for log-session-metrics.sh must be removed."""
-        settings = self._load_settings()
+        home = os.path.expanduser("~")
+        settings_path = os.path.join(home, ".claude", "settings.json")
+        with open(settings_path) as f:
+            settings = json.load(f)
         permissions = settings.get("permissions", {})
         allowed_tools = permissions.get("allow", [])
         bash_allows = [t for t in allowed_tools if isinstance(t, str) and "log-session-metrics" in t]
@@ -261,16 +209,14 @@ class TestLogSessionMetricsRemoval:
 
 
 class TestSessionEndRegistration:
-    """writ-session-end.sh must be registered under SessionEnd in settings.json."""
+    """writ-session-end.sh must be registered under SessionEnd in hooks.json."""
 
     def _load_settings(self) -> dict[str, Any]:
-        home = os.path.expanduser("~")
-        settings_path = os.path.join(home, ".claude", "settings.json")
-        with open(settings_path) as f:
+        with open(HOOKS_JSON) as f:
             return json.load(f)
 
     def test_session_end_hook_registered_in_settings(self) -> None:
-        """settings.json SessionEnd event includes writ-session-end.sh."""
+        """hooks.json SessionEnd event includes writ-session-end.sh."""
         settings = self._load_settings()
         hooks = settings.get("hooks", {})
         session_end_hooks = hooks.get("SessionEnd", [])

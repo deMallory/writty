@@ -52,7 +52,7 @@ class TestRuleEffectiveness:
             _ev("rag_query", now + timedelta(minutes=10), rule_id="ENF-X-001"),
             _ev("gate_denial", now + timedelta(minutes=10, seconds=5), rule_id="ENF-X-001"),
         ]
-        rows = analyze_rule_effectiveness(events, since_days=30)
+        rows = analyze_rule_effectiveness(events, since_days=30, as_of=now)
         assert len(rows) == 1
         assert rows[0].rule_id == "ENF-X-001"
         assert rows[0].activations == 2
@@ -65,7 +65,7 @@ class TestRuleEffectiveness:
             _ev("gate_denial", now + timedelta(seconds=5), rule_id="ENF-X-001", session="s1"),
             _ev("approval_pattern_match", now + timedelta(minutes=2), rule_id="ENF-X-001", session="s1"),
         ]
-        rows = analyze_rule_effectiveness(events, since_days=30)
+        rows = analyze_rule_effectiveness(events, since_days=30, as_of=now)
         assert rows[0].stuck_denials == 0
 
     def test_filters_to_window(self, now: datetime) -> None:
@@ -75,7 +75,7 @@ class TestRuleEffectiveness:
             _ev("gate_denial", old, rule_id="ENF-OLD-001"),
             _ev("rag_query", now, rule_id="ENF-NEW-001"),
         ]
-        rows = analyze_rule_effectiveness(events, since_days=30)
+        rows = analyze_rule_effectiveness(events, since_days=30, as_of=now)
         ids = {r.rule_id for r in rows}
         assert "ENF-OLD-001" not in ids
         assert "ENF-NEW-001" in ids
@@ -84,7 +84,7 @@ class TestRuleEffectiveness:
         events = []
         for i in range(20):
             events.append(_ev("rag_query", now, rule_id=f"R{i}"))
-        rows = analyze_rule_effectiveness(events, since_days=30, top=5)
+        rows = analyze_rule_effectiveness(events, since_days=30, top=5, as_of=now)
         assert len(rows) == 5
 
     def test_repeated_denial_counts_as_rationalization(self, now: datetime) -> None:
@@ -93,7 +93,7 @@ class TestRuleEffectiveness:
             _ev("repeated_denial", now + timedelta(seconds=10), rule_id="R1"),
             _ev("repeated_denial", now + timedelta(seconds=20), rule_id="R1"),
         ]
-        rows = analyze_rule_effectiveness(events, since_days=30)
+        rows = analyze_rule_effectiveness(events, since_days=30, as_of=now)
         assert rows[0].rationalizations == 2
 
 
@@ -109,7 +109,7 @@ class TestSkillUsage:
             _ev("rag_query", now, skill_id="SKL-A", session="s1"),
             _ev("playbook_step_complete", now + timedelta(minutes=5), playbook_id="PBK-A", step_index=2, total_steps=2, session="s1"),
         ]
-        rows = analyze_skill_usage(events, since_days=60)
+        rows = analyze_skill_usage(events, since_days=60, as_of=now)
         assert len(rows) == 1
         assert rows[0].skill_id == "SKL-A"
         assert rows[0].loads == 1
@@ -117,13 +117,13 @@ class TestSkillUsage:
 
     def test_skill_loaded_without_completion_recorded(self, now: datetime) -> None:
         events = [_ev("rag_query", now, skill_id="SKL-A", session="s1")]
-        rows = analyze_skill_usage(events, since_days=60)
+        rows = analyze_skill_usage(events, since_days=60, as_of=now)
         assert rows[0].completions == 0
         assert rows[0].completion_rate == pytest.approx(0.0)
 
     def test_skill_never_loaded_excluded(self, now: datetime) -> None:
         events = [_ev("rag_query", now, rule_id="ENF-X-001")]
-        rows = analyze_skill_usage(events, since_days=60)
+        rows = analyze_skill_usage(events, since_days=60, as_of=now)
         assert rows == []
 
 
@@ -140,7 +140,7 @@ class TestPlaybookCompliance:
             _ev("playbook_step_complete", now + timedelta(seconds=10), playbook_id="PBK-X", step_id="s2", step_index=1, total_steps=3, session="ss"),
             _ev("playbook_step_complete", now + timedelta(seconds=20), playbook_id="PBK-X", step_id="s3", step_index=2, total_steps=3, session="ss"),
         ]
-        rows = analyze_playbook_compliance(events, since_days=30)
+        rows = analyze_playbook_compliance(events, since_days=30, as_of=now)
         assert len(rows) == 1
         assert rows[0].playbook_id == "PBK-X"
         assert rows[0].runs == 1
@@ -151,7 +151,7 @@ class TestPlaybookCompliance:
             _ev("playbook_step_complete", now, playbook_id="PBK-X", step_id="s1", step_index=0, total_steps=3, session="ss"),
             _ev("playbook_step_complete", now + timedelta(seconds=10), playbook_id="PBK-X", step_id="s3", step_index=2, total_steps=3, session="ss"),
         ]
-        rows = analyze_playbook_compliance(events, since_days=30)
+        rows = analyze_playbook_compliance(events, since_days=30, as_of=now)
         assert rows[0].compliant_runs == 0
         assert "s2" in rows[0].common_skip_points or rows[0].common_skip_points
 
@@ -160,7 +160,7 @@ class TestPlaybookCompliance:
             _ev("playbook_step_complete", now, playbook_id="PBK-X", step_id="s2", step_index=1, total_steps=3, session="ss"),
             _ev("playbook_step_complete", now + timedelta(seconds=10), playbook_id="PBK-X", step_id="s1", step_index=0, total_steps=3, session="ss"),
         ]
-        rows = analyze_playbook_compliance(events, since_days=30)
+        rows = analyze_playbook_compliance(events, since_days=30, as_of=now)
         assert rows[0].compliant_runs == 0
 
     def test_compliant_when_sequence_starts_at_one_and_reaches_last_index(self, now: datetime) -> None:
@@ -169,7 +169,7 @@ class TestPlaybookCompliance:
             _ev("playbook_step_complete", now + timedelta(seconds=10), playbook_id="PBK-X", step_id="implementation", step_index=2, total_steps=4, session="ss"),
             _ev("playbook_step_complete", now + timedelta(seconds=20), playbook_id="PBK-X", step_id="complete", step_index=3, total_steps=4, session="ss"),
         ]
-        rows = analyze_playbook_compliance(events, since_days=30)
+        rows = analyze_playbook_compliance(events, since_days=30, as_of=now)
         assert len(rows) == 1
         assert rows[0].playbook_id == "PBK-X"
         assert rows[0].runs == 1
@@ -180,7 +180,7 @@ class TestPlaybookCompliance:
             _ev("playbook_step_complete", now, playbook_id="PBK-X", step_id="testing", step_index=1, total_steps=4, session="ss"),
             _ev("playbook_step_complete", now + timedelta(seconds=10), playbook_id="PBK-X", step_id="complete", step_index=3, total_steps=4, session="ss"),
         ]
-        rows = analyze_playbook_compliance(events, since_days=30)
+        rows = analyze_playbook_compliance(events, since_days=30, as_of=now)
         assert len(rows) == 1
         assert rows[0].compliant_runs == 0
 
@@ -225,7 +225,7 @@ class TestTrimCandidates:
             _ev("rag_query", now - timedelta(days=80), rule_id="ENF-DUSTY"),
             _ev("rag_query", now - timedelta(days=75), rule_id="ENF-DUSTY"),
         ]
-        rows = analyze_trim_candidates(events, since_days=90)
+        rows = analyze_trim_candidates(events, since_days=90, as_of=now)
         ids = {r.entity_id for r in rows}
         assert "ENF-DUSTY" in ids
 
@@ -234,7 +234,7 @@ class TestTrimCandidates:
         for i in range(20):
             events.append(_ev("rag_query", now - timedelta(days=i), rule_id="ENF-ACTIVE"))
             events.append(_ev("gate_denial", now - timedelta(days=i), rule_id="ENF-ACTIVE"))
-        rows = analyze_trim_candidates(events, since_days=90)
+        rows = analyze_trim_candidates(events, since_days=90, as_of=now)
         ids = {r.entity_id for r in rows}
         assert "ENF-ACTIVE" not in ids
 
@@ -242,7 +242,7 @@ class TestTrimCandidates:
         events = [
             _ev("rag_query", now - timedelta(days=80), skill_id="SKL-DUSTY"),
         ]
-        rows = analyze_trim_candidates(events, since_days=60)
+        rows = analyze_trim_candidates(events, since_days=60, as_of=now)
         ids = {r.entity_id for r in rows}
         assert "SKL-DUSTY" in ids
 
@@ -258,7 +258,7 @@ class TestQualityJudgeFalsePositives:
         events = [
             _ev("quality_judgment", now, rubric="RUB-A", decision="pass", override=False),
         ]
-        rows = analyze_quality_judge_false_positives(events, since_days=30)
+        rows = analyze_quality_judge_false_positives(events, since_days=30, as_of=now)
         assert rows == []
 
     def test_fail_with_override_counts(self, now: datetime) -> None:
@@ -266,7 +266,7 @@ class TestQualityJudgeFalsePositives:
             _ev("quality_judgment", now, rubric="RUB-A", decision="fail", override=True),
             _ev("quality_judgment", now + timedelta(minutes=1), rubric="RUB-A", decision="fail", override=False),
         ]
-        rows = analyze_quality_judge_false_positives(events, since_days=30)
+        rows = analyze_quality_judge_false_positives(events, since_days=30, as_of=now)
         row = next(r for r in rows if r.rubric == "RUB-A")
         assert row.total_fails == 2
         assert row.overrides == 1
@@ -280,5 +280,5 @@ class TestQualityJudgeFalsePositives:
             _ev("quality_judgment", now, rubric="HIGH", decision="fail", override=True),
             _ev("quality_judgment", now, rubric="HIGH", decision="fail", override=True),
         ]
-        rows = analyze_quality_judge_false_positives(events, since_days=30)
+        rows = analyze_quality_judge_false_positives(events, since_days=30, as_of=now)
         assert rows[0].rubric == "HIGH"

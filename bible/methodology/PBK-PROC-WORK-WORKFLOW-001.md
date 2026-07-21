@@ -16,20 +16,30 @@ evidence: "bin/lib/writ-session.py defines the phase-a and test-skeletons gate f
 always_on: false
 source_attribution: writ-1.4.0-migration
 source_commit: pending
-phase_ids: [planning, testing, implementation]
+phase_ids:
+  - PHA-WORK-001
+  - PHA-WORK-002
+  - PHA-WORK-003
 preconditions: [SKL-PROC-MODE-001]
 dispatched_roles: []
 edges:
-  - { target: SKL-PROC-WRIT-FAILURE-001, type: TEACHES }
-  - { target: ENF-PROC-PLAN-001, type: GATES }
   - { target: PBK-PROC-TDD-001, type: PRECEDES }
+  - { target: PHA-WORK-001, type: CONTAINS }
+  - { target: PHA-WORK-002, type: CONTAINS }
+  - { target: PHA-WORK-003, type: CONTAINS }
+category: CAT-PROC-001
+floor_modes: [work]
+trigger_keywords: ["work mode", "gates", "test skeleton", "plan.md", "approved"]
 ---
 
 # Playbook: Work-mode three-gate pipeline
 
-- Phase 1 (plan). Enter `/plan`, write `plan.md` to the project root WHILE STILL IN /plan mode and BEFORE calling ExitPlanMode. The file must contain the four canonical sections: `## Files`, `## Analysis`, `## Rules Applied`, `## Capabilities`. Also write `capabilities.md` as the checklist surface. Exit /plan, present a summary in chat, then stop and wait for the user to type `approved`.
-- Phase 2 (test skeletons). After approval, write all test skeleton files to disk. Present only `"Test skeletons written: ClassName (N tests), ClassName (N tests). Say approved to proceed."` Do not reproduce method names or descriptions - the user can read the files. Stop and wait for `approved`.
-- Phase 3 (implementation). Only after the test-skeletons gate is approved may non-test files be written. Implement files in dependency order; update `capabilities.md` to check off completed items as `[x]`.
+Three sequential gates. Each phase's content is a CONTAINS-linked Phase node:
+
+1. `PHA-WORK-001` — Plan: write plan.md (four sections) + capabilities.md, present, await `approved`.
+2. `PHA-WORK-002` — Test skeletons: write tests, present class names + counts only, await `approved`.
+3. `PHA-WORK-003` — Implementation: write production code in dependency order, check off capabilities.
+
 - Gate creation is automatic, not manual. When the user types `approved`, a hook creates the gate file under `.claude/gates/`. Never run commands to create gate files yourself; never `touch phase-a.approved`.
 - Phase boundaries are mechanical. The phase-a gate denies every non-`plan.md` write before approval; the test-skeletons gate denies every non-test write before approval. A denial applies to ALL files, not just the one denied (see SKL-PROC-WRIT-FAILURE-001).
 - The /plan UI message `User approved Claude's plan` is format-validation only, not code-write approval. The session state machine in `bin/lib/writ-session.py` waits for the explicit user `approved` in chat, which the hook converts into a gate file.

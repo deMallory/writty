@@ -6,6 +6,7 @@ gracefully when the friction log is empty.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -29,11 +30,18 @@ def empty_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture
 def synthetic_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # Recent timestamps so events stay inside the analyzers' rolling since_days
+    # windows; absolute past dates previously aged out (a time-bomb).
+    base = datetime.now(timezone.utc) - timedelta(days=1)
+
+    def ts(offset: int) -> str:
+        return (base + timedelta(seconds=offset)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     p = tmp_path / "synth.log"
     p.write_text(
-        '{"ts":"2026-04-30T12:00:00Z","session":"s1","mode":"work","event":"rag_query","rule_id":"ENF-X"}\n'
-        '{"ts":"2026-04-30T12:00:01Z","session":"s1","mode":"work","event":"gate_denial","rule_id":"ENF-X","gate":"phase-a"}\n'
-        '{"ts":"2026-04-30T12:00:05Z","session":"s1","mode":"work","event":"quality_judgment","judgment_id":"j1","rubric":"R1","decision":"fail","override":true,"latency_ms":120}\n'
+        f'{{"ts":"{ts(0)}","session":"s1","mode":"work","event":"rag_query","rule_id":"ENF-X"}}\n'
+        f'{{"ts":"{ts(1)}","session":"s1","mode":"work","event":"gate_denial","rule_id":"ENF-X","gate":"phase-a"}}\n'
+        f'{{"ts":"{ts(5)}","session":"s1","mode":"work","event":"quality_judgment","judgment_id":"j1","rubric":"R1","decision":"fail","override":true,"latency_ms":120}}\n'
     )
     monkeypatch.setenv("WRIT_FRICTION_LOG", str(p))
     return p

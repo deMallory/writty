@@ -1,4 +1,7 @@
-"""Reciprocal Rank Fusion of BM25 + vector scores, weighted by severity, confidence, and graph proximity.
+"""Reciprocal-rank normalization of BM25 + vector scores, then weighted linear fusion by severity, confidence, and graph proximity.
+
+Note: this is reciprocal-rank (1/(rank+1)) + weighted sum, NOT classical Reciprocal
+Rank Fusion (which uses 1/(k+rank) with a constant k~60). See normalize_ranks.
 
 score = (w1 * bm25_norm) + (w2 * vector_norm) + (w3 * severity_weight) + (w4 * confidence_weight) + (w5 * graph_proximity)
 
@@ -242,6 +245,29 @@ def filter_proximity_seeds(
     return seeds
 
 
+def _project_rules(
+    rules: list[dict], limit: int, str_fields: list[str], include_relationships: bool = False
+) -> list[dict]:
+    """Project the top-`limit` rules to a budget mode's field set. Base fields
+    (rule_id/node_type/score) always come first, then `str_fields` (default ''),
+    then relationships (default []) only in full mode. Single source for the
+    per-mode projection shared by summary/standard/full. Key order is preserved
+    because it is the serialized output contract."""
+    out: list[dict] = []
+    for rule in rules[:limit]:
+        d = {
+            "rule_id": rule["rule_id"],
+            "node_type": rule.get("node_type", "Rule"),
+            "score": rule.get("score", 0.0),
+        }
+        for f in str_fields:
+            d[f] = rule.get(f, "")
+        if include_relationships:
+            d["relationships"] = rule.get("relationships", [])
+        out.append(d)
+    return out
+
+
 def apply_context_budget(
     rules: list[dict],
     budget_tokens: int | None,
@@ -262,50 +288,24 @@ def apply_context_budget(
             return _summary_with_abstractions(rules, abstractions), "summary"
         # Fallback: statement + trigger only (pre-Phase 8 behavior).
         mode = "summary"
-        limit = SUMMARY_LIMIT
-        trimmed = []
-        for rule in rules[:limit]:
-            trimmed.append({
-                "rule_id": rule["rule_id"],
-                "node_type": rule.get("node_type", "Rule"),
-                "score": rule.get("score", 0.0),
-                "statement": rule.get("statement", ""),
-                "trigger": rule.get("trigger", ""),
-            })
+        trimmed = _project_rules(rules, SUMMARY_LIMIT, ["statement", "trigger"])
         return trimmed, mode
 
     elif budget_tokens <= STANDARD_THRESHOLD:
         mode = "standard"
-        limit = STANDARD_LIMIT
-        trimmed = []
-        for rule in rules[:limit]:
-            trimmed.append({
-                "rule_id": rule["rule_id"],
-                "node_type": rule.get("node_type", "Rule"),
-                "score": rule.get("score", 0.0),
-                "statement": rule.get("statement", ""),
-                "trigger": rule.get("trigger", ""),
-                "violation": rule.get("violation", ""),
-                "pass_example": rule.get("pass_example", ""),
-            })
+        trimmed = _project_rules(
+            rules, STANDARD_LIMIT, ["statement", "trigger", "violation", "pass_example"]
+        )
         return trimmed, mode
 
     else:
         mode = "full"
-        limit = FULL_LIMIT
-        trimmed = []
-        for rule in rules[:limit]:
-            trimmed.append({
-                "rule_id": rule["rule_id"],
-                "node_type": rule.get("node_type", "Rule"),
-                "score": rule.get("score", 0.0),
-                "statement": rule.get("statement", ""),
-                "trigger": rule.get("trigger", ""),
-                "violation": rule.get("violation", ""),
-                "pass_example": rule.get("pass_example", ""),
-                "rationale": rule.get("rationale", ""),
-                "relationships": rule.get("relationships", []),
-            })
+        trimmed = _project_rules(
+            rules,
+            FULL_LIMIT,
+            ["statement", "trigger", "violation", "pass_example", "rationale"],
+            include_relationships=True,
+        )
         return trimmed, mode
 
 

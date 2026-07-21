@@ -14,6 +14,7 @@ import time
 
 import pytest
 
+from _corpus_safety import assert_safe_to_wipe, restore_full_corpus
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 
@@ -142,6 +143,7 @@ class TestTraversalBenchmarks:
     async def test_benchmark_1k_nodes(self) -> None:
         db = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
         try:
+            await assert_safe_to_wipe(db)  # refuse if unsaved graph-first nodes exist
             await db.clear_all()
             await _setup_graph(db, 1000)
 
@@ -152,13 +154,14 @@ class TestTraversalBenchmarks:
                 if stats["p95_ms"] > 3.0:
                     print(f"  WARNING: p95 {stats['p95_ms']}ms exceeds 3ms budget")
         finally:
-            await db.clear_all()
+            await restore_full_corpus(db)  # restore the FULL bible corpus, not empty/Rule-only
             await db.close()
 
     @pytest.mark.asyncio
     async def test_benchmark_10k_nodes(self) -> None:
         db = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
         try:
+            await assert_safe_to_wipe(db)  # refuse if unsaved graph-first nodes exist
             await db.clear_all()
             await _setup_graph(db, 10_000)
 
@@ -168,5 +171,5 @@ class TestTraversalBenchmarks:
                 if stats["p95_ms"] > 3.0:
                     print(f"  WARNING: p95 {stats['p95_ms']}ms exceeds 3ms budget")
         finally:
-            await db.clear_all()
+            await restore_full_corpus(db)  # restore the FULL bible corpus, not empty/Rule-only
             await db.close()

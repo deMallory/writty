@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from writ.shared.tokens import cost_for
+
 # Per ARCH-CONST-001 and ARCH-DRY-001: budget constants load from the
 # canonical JSON file shared with bin/lib/writ-session.py. Single source of truth.
 _BUDGET_JSON = Path(__file__).resolve().parent.parent / "shared" / "budget.json"
@@ -86,10 +88,6 @@ class SessionTracker:
 
 
 def _estimate_token_cost(rules: list[dict], mode: str) -> int:
-    """Estimate token cost of returned rules based on mode."""
-    if mode == "full":
-        return len(rules) * APPROX_TOKENS_PER_RULE_FULL
-    elif mode == "standard":
-        return len(rules) * APPROX_TOKENS_PER_RULE_STANDARD
-    else:
-        return len(rules) * APPROX_TOKENS_PER_RULE_SUMMARY
+    """Estimate token cost of returned rules based on mode (delegates to the
+    single cost policy in shared.tokens; see DUP-S4)."""
+    return cost_for(rules, mode)

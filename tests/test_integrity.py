@@ -132,6 +132,53 @@ class TestStalenessDetection:
         assert "FRESH-RULE-001" not in stale_ids
 
 
+class TestStalenessAllLabels:
+    """2.7b: detect_stale must scan ALL node types, not just :Rule, so a stale
+    methodology node (Skill/Playbook/...) is flagged rather than read as fresh."""
+
+    @pytest.mark.asyncio
+    async def test_stale_methodology_node_flagged(self, db: Neo4jConnection, checker: IntegrityChecker) -> None:
+        old_date = (date.today() - timedelta(days=400)).isoformat()
+        async with db._driver.session(database=db._database) as s:
+            await s.run(
+                "CREATE (n:Skill {skill_id:$id, last_validated:$d, staleness_window:365})",
+                id="STALE-SKILL-001", d=old_date,
+            )
+        stale = await checker.detect_stale()
+        ids = [row["rule_id"] for row in stale]
+        assert "STALE-SKILL-001" in ids, (
+            f"detect_stale did not flag a stale non-Rule node (Rule-only bug): {stale}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_fresh_methodology_node_not_flagged(self, db: Neo4jConnection, checker: IntegrityChecker) -> None:
+        today = date.today().isoformat()
+        async with db._driver.session(database=db._database) as s:
+            await s.run(
+                "CREATE (n:Skill {skill_id:$id, last_validated:$d, staleness_window:365})",
+                id="FRESH-SKILL-001", d=today,
+            )
+        stale = await checker.detect_stale()
+        ids = [row["rule_id"] for row in stale]
+        assert "FRESH-SKILL-001" not in ids
+
+
+class TestDeleteRuleCount:
+    """2.7a: delete_rule must report deletion accurately. count(r) after a
+    DETACH DELETE is unreliable; the fix relies on the result summary counters."""
+
+    @pytest.mark.asyncio
+    async def test_delete_existing_returns_true_then_gone(self, db: Neo4jConnection) -> None:
+        await db.create_rule(_make_rule("DEL-RULE-001"))
+        assert await db.delete_rule("DEL-RULE-001") is True
+        # Second delete finds nothing -> False, proving the first actually removed it.
+        assert await db.delete_rule("DEL-RULE-001") is False
+
+    @pytest.mark.asyncio
+    async def test_delete_missing_returns_false(self, db: Neo4jConnection) -> None:
+        assert await db.delete_rule("NOPE-RULE-999") is False
+
+
 class TestRedundancyDetection:
     """Near-identical rule content detection."""
 
@@ -295,3 +342,274 @@ class TestRunAllChecks:
         # because redundancy was unavailable. The redundancy_unavailable
         # state is informational; it must not by itself drive exit_code.
         assert findings["exit_code"] == 1
+
+
+# ---------------------------------------------------------------------------
+# T0.10/0.11 -- Phase 0 additions: parity violations + category reachability
+# ---------------------------------------------------------------------------
+
+
+class TestParityViolations:
+    """detect_parity_violations compares graph nodes against bible markdown files.
+
+    A node is a "parity violation" when it exists in the graph but does not
+    appear in any *.md file under the given bible_dir. These tests are RED
+    until IntegrityChecker gains detect_parity_violations(bible_dir).
+    """
+
+    @pytest.mark.asyncio
+    async def test_graph_only_node_is_flagged(self, tmp_path: "pathlib.Path") -> None:
+        """A node present in the graph but absent from every bible *.md is returned.
+
+        Setup: checker whose get_all_nodes is stubbed to return one node
+        (ORPHAN-001) and a tmp bible_dir that contains no file mentioning
+        ORPHAN-001.  detect_parity_violations must include ORPHAN-001 in
+        the result list.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        checker = IntegrityChecker(None, None)
+
+        graph_nodes = [{"type": "Rule", "id": "ORPHAN-001"}]
+
+        # bible_dir is empty -- no markdown files mention ORPHAN-001
+        bible_dir = tmp_path / "bible"
+        bible_dir.mkdir()
+
+        with patch.object(checker, "get_all_nodes", AsyncMock(return_value=graph_nodes)):
+            violations = await checker.detect_parity_violations(bible_dir)
+
+        ids = [v["id"] for v in violations]
+        assert "ORPHAN-001" in ids, (
+            f"graph-only node ORPHAN-001 must appear in parity violations; got {ids!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_present_node_not_returned(self, tmp_path: "pathlib.Path") -> None:
+        """A node that appears in at least one bible *.md is NOT a parity violation."""
+        from unittest.mock import AsyncMock, patch
+
+        checker = IntegrityChecker(None, None)
+
+        graph_nodes = [{"type": "Rule", "id": "PRESENT-001"}]
+
+        bible_dir = tmp_path / "bible"
+        bible_dir.mkdir()
+        # Write a markdown file that mentions PRESENT-001
+        (bible_dir / "rules.md").write_text("rule_id: PRESENT-001\nstatement: ok\n")
+
+        with patch.object(checker, "get_all_nodes", AsyncMock(return_value=graph_nodes)):
+            violations = await checker.detect_parity_violations(bible_dir)
+
+        ids = [v["id"] for v in violations]
+        assert "PRESENT-001" not in ids, (
+            f"node present in bible must NOT appear in violations; got {ids!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_all_nodes_in_markdown_returns_empty(self, tmp_path: "pathlib.Path") -> None:
+        """When every graph node appears in at least one *.md, result is empty."""
+        from unittest.mock import AsyncMock, patch
+
+        checker = IntegrityChecker(None, None)
+
+        graph_nodes = [
+            {"type": "Rule", "id": "RULE-A-001"},
+            {"type": "Skill", "id": "SKL-PROC-BRAIN-001"},
+        ]
+
+        bible_dir = tmp_path / "bible"
+        bible_dir.mkdir()
+        (bible_dir / "rules.md").write_text(
+            "rule_id: RULE-A-001\nstatement: ok\n\nskill_id: SKL-PROC-BRAIN-001\n"
+        )
+
+        with patch.object(checker, "get_all_nodes", AsyncMock(return_value=graph_nodes)):
+            violations = await checker.detect_parity_violations(bible_dir)
+
+        assert violations == [], (
+            f"all nodes present in bible must yield empty violations; got {violations!r}"
+        )
+
+
+class TestCategoryReachability:
+    """detect_category_reachability checks that every node has a BELONGS_TO category edge.
+
+    These tests are RED until IntegrityChecker gains detect_category_reachability().
+    """
+
+    @pytest.mark.asyncio
+    async def test_skipped_when_no_categories(self) -> None:
+        """When no Category nodes exist the check is skipped with an explanatory reason.
+
+        The return value must be a dict with skipped=True and a non-empty 'reason'
+        string so the caller (writ validate) can print an informational line rather
+        than a false alarm.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        checker = IntegrityChecker(None, None)
+
+        # Stub: graph has nodes but zero categories
+        with patch.object(checker, "get_all_nodes", AsyncMock(return_value=[
+            {"type": "Rule", "id": "RULE-A-001"},
+        ])):
+            with patch.object(checker, "get_category_count", AsyncMock(return_value=0)):
+                result = await checker.detect_category_reachability()
+
+        assert result.get("skipped") is True, (
+            f"skipped must be True when no categories exist; got {result!r}"
+        )
+        assert result.get("reason"), (
+            f"reason must be a non-empty string; got {result!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_node_without_belongs_to_flagged(self) -> None:
+        """A non-Category node lacking any BELONGS_TO edge is in nodes_without_category.
+
+        When at least one Category node exists the check runs. A node that has
+        no BELONGS_TO edge to any category must appear in the
+        'nodes_without_category' list and skipped must be False.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        checker = IntegrityChecker(None, None)
+
+        all_nodes = [{"type": "Rule", "id": "RULE-UNASSIGNED-001"}]
+        # Simulate: this node has no BELONGS_TO edges
+        nodes_without_category = [{"type": "Rule", "id": "RULE-UNASSIGNED-001"}]
+
+        with patch.object(checker, "get_category_count", AsyncMock(return_value=3)):
+            with patch.object(
+                checker,
+                "_get_nodes_without_belongs_to",
+                AsyncMock(return_value=nodes_without_category),
+            ):
+                result = await checker.detect_category_reachability()
+
+        assert result.get("skipped") is False, (
+            f"skipped must be False when categories exist; got {result!r}"
+        )
+        flagged_ids = [n["id"] for n in result.get("nodes_without_category", [])]
+        assert "RULE-UNASSIGNED-001" in flagged_ids, (
+            f"node without BELONGS_TO must be in nodes_without_category; got {flagged_ids!r}"
+        )
+
+
+class TestRunAllChecksPhase0:
+    """Phase 0 additions: parity and reachability wire into run_all_checks exit code.
+
+    These tests are RED until run_all_checks is extended to call
+    detect_parity_violations and detect_category_reachability and fold their
+    results into exit_code.
+    """
+
+    @pytest.mark.asyncio
+    async def test_parity_violation_flips_exit_code(self) -> None:
+        """Non-empty detect_parity_violations must set exit_code=1; empty keeps 0.
+
+        Uses AsyncMock stubs for all detectors so no Neo4j is needed.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        checker = IntegrityChecker(None, None)
+
+        base_patches = {
+            "detect_conflicts": AsyncMock(return_value=[]),
+            "detect_orphans": AsyncMock(return_value=[]),
+            "detect_stale": AsyncMock(return_value=[]),
+            "detect_redundant": AsyncMock(return_value=[]),
+            "check_unreviewed_count": AsyncMock(return_value=None),
+            "detect_frequency_stale": AsyncMock(return_value=[]),
+            "detect_graduation_flags": AsyncMock(return_value=[]),
+            "detect_dangling_dispatched_roles": AsyncMock(return_value=[]),
+            "detect_orphans_all_labels": AsyncMock(return_value=([], {})),
+            "detect_category_reachability": AsyncMock(
+                return_value={"skipped": True, "reason": "no categories"}
+            ),
+        }
+
+        # Case 1: parity violations present -> exit_code 1
+        violation_patches = dict(base_patches)
+        violation_patches["detect_parity_violations"] = AsyncMock(
+            return_value=[{"type": "Rule", "id": "ORPHAN-001"}]
+        )
+        cms = [patch.object(checker, name, mock) for name, mock in violation_patches.items()]
+        for cm in cms:
+            cm.start()
+        try:
+            findings = await checker.run_all_checks(
+                skip_redundancy=True, bible_dir=None
+            )
+        finally:
+            for cm in cms:
+                cm.stop()
+
+        assert findings["exit_code"] == 1, (
+            f"non-empty parity violations must set exit_code=1; got {findings['exit_code']}"
+        )
+
+        # Case 2: no violations -> exit_code 0
+        clean_patches = dict(base_patches)
+        clean_patches["detect_parity_violations"] = AsyncMock(return_value=[])
+        cms = [patch.object(checker, name, mock) for name, mock in clean_patches.items()]
+        for cm in cms:
+            cm.start()
+        try:
+            findings = await checker.run_all_checks(
+                skip_redundancy=True, bible_dir=None
+            )
+        finally:
+            for cm in cms:
+                cm.stop()
+
+        assert findings["exit_code"] == 0, (
+            f"empty parity violations must leave exit_code=0; got {findings['exit_code']}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_reachability_failure_flips_exit_code(self) -> None:
+        """Non-empty nodes_without_category must set exit_code=1.
+
+        Uses AsyncMock stubs; the reachability result has skipped=False and a
+        non-empty nodes_without_category list.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        checker = IntegrityChecker(None, None)
+
+        base_patches = {
+            "detect_conflicts": AsyncMock(return_value=[]),
+            "detect_orphans": AsyncMock(return_value=[]),
+            "detect_stale": AsyncMock(return_value=[]),
+            "detect_redundant": AsyncMock(return_value=[]),
+            "check_unreviewed_count": AsyncMock(return_value=None),
+            "detect_frequency_stale": AsyncMock(return_value=[]),
+            "detect_graduation_flags": AsyncMock(return_value=[]),
+            "detect_dangling_dispatched_roles": AsyncMock(return_value=[]),
+            "detect_orphans_all_labels": AsyncMock(return_value=([], {})),
+            "detect_parity_violations": AsyncMock(return_value=[]),
+            "detect_category_reachability": AsyncMock(
+                return_value={
+                    "skipped": False,
+                    "nodes_without_category": [{"type": "Rule", "id": "RULE-UNCAT-001"}],
+                }
+            ),
+        }
+
+        cms = [patch.object(checker, name, mock) for name, mock in base_patches.items()]
+        for cm in cms:
+            cm.start()
+        try:
+            findings = await checker.run_all_checks(
+                skip_redundancy=True, bible_dir=None
+            )
+        finally:
+            for cm in cms:
+                cm.stop()
+
+        assert findings["exit_code"] == 1, (
+            "nodes_without_category non-empty must set exit_code=1; "
+            f"got exit_code={findings['exit_code']}"
+        )

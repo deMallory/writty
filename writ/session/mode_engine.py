@@ -1,0 +1,370 @@
+"""Mode engine for the session helper: per-mode config, phase/gate resolvers, and the
+mode get/set/switch commands (including the debug->work root-cause handoff).
+
+POL-6d extracts this out of bin/lib/writ-session.py. It depends only on lower layers
+(cache, friction, locators) and the stdlib -- never on the facade -- so the dependency
+graph stays acyclic. The facade re-exports this surface, so the gate / approval /
+investigation callers resolve the names unchanged.
+"""
+
+import os
+import sys
+
+from writ.session.cache import _read_cache, _write_cache, mutate_cache, record_transition
+from writ.session.friction import _log_friction_event
+from writ.session.locators import PROJECT_ROOT_MARKERS, _find_debug_md, _find_plan_md
+
+
+# MODE_CONFIG is the single source of truth for per-mode gate behavior. A new
+# mode (incident, review-with-gates, ...) is one entry here, not new branches:
+# Work and Debug are two configs of one engine. The legacy names below are
+# derived aliases, kept so existing imports/tests are unaffected.
+MODE_CONFIG: dict[str, dict] = {
+    "work": {
+        "initial_phase": "planning",
+        "gate_sequence": ["phase-a", "test-skeletons"],
+        "phase_after_gate": {"phase-a": "testing", "test-skeletons": "implementation"},
+    },
+    # INV-8: debug is the runtime lens of the investigation engine -- its command
+    # citations are runtime evidence. gate_sequence stays [] (its gate is the
+    # root-cause source-edit gate, not a phase sequence).
+    "debug": {"initial_phase": None, "gate_sequence": [], "phase_after_gate": {}, "source_type": "runtime"},
+    "review": {"initial_phase": None, "gate_sequence": [], "phase_after_gate": {}},
+    "conversation": {"initial_phase": None, "gate_sequence": [], "phase_after_gate": {}},
+    # INV-1: unified investigation mode (audit / explore / research are one
+    # evidence-grounded process). The lens (source_type: code-vs-rules |
+    # codebase | web | runtime) is set per-invocation in later increments;
+    # gate_strictness is per-source-type -- research overrides to "hard" at INV-7,
+    # audit/explore stay "advisory" (audit has an oracle; explore has no done-state).
+    "investigate": {
+        "initial_phase": None,
+        "gate_sequence": [],
+        "phase_after_gate": {},
+        "source_type": None,
+        "gate_strictness": "advisory",
+    },
+}
+
+VALID_MODES = set(MODE_CONFIG)
+
+
+# Mode auto-routing classifier. Defined in the standalone stdlib-only module
+# bin/lib/writ_mode_hint.py (so the UserPromptSubmit hook can import it without the
+# writ-package chain, which was load-flaky inside the hook's prompt-parse block); re-exported
+# here as the package-facing name so callers and tests resolve a single definition.
+_BIN_LIB = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "bin", "lib"
+)
+if _BIN_LIB not in sys.path:
+    sys.path.insert(0, _BIN_LIB)
+from writ_mode_hint import classify_mode_hint  # noqa: E402  (re-export; single source)
+
+# Legacy aliases -- the same objects MODE_CONFIG["work"] holds.
+GATE_SEQUENCE_WORK = MODE_CONFIG["work"]["gate_sequence"]
+_PHASE_AFTER_GATE_WORK = MODE_CONFIG["work"]["phase_after_gate"]
+
+
+def _initial_phase_for_mode(mode: str | None) -> str | None:
+    return MODE_CONFIG.get(mode or "", {}).get("initial_phase")
+
+
+def _gate_sequence_for_mode(mode: str | None) -> list[str]:
+    return MODE_CONFIG.get(mode or "", {}).get("gate_sequence", [])
+
+
+# INV-8: the valid investigation source types (the lens vocabulary). Relocated here in
+# POL-6g-1 -- it is source-type vocabulary, not budget state; cmd_update validates
+# --set-source-type against it. The lens->gate table (_LENS_TABLE) stays with cmd_lens.
+_VALID_SOURCE_TYPES = {"code", "web", "runtime"}
+
+
+def _source_type_for_mode(mode: str | None):
+    """The investigation lens for a mode (code-vs-rules | codebase | web |
+    runtime), or None when the mode has no lens. Reads MODE_CONFIG (INV-1)."""
+    return MODE_CONFIG.get(mode or "", {}).get("source_type")
+
+
+def _gate_strictness_for_mode(mode: str | None) -> str:
+    """Per-source-type synthesis-gate strictness ("advisory" | "hard"). Safe
+    default "advisory" for modes without the field. Reads MODE_CONFIG (INV-1)."""
+    return MODE_CONFIG.get(mode or "", {}).get("gate_strictness", "advisory")
+
+
+def _next_pending_gate(cache: dict) -> str | None:
+    """Return the first gate in the mode's sequence not yet approved."""
+    mode = cache.get("mode")
+    if mode != "work":
+        return None
+    approved = set(cache.get("gates_approved", []))
+    for gate in _gate_sequence_for_mode(mode):
+        if gate not in approved:
+            return gate
+    return None
+
+
+def _extract_root_cause(debug_md_path: str) -> str | None:
+    """Return the body text of debug.md's '## Root cause' section, or None when
+    the section is absent or empty. Reuses gates._section_body (the same parser
+    as _validate_root_cause); returns the text for the Debug -> Work handoff."""
+    # Deferred import: gates imports mode_engine at module level, so a top-level
+    # import here would be circular; at call time there is no cycle.
+    from writ.session.gates import _section_body
+    try:
+        with open(debug_md_path) as f:
+            content = f.read()
+    except OSError:
+        return None
+    body = _section_body(content, r'^##\s+Root\s+[Cc]ause.*$')
+    return (body.strip() or None) if body else None
+
+
+def _promote_root_cause_to_plan(session_id: str, mode: str) -> None:
+    """Debug -> Work handoff: seed plan.md's '## Root Cause Evidence' from
+    debug.md's '## Root cause'.
+
+    Best-effort and idempotent: it never raises into the caller, so a failure can
+    never break the mode transition (the cache is already written by the time
+    this runs). No-op when there is no project / debug.md / populated root cause.
+    """
+    try:
+        project_root = os.getcwd()
+        markers = PROJECT_ROOT_MARKERS
+        path = project_root
+        while path != '/':
+            if any(os.path.exists(os.path.join(path, m)) for m in markers):
+                project_root = path
+                break
+            path = os.path.dirname(path)
+
+        debug_md = _find_debug_md(os.path.join(project_root, "_"))
+        root_cause = _extract_root_cause(debug_md) if debug_md else None
+
+        if not root_cause:
+            _log_friction_event(session_id, mode, "debug_to_work_handoff", evidence_present=False)
+            return
+
+        plan_path = _find_plan_md(project_root) or os.path.join(project_root, "plan.md")
+        existing = ""
+        if os.path.isfile(plan_path):
+            with open(plan_path) as f:
+                existing = f.read()
+
+        if "## Root Cause Evidence" in existing:
+            _log_friction_event(session_id, mode, "debug_to_work_handoff",
+                                evidence_present=True, seeded=False)
+            return
+
+        section = (
+            "## Root Cause Evidence\n\n"
+            + root_cause.strip()
+            + "\n\n_(promoted from debug.md on debug -> work)_\n"
+        )
+        if existing:
+            if not existing.endswith("\n"):
+                existing += "\n"
+            content_out = existing + "\n" + section
+        else:
+            content_out = section
+        with open(plan_path, "w") as f:
+            f.write(content_out)
+
+        _log_friction_event(session_id, mode, "debug_to_work_handoff",
+                            evidence_present=True, seeded=True)
+    except Exception as exc:  # graceful: a handoff failure must not break the transition
+        try:
+            _log_friction_event(session_id, mode, "debug_to_work_handoff",
+                                evidence_present=False, error=type(exc).__name__)
+        except Exception:
+            pass
+
+
+def _apply_mode_set(cache: dict, mode: str, is_orchestrator: bool = False) -> tuple:
+    """Mutate `cache` in place for a fresh mode-set; return (old_mode, new_phase).
+
+    Pure cache mutation -- no lock, no I/O, no friction event -- so both _mode_set
+    (standalone) and _mode_init (already holding the lock) apply it and let the
+    OUTERMOST mutate_cache own the single write. The friction event / debug->work
+    promote fire in the callers AFTER that durable write, preserving the
+    write-before-log ordering the pre-lock code had.
+    """
+    old_mode = cache.get("mode")
+    old_phase = cache.get("current_phase")
+
+    cache["mode"] = mode
+    if is_orchestrator:
+        cache["is_orchestrator"] = True
+
+    # Stamp the project where the mode was declared (the process cwd). Every
+    # mode-bearing cache records its project so the rotation carry's same-project
+    # guard has a positive per-cache identity check (safe under parallel jobs).
+    cache["project_root"] = os.getcwd()
+
+    # Fresh workflow state
+    new_phase = _initial_phase_for_mode(mode)
+    cache["current_phase"] = new_phase
+    cache["gates_approved"] = []
+    cache["paused_work_state"] = None
+    cache["denial_counts"] = {}
+
+    # Audit trail -- skip no-op transitions (e.g. repeated mode set work)
+    if old_phase != new_phase:
+        record_transition(
+            cache, from_phase=old_phase, to_phase=new_phase, trigger="mode-set", mode=mode
+        )
+    return old_mode, new_phase
+
+
+def _mode_set(session_id: str, mode: str, is_orchestrator: bool = False) -> None:
+    """Set mode with fresh state. Internal -- called by cmd_mode.
+
+    This is the EXPLICIT new-task command: it always resets current_phase to the
+    mode's initial phase and clears gates_approved, so a new task never inherits
+    the prior task's stale phase (test_phase_machine_reset). The AUTO-classifier
+    must NOT use this -- it uses `_mode_init`, which never resets a live session.
+    """
+    with mutate_cache(session_id) as cache:
+        old_mode, new_phase = _apply_mode_set(cache, mode, is_orchestrator=is_orchestrator)
+
+    _log_friction_event(
+        session_id, mode, "mode_change",
+        change_type="set", from_mode=old_mode, to_mode=mode,
+    )
+
+    # Debug -> Work handoff: set-work always lands in planning, so promote a
+    # populated debug.md root cause into plan.md. Best-effort (never raises).
+    if old_mode == "debug" and mode == "work":
+        _promote_root_cause_to_plan(session_id, mode)
+
+
+def _mode_init(session_id: str, mode: str, is_orchestrator: bool = False) -> None:
+    """Auto-route helper: set mode ONLY if the session has no mode yet.
+
+    Used by the writ-rag-inject.sh classifier to route an UNSET session to a mode
+    without ever resetting an in-progress one. Unlike `_mode_set` (the explicit
+    new-task command, which resets to fresh state), this is a NO-OP when a mode is
+    already set, so the classifier re-firing on a transient empty cache read can
+    never wipe a live gate cycle back to planning. Idempotent. The authoritative
+    "already set?" check is under the lock.
+    """
+    # Fast path: an unlocked read avoids a per-turn locked rewrite in the common
+    # already-routed case (the classifier fires mode-init every turn).
+    if _read_cache(session_id).get("mode"):
+        return
+    with mutate_cache(session_id) as cache:
+        if cache.get("mode"):
+            return  # already routed; never reset a live session
+        # Atomic check-then-set under the lock; apply the mutation directly (not via
+        # _mode_set) so the durable write happens at THIS block's exit, before the
+        # friction event below (matching direct _mode_set's write-before-log order).
+        old_mode, _ = _apply_mode_set(cache, mode, is_orchestrator=is_orchestrator)
+
+    # old_mode is always None here (guarded above), so the debug->work promote never
+    # applies via this path; emit the mode_change event after the durable write.
+    _log_friction_event(
+        session_id, mode, "mode_change",
+        change_type="set", from_mode=old_mode, to_mode=mode,
+    )
+
+
+def _mode_switch(session_id: str, mode: str) -> None:
+    """Switch mode, preserving Work state if leaving/returning."""
+    with mutate_cache(session_id) as cache:
+        old_mode = cache.get("mode")
+        old_phase = cache.get("current_phase")
+        restored = False
+
+        # Save Work state when leaving Work
+        if old_mode == "work" and mode != "work":
+            cache["paused_work_state"] = {
+                "phase": cache.get("current_phase"),
+                "gates_approved": cache.get("gates_approved", []),
+                "loaded_rule_ids_by_phase": cache.get("loaded_rule_ids_by_phase", {}),
+            }
+
+        # Restore Work state when returning to Work
+        if mode == "work" and cache.get("paused_work_state"):
+            paused = cache["paused_work_state"]
+            cache["current_phase"] = paused["phase"]
+            cache["gates_approved"] = paused["gates_approved"]
+            cache["loaded_rule_ids_by_phase"] = paused.get("loaded_rule_ids_by_phase", {})
+            cache["paused_work_state"] = None
+            new_phase = paused["phase"]
+            restored = True
+        elif mode == "work":
+            # No paused state -- fresh start
+            cache["current_phase"] = "planning"
+            cache["gates_approved"] = []
+            new_phase = "planning"
+        else:
+            cache["current_phase"] = None
+            new_phase = None
+
+        cache["mode"] = mode
+
+        # Audit trail -- collapse restore into single event, skip no-ops
+        if restored:
+            record_transition(
+                cache, from_phase=old_phase, to_phase=new_phase, trigger="mode-switch-restore", mode=mode
+            )
+        elif old_phase != new_phase:
+            record_transition(
+                cache, from_phase=old_phase, to_phase=new_phase, trigger="mode-switch", mode=mode
+            )
+
+    _log_friction_event(
+        session_id, mode, "mode_change",
+        change_type="switch", from_mode=old_mode, to_mode=mode,
+    )
+
+    # Debug -> Work handoff: only when landing in a fresh planning phase (not
+    # when restoring a paused Work state). Best-effort (never raises).
+    if old_mode == "debug" and mode == "work" and new_phase == "planning":
+        _promote_root_cause_to_plan(session_id, mode)
+
+
+def cmd_mode(session_id: str, subcmd: str, value: str | None = None, is_orchestrator: bool = False) -> None:
+    """Get, set, or switch the session mode."""
+    if subcmd == "get":
+        cache = _read_cache(session_id)
+        mode = cache.get("mode")
+        if mode:
+            sys.stdout.write(mode)
+        sys.stdout.write("\n")
+        return
+
+    if subcmd not in ("set", "switch", "init"):
+        print(f"Unknown mode subcommand: {subcmd}", file=sys.stderr)
+        sys.exit(2)
+
+    if value is None:
+        print(f"Usage: writ-session.py mode {subcmd} <conversation|debug|investigate|review|work> <session_id>", file=sys.stderr)
+        sys.exit(2)
+
+    mode = value.lower()
+    if mode not in VALID_MODES:
+        print(f"Invalid mode: {value} (must be one of: {', '.join(sorted(VALID_MODES))})", file=sys.stderr)
+        sys.exit(1)
+
+    if subcmd == "set":
+        _mode_set(session_id, mode, is_orchestrator=is_orchestrator)
+        sys.stdout.write(f"set: {mode}\n")
+    elif subcmd == "init":
+        _mode_init(session_id, mode, is_orchestrator=is_orchestrator)
+        sys.stdout.write(f"init: {mode}\n")
+    else:
+        _mode_switch(session_id, mode)
+        sys.stdout.write(f"switch: {mode}\n")
+
+
+# POL-6e: relocated here (shared by the read gate and cmd_lens; wraps _source_type_for_mode).
+def _effective_source_type(cache: dict):
+    """INV-8: the active investigation lens for a session.
+
+    The per-invocation session `source_type` (set via --set-source-type) wins; otherwise
+    the mode's static default from MODE_CONFIG -- so a debug session reports "runtime"
+    automatically and an investigate session reports whatever lens was selected (or None).
+    """
+    st = cache.get("source_type")
+    if st:
+        return st
+    return _source_type_for_mode(cache.get("mode"))

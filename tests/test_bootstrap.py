@@ -42,7 +42,7 @@ class TestFilePresence:
     def test_install_skill_is_deleted(self) -> None:
         assert not INSTALL_SKILL.exists(), (
             "scripts/install-skill.sh must be deleted — stale and superseded "
-            "by install-harness-config.sh + bootstrap.sh"
+            "by patch-global-config.sh + bootstrap.sh"
         )
 
 
@@ -76,7 +76,7 @@ class TestBootstrapSections:
 
     def test_bootstrap_checks_envsubst_prerequisite(self, content: str) -> None:
         assert "envsubst" in content, (
-            "bootstrap.sh must check for envsubst (used by install-harness-config.sh)"
+            "bootstrap.sh must check for envsubst (used by patch-global-config.sh)"
         )
 
     def test_bootstrap_creates_venv(self, content: str) -> None:
@@ -115,9 +115,12 @@ class TestBootstrapSections:
             "contract, commit dae679a)."
         )
 
-    def test_bootstrap_invokes_harness_installer(self, content: str) -> None:
-        assert "install-harness-config.sh" in content, (
-            "bootstrap.sh must invoke install-harness-config.sh"
+    def test_bootstrap_invokes_global_config_patcher(self, content: str) -> None:
+        assert "patch-global-config.sh" in content, (
+            "bootstrap.sh must invoke patch-global-config.sh (hooks come from the plugin)"
+        )
+        assert "install-harness-config.sh" not in content, (
+            "bootstrap.sh must not reference the deleted standalone seeder"
         )
 
     def test_bootstrap_creates_rule_and_agent_symlinks(self, content: str) -> None:

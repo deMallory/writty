@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 WRIT_ROOT = Path(__file__).resolve().parent.parent
-HOOK = WRIT_ROOT / ".claude" / "hooks" / "writ-postcompact.sh"
+HOOK = WRIT_ROOT / "hooks" / "scripts" / "writ-postcompact.sh"
 
 
 def _run_hook(stdin_json: dict) -> tuple[str, str, int]:

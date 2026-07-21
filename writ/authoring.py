@@ -1,7 +1,14 @@
-"""Authoring helpers for writ add / writ edit.
+"""Authoring helpers for writ add / writ edit / writ review / writ propose.
 
-Functions for relationship suggestion, redundancy detection, and conflict
-path checking. Used by CLI commands; no CLI dependency here.
+Functions for rule-dict assembly, relationship suggestion, redundancy
+detection, conflict path checking, the post-mutation conflict/export tail, and
+the review authority state machine (promote / reject / downweight). Used by CLI
+commands; no CLI dependency here (no typer, no echoes).
+
+Public surface: `build_rule_dict`, `check_id_collision`, `suggest_relationships`,
+`check_redundancy`, `check_conflicts`, `finalize_conflict_and_export`,
+`assert_ai_provisional`, `promote`, `reject`, `downweight`,
+`RuleIdCollisionError`, `IllegalAuthorityTransitionError`.
 
 Per ARCH-ORG-001: domain logic separated from CLI dispatch layer.
 Per ARCH-DI-001: pipeline and cache injected, not imported globally.
@@ -9,6 +16,7 @@ Per ARCH-DI-001: pipeline and cache injected, not imported globally.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -85,7 +93,7 @@ def check_redundancy(
     cosine similarity. Returns candidates exceeding the threshold.
 
     Per INV-5: threshold is cosine similarity (0.95 default), independent
-    of the RRF ranking score.
+    of the reciprocal-rank fusion ranking score.
     """
     query_text = f"{rule_data.get('trigger', '')} {rule_data.get('statement', '')}"
     query_vector = pipeline._model.encode(query_text).tolist()
@@ -123,3 +131,117 @@ def check_conflicts(
                 "direction": n["direction"],
             })
     return conflicts
+
+
+def build_rule_dict(
+    *,
+    rule_id: str,
+    domain,
+    severity,
+    scope,
+    trigger,
+    statement,
+    violation,
+    pass_example,
+    enforcement,
+    rationale,
+) -> dict:
+    """The canonical rule field dict assembled from authored inputs, stamped with
+    today's last_validated. Single source of the field set shared by add + propose."""
+    return {
+        "rule_id": rule_id,
+        "domain": domain,
+        "severity": severity,
+        "scope": scope,
+        "trigger": trigger,
+        "statement": statement,
+        "violation": violation,
+        "pass_example": pass_example,
+        "enforcement": enforcement,
+        "rationale": rationale,
+        "last_validated": date.today().isoformat(),
+    }
+
+
+async def finalize_conflict_and_export(
+    db: Neo4jConnection,
+    cache: AdjacencyCache,
+    rule_id: str,
+    bible_dir: str = "bible/",
+) -> dict:
+    """After a rule mutation (add/edit): rebuild the adjacency cache, detect any
+    CONFLICTS_WITH neighbors, then auto-export the corpus to the bible (Phase 7).
+
+    De-echoed single source for the post-mutation tail shared by the add and
+    edit commands. Rebuilds the caller-passed `cache` in place, then returns
+    structured data so the CLI dispatch layer drives all echoes:
+    `{"conflicts": [...], "rules_exported": int, "export_dir": bible_dir}`.
+    """
+    from pathlib import Path
+
+    from writ.export import export_rules_to_markdown
+
+    await cache.build_from_db(db)
+    conflicts = check_conflicts(rule_id, cache)
+    export_result = await export_rules_to_markdown(db, Path(bible_dir))
+    return {
+        "conflicts": conflicts,
+        "rules_exported": export_result["rules_exported"],
+        "export_dir": bible_dir,
+    }
+
+
+class IllegalAuthorityTransitionError(Exception):
+    """Raised when a review action is attempted against a rule whose authority
+    forbids it (only `ai-provisional` rules may be promoted or rejected).
+
+    Mirrors `RuleIdCollisionError`: carries the context the CLI dispatch layer
+    needs to surface an exact message and exit code (CLEAN-ERR-003).
+    """
+
+    def __init__(self, rule_id: str, current_authority, action: str) -> None:
+        super().__init__(
+            f"{rule_id} has authority '{current_authority}', cannot {action}"
+        )
+        self.rule_id = rule_id
+        self.current_authority = current_authority
+        self.action = action
+
+
+def assert_ai_provisional(existing: dict, rule_id: str, action: str) -> None:
+    """Single source of the promote/reject legality check (DRY-DUP-002)."""
+    if existing.get("authority") != "ai-provisional":
+        raise IllegalAuthorityTransitionError(
+            rule_id, existing.get("authority"), action
+        )
+
+
+async def promote(db: Neo4jConnection, rule_id: str, existing: dict) -> None:
+    """Promote an ai-provisional rule to ai-promoted / peer-reviewed.
+
+    Guards on `existing['authority'] == 'ai-provisional'`; an illegal transition
+    raises `IllegalAuthorityTransitionError` and touches neither db method. A
+    legal transition updates BOTH authority and confidence as a unit.
+    """
+    assert_ai_provisional(existing, rule_id, "promote")
+    await db.update_rule_authority(rule_id, "ai-promoted")
+    await db.update_rule_confidence(rule_id, "peer-reviewed")
+
+
+async def reject(db: Neo4jConnection, rule_id: str, existing: dict) -> None:
+    """Reject (delete) an ai-provisional rule.
+
+    Guards identically to `promote`; an illegal transition raises
+    `IllegalAuthorityTransitionError` and never calls `delete_rule`.
+    """
+    assert_ai_provisional(existing, rule_id, "reject")
+    await db.delete_rule(rule_id)
+
+
+async def downweight(db: Neo4jConnection, rule_id: str) -> None:
+    """Set a rule's confidence floor to speculative.
+
+    Asymmetric by design: NO authority guard (unlike promote/reject), so it
+    succeeds for any authority. Preserve exactly -- do not add a guard.
+    """
+    await db.update_rule_confidence(rule_id, "speculative")

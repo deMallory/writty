@@ -60,13 +60,6 @@ dependencies = [
     "onnxruntime>=1.20,<2",
 ]
 
-[project.urls]
-Homepage = "https://github.com/infinri/Writ"
-Repository = "https://github.com/infinri/Writ"
-Issues = "https://github.com/infinri/Writ/issues"
-Changelog = "https://github.com/infinri/Writ/blob/main/CHANGELOG.md"
-Documentation = "https://github.com/infinri/Writ#readme"
-
 [project.optional-dependencies]
 # Three-group partitioning rule, established 2026-05-14:
 #   - [dependencies]: production runtime only. Imported by writ/ at
@@ -127,6 +120,7 @@ include = ["writ*"]
 markers = [
     "perf: hook latency p95 regression floor tests (Item 4)",
     "integration: tests that require a live Claude Code install or external service",
+    "no_friction_isolation: opt out of the autouse WRIT_FRICTION_LOG redirect (tests that exercise friction-log path resolution itself)",
 ]
 
 [build-system]

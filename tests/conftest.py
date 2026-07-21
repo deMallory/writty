@@ -2,7 +2,72 @@
 
 from __future__ import annotations
 
+import os as _os
+
 import pytest
+
+# F4b/option C: the suite runs its OWN daemon on a dedicated port, never the
+# interactive 8765 singleton. Forcing WRIT_PORT here at conftest import (before any
+# test or tests._daemon import) routes every port resolution to the test daemon:
+# tests._daemon._port(), and the hook/_writ_session curls that inherit WRIT_PORT via
+# subprocess env. This eliminates the shared-daemon bug class (cache desync, the F4
+# friction bleed) -- the interactive daemon is structurally untouched by the suite.
+TEST_DAEMON_PORT = "8799"
+_os.environ["WRIT_PORT"] = TEST_DAEMON_PORT
+
+
+def writ_server_source() -> str:
+    """Layout-agnostic reader for the `writ.server` module/package source text.
+
+    Wave 2 Cycle 1 (branch refactor/w2-server-split) turns writ/server.py from a
+    single 2186-line module into a writ/server/ package (routes/*.py + models.py +
+    __init__.py facade). Content-based source-scan tests (grep-for-a-string /
+    forbidden-literal assertions) care about WHAT the server code contains, not
+    WHERE it lives, so they read through this helper: it concatenates every *.py
+    under writ/server/ if that directory exists (post-split), else falls back to
+    reading the single writ/server.py file (pre-split). This keeps those tests
+    GREEN across the refactor -- only tests/test_server_split_seam.py (and the
+    endpoint-count test, which needs the per-route decorator granularity) assert
+    on the package LAYOUT itself.
+    """
+    from pathlib import Path as _Path
+
+    repo_root = _Path(__file__).resolve().parent.parent
+    pkg_dir = repo_root / "writ" / "server"
+    if pkg_dir.is_dir():
+        return "\n".join(
+            p.read_text(encoding="utf-8") for p in sorted(pkg_dir.rglob("*.py"))
+        )
+    return (repo_root / "writ" / "server.py").read_text(encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_friction_log(request, tmp_path, monkeypatch):
+    """Redirect every friction writer to a per-test tmp log so the suite never
+    pollutes the repo's workflow-friction.log (Phase 1.2).
+
+    Points WRIT_FRICTION_LOG at `tmp_path / "workflow-friction.log"`, which is the
+    dominant location emit-then-read tests already use, so they keep passing while
+    leak-only tests stop polluting the repo log. Subprocesses (hooks, the daemon)
+    inherit the env var, so all writers route there.
+
+    Files that exercise path RESOLUTION itself (marker-walk, unwritable-path
+    fallback) opt out via `pytestmark = pytest.mark.no_friction_isolation`.
+    """
+    # Sandbox the P1 router's central log root for EVERY test (including
+    # no_friction_isolation): when WRIT_FRICTION_LOG is unset the router writes to
+    # ~/.claude/writ/logs/<project>/<stream>.jsonl, so without this a test would leak
+    # real events into the operator's home log store. Separate concern from the
+    # WRIT_FRICTION_LOG isolation below.
+    monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path / "logs"))
+    if request.node.get_closest_marker("no_friction_isolation"):
+        # These tests assert on marker-walk / unwritable-path resolution, so force
+        # the env var OFF (a stray session-level value would defeat that).
+        monkeypatch.delenv("WRIT_FRICTION_LOG", raising=False)
+        yield
+        return
+    monkeypatch.setenv("WRIT_FRICTION_LOG", str(tmp_path / "workflow-friction.log"))
+    yield
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -34,7 +99,7 @@ def pytest_sessionfinish(session, exitstatus):
 
     try:
         subprocess.run(
-            [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
+            [*WRIT_CMD_PREFIX, "import-markdown", "bible/", "--no-export"],
             cwd=str(skill_dir),
             capture_output=True,
             timeout=60,
@@ -46,6 +111,182 @@ def pytest_sessionfinish(session, exitstatus):
         # raise out of pytest_sessionfinish because doing so flips
         # exitstatus and masks the actual test results.
         pass
+
+    # F4b/option C: stop the suite's dedicated test daemon (on the test WRIT_PORT) so it
+    # is not left running. Supersedes F4's restore-the-shared-daemon dance: the suite never
+    # touched the interactive 8765 daemon, so there is nothing to restore. Best-effort.
+    try:
+        from tests._daemon import stop_test_daemon
+
+        stop_test_daemon()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def pytest_sessionstart(session):
+    """INC-1: begin the suite from a complete graph (symmetric to sessionfinish).
+
+    Without this, the first graph-dependent test runs against whatever stale/partial state
+    the previous run or a sibling fixture left in the shared Neo4j. A single MERGE-only
+    `import-markdown bible/` (idempotent, <2s) guarantees a known-complete starting point so
+    a green suite cannot hide a graph-state regression as a skip.
+
+    POL-2b/E3: skip the import when the graph is ALREADY complete -- the MERGE would be a no-op,
+    so the complete-start guarantee still holds and we save ~2-4s on warm runs. An empty/partial
+    graph (or any Neo4j error) is NOT warm and still triggers the import.
+    """
+    import os
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    from tests._writ_cmd import WRIT_CMD_PREFIX
+
+    # Phase 1.2: redirect the shared test daemon's friction telemetry off the repo
+    # log for the whole session. Per-test in-process writers are isolated by the
+    # autouse _isolate_friction_log fixture; this covers events the daemon emits for
+    # test sessions (daemon-first _writ_session calls). setdefault respects an explicit
+    # override. ensure_daemon_aligned() below restarts the daemon onto this path.
+    os.environ.setdefault(
+        "WRIT_FRICTION_LOG",
+        os.path.join(tempfile.gettempdir(), "writ-test-daemon-friction.log"),
+    )
+
+    root = Path(__file__).resolve().parent.parent
+    if not (root / "bible").exists():
+        return
+
+    # Run the warmth probe (which uses asyncio.run for its Neo4j queries) in a worker thread.
+    # Calling asyncio.run on the MAIN thread here -- before pytest's event-loop policy is set up
+    # -- leaves the main-thread "current loop" unset on 3.12, which breaks later tests that use
+    # the legacy asyncio.get_event_loop(). The worker thread isolates that side effect.
+    import concurrent.futures
+
+    try:
+        from tests._corpus import graph_is_warm
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            warm = ex.submit(graph_is_warm).result(timeout=30)
+    except Exception:  # noqa: BLE001
+        warm = False
+
+    if not warm:
+        try:
+            subprocess.run(
+                [*WRIT_CMD_PREFIX, "import-markdown", "bible/", "--no-export"],
+                cwd=str(root),
+                capture_output=True,
+                timeout=120,
+                check=False,
+            )
+        except (subprocess.SubprocessError, OSError):
+            pass
+
+    # F4b/option C: isolation is achieved by forcing WRIT_PORT to the dedicated test
+    # port at conftest import -- the suite NEVER targets the interactive 8765 daemon.
+    # We deliberately do NOT start a session-wide test daemon here: a second (cold)
+    # daemon adds background CPU that tips fragile perf floors (test_retrieval's 15ms
+    # p95), and daemon-dependent tests already degrade gracefully (skip / subprocess
+    # fallback) when no daemon answers on the test port -- same as CI without a daemon.
+    # ensure_daemon_aligned() realigns ONLY if a daemon is already up on the test port
+    # (e.g. a leftover or a module-scoped fixture started one); otherwise it is a no-op.
+    try:
+        from tests._daemon import ensure_daemon_aligned
+
+        ensure_daemon_aligned()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# --- POL-2: shared, session-scoped methodology-benchmark fixtures ----------------------------
+# The corpus is loaded and (expensively) encoded ONCE for the whole suite, instead of per-test
+# inside each INC file's bundle_completeness check. Heavy imports are lazy (inside the fixtures)
+# so non-benchmark tests and onnxruntime-absent envs are unaffected.
+
+
+@pytest.fixture(scope="session")
+def methodology_corpus():
+    from tests.fixtures.methodology_loader import load_corpus
+
+    return load_corpus()
+
+
+@pytest.fixture(scope="session")
+def methodology_ground_truth() -> dict:
+    from tests.fixtures.methodology_loader import load_ground_truth
+
+    return load_ground_truth()
+
+
+@pytest.fixture(scope="session")
+def methodology_kindex(methodology_corpus):
+    from tests.fixtures.methodology_loader import build_methodology_index
+
+    return build_methodology_index(methodology_corpus)
+
+
+@pytest.fixture(scope="session")
+def methodology_adjacency(methodology_corpus) -> dict:
+    from tests.fixtures.methodology_loader import build_adjacency
+
+    return build_adjacency(methodology_corpus)
+
+
+@pytest.fixture(scope="session")
+def methodology_model():
+    pytest.importorskip("onnxruntime")
+    from writ.retrieval.embeddings import CachedEncoder, OnnxEmbeddingModel
+
+    return CachedEncoder(OnnxEmbeddingModel())
+
+
+@pytest.fixture(scope="session")
+def methodology_node_vectors(methodology_corpus, methodology_model) -> dict:
+    """One encode_batch over the retrievable corpus, shared by every benchmark test."""
+    import numpy as np
+
+    retrievable = [n for n in methodology_corpus if n.is_retrievable]
+    vecs = methodology_model.encode_batch([f"{n.trigger} {n.statement}" for n in retrievable])
+    return {n.node_id: np.asarray(vecs[i], dtype=np.float32) for i, n in enumerate(retrievable)}
+
+
+@pytest.fixture(scope="session")
+def live_pipeline():
+    """Shared build_pipeline over the live Neo4j graph (POL-2: was duplicated in INC-9..12).
+
+    Skips when Neo4j is unreachable; self-heals a partial graph via ensure_corpus first.
+    """
+    import asyncio
+
+    from tests._corpus import _connection, ensure_corpus, neo4j_reachable
+
+    if not neo4j_reachable():
+        pytest.skip("Neo4j unreachable")
+    ensure_corpus()
+    from writ.retrieval.pipeline import build_pipeline
+
+    async def _build():
+        db = _connection()
+        try:
+            return await build_pipeline(db)
+        finally:
+            await db.close()
+
+    return asyncio.run(_build())
+
+
+@pytest.fixture()
+def corpus_ready():
+    """INC-1: guarantee the live graph holds the full methodology corpus before a
+    graph-dependent test, self-healing a wiped/partial graph (re-import bible/) rather than
+    letting the test skip on an empty graph (the FIX-5 masking class). Skips ONLY when Neo4j
+    is genuinely unreachable -- never on 'graph empty'."""
+    from tests._corpus import ensure_corpus, neo4j_reachable
+
+    if not neo4j_reachable():
+        pytest.skip("Neo4j unreachable")
+    ensure_corpus()
+    yield
 
 
 @pytest.fixture()

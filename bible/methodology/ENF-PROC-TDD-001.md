@@ -30,9 +30,8 @@ source_attribution: "writ-native"
 source_commit: null
 body: "Prototype mode (session.mode == 'prototype', manual trigger per Section 0.4 decision 2) bypasses this gate. All other modes deny."
 edges:
-  - { target: PBK-PROC-TDD-001, type: TEACHES }
-  - { target: ANT-PROC-TDD-005, type: COUNTERS }
-  - { target: ANT-PROC-TDD-001, type: COUNTERS }
+  - { target: PBK-PROC-TDD-001, type: GATES }
+category: CAT-PROC-001
 ---
 
 # Rule: Test first (mandatory in Work mode)

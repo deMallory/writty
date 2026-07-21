@@ -18,8 +18,9 @@ source_commit: null
 counter_nodes: [PBK-PROC-TDD-001, ENF-PROC-TDD-001]
 named_in: "writ-methodology:test-driven-development"
 edges:
-  - { target: PBK-PROC-TDD-001, type: COUNTERS }
   - { target: ENF-PROC-TDD-001, type: COUNTERS }
+  - { target: PBK-PROC-TDD-001, type: COUNTERS }
+category: CAT-DISC-001
 ---
 
 # Anti-pattern: Test after implementation

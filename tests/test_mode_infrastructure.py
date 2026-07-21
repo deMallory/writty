@@ -15,6 +15,14 @@ import sys
 
 import pytest
 
+# ruff: noqa: F811 -- the shared session_id/project_root fixtures below are consumed
+# as test-method parameters, which ruff misreads as redefinitions of this import.
+from tests.fixtures.session_state import (  # noqa: F401
+    call_can_write,
+    project_root,
+    session_id,
+)
+
 # ---------------------------------------------------------------------------
 # Import the session helper as a module (it's not in a package)
 # ---------------------------------------------------------------------------
@@ -27,24 +35,11 @@ spec = importlib.util.spec_from_file_location("writ_session", HELPER_PATH)
 writ_session = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(writ_session)
 
+# POL-6d: cmd_mode/_mode_set/_mode_switch live in writ.session.mode_engine and resolve
+# _log_friction_event in that module's namespace, so friction-event spies must patch there.
+from writ.session import mode_engine as _mode_engine  # noqa: E402
+
 SKILL_DIR = os.path.join(os.path.dirname(__file__), os.pardir)
-
-
-@pytest.fixture()
-def session_id(tmp_path, monkeypatch):
-    """Provide a unique session ID and redirect cache to tmp_path."""
-    monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
-    return "test-mode-session"
-
-
-@pytest.fixture()
-def project_root(tmp_path):
-    """Create a minimal project root with .git marker and gates dir."""
-    root = tmp_path / "project"
-    root.mkdir()
-    (root / ".git").mkdir()
-    (root / ".claude" / "gates").mkdir(parents=True)
-    return root
 
 
 def _read_raw_cache(tmp_path, session_id: str) -> dict:
@@ -279,7 +274,7 @@ class TestModeChangeFrictionEvents:
         def capture_event(sid, mode, event, **extra):
             logged_events.append({"session": sid, "mode": mode, "event": event, **extra})
 
-        monkeypatch.setattr(writ_session, "_log_friction_event", capture_event)
+        monkeypatch.setattr(_mode_engine, "_log_friction_event", capture_event)
 
         writ_session.cmd_mode(session_id, "set", "work")
         assert len(logged_events) == 1
@@ -293,7 +288,7 @@ class TestModeChangeFrictionEvents:
         def capture_event(sid, mode, event, **extra):
             logged_events.append({"session": sid, "mode": mode, "event": event, **extra})
 
-        monkeypatch.setattr(writ_session, "_log_friction_event", capture_event)
+        monkeypatch.setattr(_mode_engine, "_log_friction_event", capture_event)
 
         writ_session.cmd_mode(session_id, "set", "work")
         writ_session.cmd_mode(session_id, "switch", "debug")
@@ -311,13 +306,9 @@ class TestModeChangeFrictionEvents:
 class TestModeCanWrite:
 
     def _call_can_write(self, session_id, file_path, monkeypatch, capsys):
-        import io
-        capsys.readouterr()
-        envelope = json.dumps({"tool_input": {"file_path": file_path}})
-        monkeypatch.setattr("sys.stdin", io.StringIO(envelope))
-        writ_session.cmd_can_write(session_id, SKILL_DIR)
-        out = capsys.readouterr().out.strip()
-        return json.loads(out)
+        return call_can_write(
+            writ_session, session_id, file_path, monkeypatch, capsys, SKILL_DIR
+        )
 
     def test_no_mode_denies_source_files(self, session_id, project_root, monkeypatch, capsys):
         """No mode set: deny source files."""
@@ -335,10 +326,25 @@ class TestModeCanWrite:
         result = self._call_can_write(session_id, str(project_root / "anything.py"), monkeypatch, capsys)
         assert result["decision"] == "allow"
 
-    def test_debug_allows_all(self, session_id, project_root, monkeypatch, capsys):
-        """Debug mode: all writes allowed (enforcement is in CLAUDE.md, not hooks)."""
+    def test_debug_gates_source_without_root_cause(self, session_id, project_root, monkeypatch, capsys):
+        """Debug mode (Increment 4): source edits are gated until debug.md has a
+        populated '## Root cause'. With no debug.md, a source write is denied."""
         writ_session.cmd_mode(session_id, "set", "debug")
         result = self._call_can_write(session_id, str(project_root / "service.py"), monkeypatch, capsys)
+        assert result["decision"] == "deny"
+        assert "DEBUG-GATE-ROOT-CAUSE" in result.get("reason", "")
+
+    def test_debug_allows_source_once_root_cause_established(self, session_id, project_root, monkeypatch, capsys):
+        """Debug mode: once debug.md has a non-empty '## Root cause', source is writable."""
+        writ_session.cmd_mode(session_id, "set", "debug")
+        (project_root / "debug.md").write_text("## Root cause\nOff-by-one skips the last element.\n")
+        result = self._call_can_write(session_id, str(project_root / "service.py"), monkeypatch, capsys)
+        assert result["decision"] == "allow"
+
+    def test_debug_allows_debug_md_itself(self, session_id, project_root, monkeypatch, capsys):
+        """Debug mode: debug.md is always writable so the agent can author it (no deadlock)."""
+        writ_session.cmd_mode(session_id, "set", "debug")
+        result = self._call_can_write(session_id, str(project_root / "debug.md"), monkeypatch, capsys)
         assert result["decision"] == "allow"
 
     def test_review_allows_all(self, session_id, project_root, monkeypatch, capsys):
@@ -455,10 +461,6 @@ This feature adds a new service endpoint.
 
     def _write_plan(self, project_root, content=None):
         (project_root / "plan.md").write_text(content or self.PLAN_CONTENT)
-
-    def _load_plan_rules(self, session_id):
-        """Load rule IDs from the plan fixture so validation passes."""
-        writ_session.cmd_update(session_id, ["--add-rules", json.dumps(self.PLAN_RULE_IDS)])
 
     def _call_advance_phase(self, session_id, prompt, project_root, monkeypatch, capsys):
         import io
@@ -579,7 +581,7 @@ class TestMetricsWithMode:
         ]
         log_path.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
-        monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         import io
         capsys_out = io.StringIO()
         monkeypatch.setattr("sys.stdout", capsys_out)
@@ -598,7 +600,7 @@ class TestMetricsWithMode:
         ]
         log_path.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
-        monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         import io
         capsys_out = io.StringIO()
         monkeypatch.setattr("sys.stdout", capsys_out)

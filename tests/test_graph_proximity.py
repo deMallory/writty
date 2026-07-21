@@ -15,6 +15,7 @@ import pytest
 import pytest_asyncio
 
 from tests.fixtures.regression_floors import HIT_RATE_FLOOR, MRR5_FLOOR
+from tests.fixtures.retrieval_scoring import hit_rate_at_5, mrr_at_5
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.graph.ingest import discover_rule_files, parse_rules_from_file
@@ -58,6 +59,29 @@ async def db():
     yield conn
     await conn.clear_all()
     await conn.close()
+
+    # Teardown: this fixture's setup AND teardown call clear_all() (a whole-graph
+    # wipe across every project), so without a restore the shared graph would be
+    # left empty for downstream tests in the same pytest run. Mirror the
+    # pipeline_db / _roundtrip_db contract and re-import bible/.
+    import subprocess  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    from tests._writ_cmd import WRIT_CMD_PREFIX  # noqa: PLC0415
+
+    try:
+        subprocess.run(
+            [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
+            cwd=str(Path(__file__).resolve().parent.parent),
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    except (subprocess.SubprocessError, OSError) as e:
+        sys.stderr.write(
+            "[test_graph_proximity teardown] writ import-markdown "
+            f"restore failed: {e}\n"
+        )
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
@@ -238,35 +262,19 @@ class TestBackwardCompatibility:
 class TestGraphBoostRegression:
 
     def test_mrr5_no_regression(self, pipeline_with_graph, ground_truth) -> None:
-        """MRR@5 >= 0.78 on ambiguous set after graph boost. Phase 6 regression gate."""
+        """MRR@5 >= MRR5_FLOOR (0.45) on the ambiguous set after graph boost.
+        Phase 6 regression gate; scored via the shared mrr_at_5 scorer."""
         ambiguous = [q for q in ground_truth if q["set"] == "ambiguous"]
-        reciprocal_ranks: list[float] = []
-        for q in ambiguous:
-            result = pipeline_with_graph.query(q["query"])
-            top5_ids = [r["rule_id"] for r in result["rules"][:5]]
-            expected = q["expected_rule_id"]
-            if expected in top5_ids:
-                rank = top5_ids.index(expected) + 1
-                reciprocal_ranks.append(1.0 / rank)
-            else:
-                reciprocal_ranks.append(0.0)
-
-        mrr5 = sum(reciprocal_ranks) / len(reciprocal_ranks)
+        mrr5, _ = mrr_at_5(pipeline_with_graph, ambiguous)
         print(f"\nMRR@5 with graph boost (ambiguous): {mrr5:.4f} (floor: {MRR5_FLOOR})")
         assert mrr5 >= MRR5_FLOOR
 
     def test_hit_rate_no_regression(self, pipeline_with_graph, ground_truth) -> None:
-        """Hit rate >= 90% on all 83 queries after graph boost."""
-        hits = 0
-        for q in ground_truth:
-            result = pipeline_with_graph.query(q["query"])
-            top5_ids = [r["rule_id"] for r in result["rules"][:5]]
-            if q["expected_rule_id"] in top5_ids:
-                hits += 1
-
-        hit_rate = hits / len(ground_truth)
-        print(f"\nHit rate with graph boost: {hits}/{len(ground_truth)} = {hit_rate:.2%}")
-        assert hit_rate >= HIT_RATE_FLOOR
+        """Hit rate over all 165 queries >= HIT_RATE_FLOOR (0.75) after graph
+        boost; scored via the shared hit_rate_at_5 scorer."""
+        hit, _ = hit_rate_at_5(pipeline_with_graph, ground_truth)
+        print(f"\nHit rate with graph boost: {hit:.2%} (floor: {HIT_RATE_FLOOR:.0%})")
+        assert hit >= HIT_RATE_FLOOR
 
     def test_benchmark_suite_still_passes(self, pipeline_with_graph) -> None:
         """End-to-end p95 stays under the warm-pipeline budget. Budget
@@ -292,3 +300,22 @@ class TestGraphBoostRegression:
         p95 = latencies[int(len(latencies) * 0.95)]
         print(f"\nE2E p95 with graph boost: {p95:.1f}ms (budget: 15ms)")
         assert p95 < 15.0
+
+
+def test_adjacency_excludes_belongs_to_edges() -> None:
+    """BELONGS_TO (category-membership) edges must never enter the adjacency
+    cache. Without this, every rule's depth-2 bundle would dump its entire
+    category: rule -> Category <- sibling is exactly 2 hops, and bundle
+    expansion is INJECTED (not scored), so a 30-member category turns every
+    bundle into a category dump. Guard the explicit exclusion in the loader.
+    """
+    import inspect
+
+    from writ.retrieval.traversal import AdjacencyCache
+
+    src = inspect.getsource(AdjacencyCache.build_from_db)
+    assert "<> 'BELONGS_TO'" in src or '<> "BELONGS_TO"' in src, (
+        "AdjacencyCache.build_from_db must exclude BELONGS_TO edges from the "
+        "traversal cache so category membership never contaminates semantic "
+        "bundles or proximity scoring."
+    )

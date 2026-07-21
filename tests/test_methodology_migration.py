@@ -8,7 +8,6 @@ Covers the new acceptance surface introduced in v1.4.0:
 - writ-rag-inject.sh breadcrumb repoint
 - rules/ stubs pointing at Methodology nodes
 - docs cross-reference updates
-- CHANGELOG 1.4.0 entry structure
 
 Tests are expected to FAIL until implementation is complete.
 """
@@ -228,20 +227,24 @@ class TestMethodologyNodeContent:
     def test_methodology_node_pbk_proc_orchestrator_001_lists_workers(
         self,
     ) -> None:
-        """PBK-PROC-ORCHESTRATOR-001.md dispatched_roles must list all four workers.
+        """PBK-PROC-ORCHESTRATOR-001.md dispatched_roles must list all four workers
+        by canonical ROL-*-001 id.
 
-        The orchestrator playbook must enumerate every worker role so the
-        graph can express the dispatch sequence as edges.
+        The orchestrator playbook must enumerate every worker role so the graph
+        can express the dispatch sequence as edges. Phase 2b: entries must be
+        canonical role ids (ROL-EXPLORER-001, ...), not short names like
+        'writ-explorer' -- the latter never matched a node id, so the DISPATCHES
+        edges were never created (dangling refs).
         """
         node = METHODOLOGY_DIR / "PBK-PROC-ORCHESTRATOR-001.md"
         assert node.exists(), f"{node} must exist"
         fm = _parse_frontmatter(node)
         dispatched_roles = fm.get("dispatched_roles", [])
         expected_roles = {
-            "writ-explorer",
-            "writ-planner",
-            "writ-test-writer",
-            "writ-implementer",
+            "ROL-EXPLORER-001",
+            "ROL-PLANNER-001",
+            "ROL-TEST-WRITER-001",
+            "ROL-IMPLEMENTER-001",
         }
         missing = expected_roles - set(dispatched_roles)
         assert not missing, (
@@ -346,7 +349,7 @@ class TestClaudeMdTemplate:
 class TestRagInjectHook:
     @pytest.fixture()
     def hook_text(self) -> str:
-        path = REPO_ROOT / ".claude" / "hooks" / "writ-rag-inject.sh"
+        path = REPO_ROOT / "hooks" / "scripts" / "writ-rag-inject.sh"
         assert path.exists(), ".claude/hooks/writ-rag-inject.sh must exist"
         return path.read_text()
 
@@ -366,15 +369,24 @@ class TestRagInjectHook:
     def test_rag_inject_hook_references_handbook_md(
         self, hook_text: str
     ) -> None:
-        """writ-rag-inject.sh must reference HANDBOOK.md at least twice.
-
-        Each former SKILL.md breadcrumb (three total, at lines 220, 585, 641)
-        must now point at HANDBOOK.md.
+        """The HANDBOOK.md breadcrumbs must survive (no SKILL.md). The two
+        mode-directive breadcrumbs were centralized into common.sh's
+        emit_mode_directive (D-MODEDIR), so they now live there; the proposal-nudge
+        breadcrumb stays in writ-rag-inject.sh. Count across both files so the
+        SKILL.md -> HANDBOOK.md migration invariant survives the centralization.
         """
-        count = hook_text.count("HANDBOOK.md")
-        assert count >= 2, (
-            f"writ-rag-inject.sh must reference 'HANDBOOK.md' at least 2 times "
-            f"(one per updated breadcrumb); found {count} occurrence(s)"
+        common_text = (REPO_ROOT / "bin" / "lib" / "common.sh").read_text()
+        assert hook_text.count("HANDBOOK.md") >= 1, (
+            "writ-rag-inject.sh must still reference HANDBOOK.md (the proposal nudge)"
+        )
+        assert "HANDBOOK.md" in common_text, (
+            "the centralized emit_mode_directive (common.sh) must carry the "
+            "mode-directive HANDBOOK.md breadcrumb"
+        )
+        total = hook_text.count("HANDBOOK.md") + common_text.count("HANDBOOK.md")
+        assert total >= 2, (
+            f"HANDBOOK.md breadcrumbs across writ-rag-inject.sh + common.sh "
+            f"emit_mode_directive must total >= 2; found {total}"
         )
 
 
@@ -500,67 +512,3 @@ class TestDocsUpdates:
         )
 
 
-# ---------------------------------------------------------------------------
-# CHANGELOG 1.4.0 entry
-# ---------------------------------------------------------------------------
-
-
-class TestChangelogAbsorptionInV150:
-    """The absorption work (SKILL.md removal, Methodology nodes, slimmed
-    CLAUDE.md, hook breadcrumb repointing) ships as part of the combined
-    [1.5.0] release entry. These assertions verify the [1.5.0] section
-    documents the absorption work and uses the established subsection format."""
-
-    @pytest.fixture()
-    def content(self) -> str:
-        path = REPO_ROOT / "CHANGELOG.md"
-        assert path.exists(), "CHANGELOG.md must exist"
-        return path.read_text()
-
-    def test_changelog_150_entry_covers_absorption(self, content: str) -> None:
-        """The [1.5.0] section must reference the SKILL.md removal and each of
-        the four absorption-introduced Methodology nodes by ID."""
-        assert "## [1.5.0]" in content, (
-            "CHANGELOG.md must have a '## [1.5.0]' section"
-        )
-        idx_start = content.index("## [1.5.0]")
-        idx_next = content.find("\n## [", idx_start + 1)
-        section = content[idx_start:idx_next] if idx_next != -1 else content[idx_start:]
-
-        assert "SKILL.md" in section, (
-            "CHANGELOG.md [1.5.0] section must reference SKILL.md "
-            "(the absorption work removes it)"
-        )
-        for node_id in (
-            "SKL-PROC-MODE-001",
-            "PBK-PROC-WORK-WORKFLOW-001",
-            "PBK-PROC-ORCHESTRATOR-001",
-            "SKL-PROC-WRIT-FAILURE-001",
-        ):
-            assert node_id in section, (
-                f"CHANGELOG.md [1.5.0] section must reference {node_id} "
-                f"(absorption work adds this Methodology node)"
-            )
-
-    def test_changelog_150_entry_has_required_subsections(
-        self, content: str
-    ) -> None:
-        """The [1.5.0] CHANGELOG section must contain ### Removed, ### Added,
-        and ### Changed subsections."""
-        assert "## [1.5.0]" in content, "CHANGELOG.md must have a '## [1.5.0]' section"
-        idx_start = content.index("## [1.5.0]")
-        idx_next = content.find("\n## [", idx_start + 1)
-        section = content[idx_start:idx_next] if idx_next != -1 else content[idx_start:]
-
-        for subsection in ("### Removed", "### Added", "### Changed"):
-            assert subsection in section, (
-                f"CHANGELOG.md [1.5.0] section must contain '{subsection}'"
-            )
-
-    def test_changelog_preserves_130_entry(self, content: str) -> None:
-        """CHANGELOG.md must still contain the 1.3.0 section (historical entry,
-        must not be modified or removed)."""
-        assert "## [1.3.0]" in content, (
-            "CHANGELOG.md must retain the '## [1.3.0]' section; "
-            "historical entries must not be removed"
-        )

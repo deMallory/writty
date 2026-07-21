@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# Phase 3: dispatch discipline -- steer generic sub-agent dispatches to the named Writ role.
+#
+# PreToolUse on Task. In work mode, if the dispatched subagent_type is generic
+# (general-purpose / Explore / claude / empty) and the prompt carries no escape marker,
+# DENY the dispatch and name the matching Writ role (keyword-mapped from the prompt).
+# Generic agents are the exception, not the default (SKL-PROC-DISPATCH-001): they carry
+# no role prompt and run outside the Writ session (mode/gates/RAG).
+#
+# Hook type: PreToolUse (matcher: Task)
+# Exit: always 0 (denial is expressed via permissionDecision in stdout JSON, not exit code)
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
+source "$WRIT_DIR/bin/lib/common.sh"
+
+# Capture stderr (Python tracebacks etc.) to debug log so next-occurrence diagnostics
+# are readable. tee preserves stderr propagation so behavior is unchanged. Gated behind
+# WRIT_DEBUG (default OFF): the sink is /dev/null unless WRIT_DEBUG=1.
+exec 2> >(tee -a "$(_writ_debug_enabled && echo "${WRIT_HOOK_LOG:-/tmp/writ-hook-debug.log}" || echo /dev/null)" >&2)
+
+load_hook_env
+SESSION_ID="$HOOK_SESSION_ID"
+[ -z "$SESSION_ID" ] && exit 0
+
+# Enforce in the governed DISPATCH modes: work (orchestrated build), investigate
+# (audit/explore), AND unset/None (empty string). Unset is included because real
+# engineering work routinely runs with no mode explicitly set -- that was the gap
+# that let general-purpose agents through ungoverned (observed in a real client project:
+# the large majority of dispatches ran mode=None). The deliberately-chosen non-build
+# modes (conversation/debug/review) stay ungoverned; the [general-purpose] escape
+# hatch in the prompt always overrides. is_work_mode only checks work, so read the
+# mode file-direct (authoritative, same as Fix C) and case on it.
+DISPATCH_MODE=$(python3 "$WRIT_DIR/bin/lib/writ-session.py" mode get "$SESSION_ID" 2>/dev/null | tr -d '[:space:]')
+case "$DISPATCH_MODE" in
+    work|investigate|"") ;;
+    *) exit 0 ;;
+esac
+
+# Pass the normalized envelope via env var rather than heredoc substitution: raw JSON
+# substituted into a heredoc body preserves embedded control chars that json.loads
+# rejects (same bug class fixed in writ-sdd-review-order.sh). Quoted '<<PY' delimiter =
+# no shell substitution inside; pure stdlib, no module import needed.
+DECISION=$(WRIT_PARSED_ENVELOPE="$HOOK_ENVELOPE" python3 <<'PY'
+import json, os, sys
+raw = os.environ.get("WRIT_PARSED_ENVELOPE", "")
+try:
+    parsed = json.loads(raw)
+except (json.JSONDecodeError, ValueError) as _e:
+    sys.stderr.write(f'[writ-hook json.loads recovery] writ-dispatch-discipline.sh: {_e}\n')
+    sys.exit(0)
+ti = parsed.get("tool_input") or {}
+st = (ti.get("subagent_type") or "").strip().lower()
+prompt = ti.get("prompt") or ti.get("description") or ""
+
+GENERIC = {"", "general-purpose", "explore", "claude"}
+if st not in GENERIC:
+    sys.exit(0)  # already a named (writ-*) role -> allow
+
+if "[general-purpose]" in prompt or "[writ:dispatch-ok]" in prompt:
+    sys.exit(0)  # explicit escape hatch -> allow
+
+p = prompt.lower()
+
+
+def role():
+    # Order matters: exploration is the dominant generic-agent misuse, so its strong
+    # leading verbs win first; implement is checked after plan so "plan the implementation"
+    # routes to the planner, while "implement the plan" (no plan-lead phrase) falls to it.
+    # Returns "" when the task does not map confidently -> we ask instead of forcing a role.
+    if any(k in p for k in ("explore", "investigate", "understand the", "map the",
+                            "find where", "locate", "survey", "look around", "audit",
+                            "research", "look into")):
+        return "writ-explorer"
+    if any(k in p for k in ("test skeleton", "write tests", "write failing", "failing test")):
+        return "writ-test-writer"
+    if "review" in p:
+        return "writ-reviewer"
+    if any(k in p for k in ("decompose", "design the implementation",
+                            "create a plan", "plan the implementation")):
+        return "writ-planner"
+    if any(k in p for k in ("implement", "write the code", "apply the",
+                            "fix the", "edit the", "refactor")):
+        return "writ-implementer"
+    return ""
+
+
+shown = st or "general-purpose"
+r = role()
+if r:
+    # Confident classification: REWRITE the dispatch to the governed Writ role via
+    # updatedInput so the model proceeds with it directly. This replaces the old deny+retry,
+    # which depended on the agent re-dispatching (it largely did not -- the observed 92%
+    # general-purpose). additionalContext makes the swap visible so the agent can re-issue
+    # with '[general-purpose]' if generic was genuinely intended.
+    new_ti = dict(ti)
+    new_ti["subagent_type"] = r
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": new_ti,
+            "additionalContext": (
+                f"[Writ dispatch discipline | SKL-PROC-DISPATCH-001] Routed the generic "
+                f"'{shown}' dispatch to the governed Writ role '{r}' (carries the role prompt + "
+                f"runs inside the Writ session: mode/gates/RAG). To force generic, re-issue the "
+                f"Task with '[general-purpose]' in the prompt."
+            ),
+        }
+    }))
+else:
+    # Ambiguous: no confident role to rewrite to -> ask rather than force a possibly-wrong one.
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"[Writ dispatch discipline | SKL-PROC-DISPATCH-001] You dispatched the generic "
+                f"'{shown}' agent and the task did not map to a specific Writ role. Re-dispatch "
+                f"with writ-explorer (read-only) or writ-implementer, or add '[general-purpose]' "
+                f"to the prompt to override."
+            ),
+        }
+    }))
+PY
+)
+
+[ -n "$DECISION" ] && printf '%s' "$DECISION" | blackbox_log out writ-dispatch-discipline "$SESSION_ID"
+[ -n "$DECISION" ] && echo "$DECISION"
+exit 0

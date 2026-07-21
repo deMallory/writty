@@ -11,6 +11,7 @@ Mandatory rules (mandatory: true) are excluded at index build time.
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
 import os
 import tempfile
@@ -54,6 +55,9 @@ class HnswSidecar(BaseModel):
     ef_construction: int
     M: int
     id_to_rule: dict[str, str] = Field(alias="_id_to_rule")
+    # Default "" preserves back-compat parsing of old sidecars that predate the
+    # field; the rebuild decision for an unverifiable pair is made in load_index.
+    bin_sha256: str = ""
 
 
 class EmbeddingModel(Protocol):
@@ -264,36 +268,14 @@ class HnswlibStore:
         bin_path = cache_dir / "writ_hnsw.bin"
         sidecar_path = cache_dir / "writ_hnsw.json"
 
-        # Build sidecar data
-        sidecar_data = {
-            "corpus_hash": corpus_hash,
-            "rule_count": len(self._id_to_rule),
-            "dims": self._dimensions,
-            "ef_construction": self._ef_construction,
-            "M": self._m,
-            "_id_to_rule": {str(k): v for k, v in self._id_to_rule.items()},
-        }
-
-        # Atomic write: sidecar JSON via tempfile + rename
-        fd, tmp_sidecar = tempfile.mkstemp(dir=str(cache_dir), suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w") as f:
-                json.dump(sidecar_data, f)
-            os.rename(tmp_sidecar, str(sidecar_path))
-        except Exception:
-            # Clean up temp file on failure
-            try:
-                os.unlink(tmp_sidecar)
-            except OSError:
-                pass
-            raise
-
-        # Atomic write: binary index via tempfile + rename
+        # Write the .bin tempfile first so its content fingerprint can be
+        # recorded in the sidecar, closing the #84 torn-pair gap where a sidecar
+        # could be paired with a .bin from a different build.
         fd2, tmp_bin = tempfile.mkstemp(dir=str(cache_dir), suffix=".tmp")
         os.close(fd2)
         try:
             self._index.save_index(tmp_bin)
-            os.rename(tmp_bin, str(bin_path))
+            bin_sha256 = hashlib.sha256(Path(tmp_bin).read_bytes()).hexdigest()
         except Exception:
             try:
                 os.unlink(tmp_bin)
@@ -301,9 +283,59 @@ class HnswlibStore:
                 pass
             raise
 
-    def load_index(self, corpus_hash: str) -> None:
-        """Load HNSW index from disk, verifying corpus hash.
+        # Build sidecar data, recording the sha256 of the exact .bin above.
+        sidecar_data = {
+            "corpus_hash": corpus_hash,
+            "rule_count": len(self._id_to_rule),
+            "dims": self._dimensions,
+            "ef_construction": self._ef_construction,
+            "M": self._m,
+            "_id_to_rule": {str(k): v for k, v in self._id_to_rule.items()},
+            "bin_sha256": bin_sha256,
+        }
 
+        # Write the sidecar tempfile (not yet promoted).
+        fd, tmp_sidecar = tempfile.mkstemp(dir=str(cache_dir), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(sidecar_data, f)
+        except Exception:
+            for tmp in (tmp_sidecar, tmp_bin):
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            raise
+
+        # Promote payload BEFORE pointer: rename the fingerprinted .bin first,
+        # then the sidecar. A reader in the between-renames window sees the old
+        # sidecar (a consistent old pair, or a corpus-hash / bin_sha256 miss that
+        # rebuilds) -- never a new sidecar pointing at content not yet on disk.
+        try:
+            os.rename(tmp_bin, str(bin_path))
+        except Exception:
+            for tmp in (tmp_bin, tmp_sidecar):
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            raise
+        try:
+            os.rename(tmp_sidecar, str(sidecar_path))
+        except Exception:
+            try:
+                os.unlink(tmp_sidecar)
+            except OSError:
+                pass
+            raise
+
+    def load_index(self, corpus_hash: str) -> None:
+        """Load HNSW index from disk, verifying corpus hash AND the .bin fingerprint.
+
+        Two integrity gates: the sidecar's corpus_hash must equal the caller's,
+        and the on-disk .bin's sha256 must equal the sidecar's recorded bin_sha256
+        (#84 torn-pair guard). Either mismatch, or an old-format sidecar with no
+        fingerprint, raises so the caller rebuilds rather than loading wrong vectors.
         Per ARCH-ERR-001: errors include sidecar path and specific mismatch.
         Per plan: resize_index to count * 1.2 for growth headroom.
         """
@@ -347,6 +379,20 @@ class HnswlibStore:
             raise FileNotFoundError(
                 f"HNSW binary index not found at {bin_path} "
                 f"(cache_dir={self._cache_dir})"
+            )
+
+        # Verify the on-disk .bin belongs to this sidecar (#84 torn-pair guard).
+        # An empty stored value means an old-format sidecar we cannot verify;
+        # both cases fail loud so the caller rebuilds rather than silently
+        # loading the wrong vectors.
+        stored_bin_sha = sidecar_data.get("bin_sha256", "")
+        actual = hashlib.sha256(bin_path.read_bytes()).hexdigest()
+        if not stored_bin_sha or actual != stored_bin_sha:
+            self._index = None
+            raise ValueError(
+                f"HNSW binary fingerprint mismatch at {bin_path} "
+                f"(sidecar={sidecar_path}): "
+                f"stored={stored_bin_sha!r}, actual={actual!r}"
             )
 
         # Load the index

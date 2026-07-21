@@ -1,8 +1,27 @@
-"""Phase 3b: auto-approve-gate.sh emits ask-prompt, never silently advances.
+"""Phase 3b (superseded behavior): auto-approve-gate.sh advances the gate itself.
 
-Plan Section 8.1: pattern-match 'approved' must NOT trigger a silent
-advance. It emits a directive pointing the assistant at /writ-approve,
-which performs the authoritative advance with confirmation_source="tool".
+History: the original Phase 3b design had the hook emit a `/writ-approve`
+steer directive on an approval phrase and NEVER advance -- the assistant had
+to echo a token back through the slash command. That dance was circular and
+unworkable, so it was superseded.
+
+Current behavior (plan Section 8.1, revised): the hook is trusted infra. When
+the user types an approval AND the session is in Work mode at the planning or
+testing phase (the two phases that await a human approval gate), the hook
+writes the single-use gate token and advances the phase itself via the server's
+/advance-phase endpoint, printing:
+
+    [Writ: <phase> gate approved -> <next>] ...
+
+This is NOT agent self-approval: the user typed the approval, the trusted hook
+executes it, the agent never handles the token. Outside that precondition (no
+pending gate, wrong mode/phase, or server unreachable) the hook prints a
+fallback:
+
+    [Writ: approval pattern detected]
+    No approval gate was advanced ...
+
+The hook never emits `/writ-approve` anymore.
 """
 from __future__ import annotations
 
@@ -14,54 +33,112 @@ from pathlib import Path
 import pytest
 
 WRIT_ROOT = Path(__file__).resolve().parent.parent
-HOOK = WRIT_ROOT / ".claude" / "hooks" / "auto-approve-gate.sh"
+HOOK = WRIT_ROOT / "hooks" / "scripts" / "auto-approve-gate.sh"
+SESSION_HELPER = WRIT_ROOT / "bin" / "lib" / "writ-session.py"
+PYTHON = WRIT_ROOT / ".venv" / "bin" / "python"
 
 
-def _run_hook(prompt: str, session_id: str = "phase3b-test") -> tuple[str, int]:
+def _run_hook(
+    prompt: str,
+    session_id: str = "phase3b-test",
+    cwd: str = str(WRIT_ROOT),
+) -> tuple[str, int]:
+    # cwd drives the hook's PROJECT_ROOT walk (auto-approve-gate.sh derives it
+    # from os.getcwd() and feeds it to the server's plan.md validator), so an
+    # isolated cwd makes the advance test hermetic. Defaults to WRIT_ROOT to
+    # preserve behavior for every other caller.
     stdin = json.dumps({"session_id": session_id, "prompt": prompt})
     proc = subprocess.run(
         [str(HOOK)],
         input=stdin, capture_output=True, text=True,
-        cwd=str(WRIT_ROOT),
+        cwd=cwd,
     )
     return proc.stdout, proc.returncode
 
 
-class TestApprovalPatternEmitsAskPrompt:
-    """When an approval pattern matches, the hook emits a directive, not a silent advance."""
+def _setup_work_planning_session(session_id: str) -> bool:
+    """Put a session into Work mode at the planning phase. Returns True on success."""
+    interp = str(PYTHON) if PYTHON.exists() else "python3"
+    proc = subprocess.run(
+        [interp, str(SESSION_HELPER), "mode", "set", "work", session_id],
+        capture_output=True, text=True, cwd=str(WRIT_ROOT),
+    )
+    if proc.returncode != 0:
+        return False
+    phase = subprocess.run(
+        [interp, str(SESSION_HELPER), "current-phase", session_id],
+        capture_output=True, text=True, cwd=str(WRIT_ROOT),
+    )
+    try:
+        data = json.loads(phase.stdout)
+    except (json.JSONDecodeError, ValueError):
+        return False
+    return data.get("mode") == "work" and data.get("phase") == "planning"
 
-    def test_approved_emits_writ_approve_directive(self) -> None:
-        stdout, code = _run_hook("approved")
+
+class TestApprovalFallbackWhenNoGatePending:
+    """The default session has no pending Work-mode gate, so an approval phrase
+    produces the 'No approval gate was advanced' fallback -- NOT the old
+    /writ-approve directive and NOT a phase advance."""
+
+    @pytest.mark.parametrize("prompt", ["approved", "lgtm", "proceed"])
+    def test_no_pending_gate_emits_fallback(self, prompt: str) -> None:
+        # Unique session per param so a stray prior advance cannot pollute it;
+        # the default unclassified/null-mode session always hits the fallback.
+        stdout, code = _run_hook(prompt, session_id=f"phase3b-fallback-{prompt}")
         assert code == 0
-        assert "/writ-approve" in stdout, "Hook must steer the assistant to /writ-approve"
         assert "[Writ: approval pattern detected]" in stdout
+        assert "No approval gate was advanced" in stdout
 
-    def test_lgtm_emits_directive(self) -> None:
-        stdout, code = _run_hook("lgtm")
+    @pytest.mark.parametrize("prompt", ["approved", "lgtm", "proceed"])
+    def test_fallback_does_not_emit_writ_approve(self, prompt: str) -> None:
+        # The superseded design steered to /writ-approve. The current hook never does.
+        stdout, code = _run_hook(prompt, session_id=f"phase3b-noapprove-{prompt}")
         assert code == 0
-        assert "/writ-approve" in stdout
+        assert "/writ-approve" not in stdout
 
-    def test_proceed_emits_directive(self) -> None:
-        stdout, code = _run_hook("proceed")
+    @pytest.mark.parametrize("prompt", ["approved", "lgtm", "proceed"])
+    def test_fallback_does_not_advance(self, prompt: str) -> None:
+        # The fallback path is a no-op advance: it must NOT print the advance line.
+        stdout, code = _run_hook(prompt, session_id=f"phase3b-noadv-{prompt}")
         assert code == 0
-        assert "/writ-approve" in stdout
+        assert "gate approved ->" not in stdout
 
 
-class TestApprovalPatternDoesNotSilentlyAdvance:
-    """The hook must not output phase-advance confirmation strings itself."""
+class TestApprovalAdvancesWhenGatePending:
+    """In Work mode at the planning phase, the trusted hook advances the gate
+    itself on a user approval and prints the advance confirmation line."""
 
-    @pytest.mark.parametrize("prompt", ["approved", "lgtm", "proceed", "yes", "go ahead"])
-    def test_no_phase_advance_confirmation(self, prompt: str) -> None:
-        stdout, _ = _run_hook(prompt)
-        # The old silent-advance path printed these phrases.
-        assert "Phase: testing" not in stdout
-        assert "Phase: implementation" not in stdout
-        assert "Gate approved:" not in stdout
-        assert "Phase advanced." not in stdout
+    def test_work_planning_approval_advances(self, tmp_path: Path) -> None:
+        session_id = "phase3b-advance-planning"
+        if not _setup_work_planning_session(session_id):
+            pytest.skip("could not establish a Work-mode planning session")
+        # Hermetic project: a .git marker makes tmp_path itself the PROJECT_ROOT
+        # (auto-approve-gate.sh checks the cwd first), and a gate-valid plan.md
+        # lets the phase-a validator pass regardless of the ambient repo's plan.md
+        # (whose [x] boxes vary with prior work cycles).
+        (tmp_path / ".git").mkdir()
+        (tmp_path / "plan.md").write_text(
+            "## Files\n"
+            "- `src/example.py` (create) -- isolated fixture file\n\n"
+            "## Analysis\n"
+            "Isolated fixture plan to exercise the phase-a approval gate.\n\n"
+            "## Rules Applied\n"
+            "No matching rules\n\n"
+            "## Capabilities\n"
+            "- [ ] does the thing\n"
+        )
+        stdout, code = _run_hook("approved", session_id=session_id, cwd=str(tmp_path))
+        assert code == 0
+        if "No approval gate was advanced" in stdout:
+            pytest.skip("Writ server unreachable; advance path needs the daemon")
+        assert "[Writ: planning gate approved -> testing]" in stdout
+        assert "no agent self-approval" in stdout
+        assert "/writ-approve" not in stdout
 
 
 class TestNonApprovalNoDirective:
-    """Prompts that aren't approvals don't get a directive."""
+    """Prompts that aren't approvals get neither directive nor advance."""
 
     @pytest.mark.parametrize("prompt", [
         "refactor the database module",
@@ -72,6 +149,7 @@ class TestNonApprovalNoDirective:
         stdout, code = _run_hook(prompt)
         assert code == 0
         assert "approval pattern detected" not in stdout
+        assert "gate approved ->" not in stdout
         assert "/writ-approve" not in stdout
 
 
@@ -87,18 +165,18 @@ class TestHookExecutableAndValid:
 
 
 class TestNoLegacySilentAdvanceCall:
-    """The rewrapped hook must not call advance-phase directly.
+    """The hook advances via the server's token-guarded /advance-phase endpoint,
+    never via a direct `_writ_session advance-phase` shell call.
 
-    Defense-in-depth: pattern match signals intent but never performs the
-    advance. The /writ-approve slash command is the only path.
+    The user's approval is the authorization; the hook writes the single-use
+    gate token and POSTs it, so the agent never handles the token. The legacy
+    in-process `_writ_session advance-phase --token` shell path is gone.
     """
 
-    def test_hook_does_not_call_advance_phase(self) -> None:
+    def test_hook_does_not_call_advance_phase_helper(self) -> None:
         content = HOOK.read_text()
-        # The old hook had: _writ_session advance-phase "$SESSION_ID" --token
-        # Phase 3b removes this. Grep for the pattern.
         pattern = re.compile(r"_writ_session\s+advance-phase", re.IGNORECASE)
         assert not pattern.search(content), (
-            "auto-approve-gate.sh must NOT call advance-phase directly (plan Section 8.1). "
-            "Use /writ-approve for tool-confirmed advance."
+            "auto-approve-gate.sh must NOT call the advance-phase shell helper directly. "
+            "It advances through the token-guarded server endpoint instead."
         )

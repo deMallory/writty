@@ -2,6 +2,7 @@
 ## Rule DOC-API-001
 
 **Domain**: documentation
+**Category**: CAT-CODE-DOCS-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -28,6 +29,8 @@ CI gate: spec generation runs on every PR; diffs are visible.
 ### Rationale
 Drifting API docs erode trust in the documentation overall. Generated docs solve this by construction.
 
+Related rules: API-CONTRACT-001.
+
 <!-- RULE END: DOC-API-001 -->
 ---
 
@@ -35,6 +38,7 @@ Drifting API docs erode trust in the documentation overall. Generated docs solve
 ## Rule DOC-ARCH-001
 
 **Domain**: documentation
+**Category**: CAT-CODE-DOCS-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -57,7 +61,7 @@ Architecture decisions are recorded in ADRs (Architecture Decision Records) or a
 ```
 
 ### Enforcement
-Code review. Repository structure includes an ADR directory.
+Code review. Repository structure includes an ADR directory. Related: DOC-README-001.
 
 ### Rationale
 Undocumented decisions cost twice: the original deliberation is lost, and the next change repeats the analysis.
@@ -69,6 +73,7 @@ Undocumented decisions cost twice: the original deliberation is lost, and the ne
 ## Rule DOC-CONFIG-001
 
 **Domain**: documentation
+**Category**: CAT-CODE-DOCS-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -97,6 +102,8 @@ Code review.
 ### Rationale
 Undocumented config is dark magic: nobody knows what to tune in an incident, and the wrong value causes silent failure.
 
+Related rules: DRY-CONFIG-001, SCALE-CONFIG-001.
+
 <!-- RULE END: DOC-CONFIG-001 -->
 ---
 
@@ -104,6 +111,7 @@ Undocumented config is dark magic: nobody knows what to tune in an incident, and
 ## Rule DOC-INLINE-001
 
 **Domain**: documentation
+**Category**: CAT-CODE-DOCS-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -140,6 +148,8 @@ Code review.
 ### Rationale
 Algorithmic intent is opaque from syntax alone. A short why-comment saves the next reader the derivation.
 
+Related rules: CLEAN-COMMENT-001.
+
 <!-- RULE END: DOC-INLINE-001 -->
 ---
 
@@ -147,6 +157,7 @@ Algorithmic intent is opaque from syntax alone. A short why-comment saves the ne
 ## Rule DOC-ONBOARD-001
 
 **Domain**: documentation
+**Category**: CAT-CODE-DOCS-001
 **Severity**: Low
 **Scope**: Component
 **Mandatory**: false
@@ -174,6 +185,8 @@ Repository-level integrity check (writ validate). Onboarding feedback as the tri
 ### Rationale
 Documented onboarding compounds: each new hire improves it. Tribal onboarding stays expensive every cycle.
 
+Related rules: DOC-README-001.
+
 <!-- RULE END: DOC-ONBOARD-001 -->
 ---
 
@@ -181,6 +194,7 @@ Documented onboarding compounds: each new hire improves it. Tribal onboarding st
 ## Rule DOC-README-001
 
 **Domain**: documentation
+**Category**: CAT-CODE-DOCS-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -211,6 +225,8 @@ Code review on the README. Onboarding checklist verifies the README works.
 ### Rationale
 A working README is the cheapest onboarding investment; tribal knowledge is the most expensive.
 
+Related rules: DOC-ONBOARD-001.
+
 <!-- RULE END: DOC-README-001 -->
 ---
 
@@ -218,6 +234,7 @@ A working README is the cheapest onboarding investment; tribal knowledge is the 
 ## Rule DOC-TYPE-001
 
 **Domain**: documentation
+**Category**: CAT-CODE-DOCS-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -246,6 +263,8 @@ Type checker (mypy strict, pyright, tsc strict). CI gate.
 ### Rationale
 Types are the most compact, machine-checked documentation available. They catch bugs at edit time and document the contract for free.
 
+Related rules: DOC-TYPE-002, TEST-EXIST-001.
+
 <!-- RULE END: DOC-TYPE-001 -->
 ---
 
@@ -253,6 +272,7 @@ Types are the most compact, machine-checked documentation available. They catch 
 ## Rule DOC-TYPE-002
 
 **Domain**: documentation
+**Category**: CAT-CODE-DOCS-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -282,5 +302,7 @@ Type checker config (mypy `disallow_untyped_defs`, tsc `noImplicitAny`).
 
 ### Rationale
 Implicit Any defeats the type system. Explicit return types ensure the checker actually validates the contract.
+
+Related rules: DOC-TYPE-001.
 
 <!-- RULE END: DOC-TYPE-002 -->

@@ -4,7 +4,7 @@ Stage 1: Domain Filter -- pre-filter to relevant domain subgraph.
 Stage 2: BM25 Keyword Filter -- Tantivy sparse retrieval on trigger, statement, tags.
 Stage 3: ANN Vector Search -- hnswlib in-process ANN on pre-computed embeddings.
 Stage 4: Graph Traversal -- adjacency cache lookup from top-K results.
-Stage 5a: First-pass ranking -- RRF + metadata weighting (no graph proximity).
+Stage 5a: First-pass ranking -- reciprocal-rank + metadata weighting (no graph proximity).
 Stage 5b: Graph proximity -- compute proximity scores from top-3 first-pass results.
 Stage 5c: Final ranking -- re-score with graph proximity, context budget applied.
 
@@ -24,6 +24,7 @@ import time
 from typing import TYPE_CHECKING
 
 from writ.config import get_hnsw_cache_dir
+from writ.graph.predicates import RANKED_INCLUDE_WHERE
 from writ.retrieval.embeddings import (
     DEFAULT_ONNX_DIR,
     CachedEncoder,
@@ -55,6 +56,16 @@ BM25_CANDIDATE_LIMIT = 50
 VECTOR_CANDIDATE_LIMIT = 10
 DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 FIRST_PASS_TOP_N = 3
+# S4 CRAG abstention operating point for the rule-injection path only. Measured
+# (KG #85) do-no-harm point on the retrieval gold set: gold hit@5/ambiguous MRR@5
+# unchanged from baseline, false-injection 100%->30%. It is applied ONLY where
+# rules are retrieved for injection (the daemon /query path and `writ query`),
+# NOT baked into build_pipeline's default -- authoring (suggest_relationships)
+# and offline diagnostics use the same factory and were not part of that
+# measurement, so they must stay ungated (abstention_threshold=0.0).
+RULE_INJECTION_ABSTENTION_THRESHOLD = 0.30
+# Domains excluded by the semantic-mode legacy fallback (node_routes absent).
+_METHODOLOGY_EXCLUDE_DOMAINS = {"process", "communication", "meta-authoring"}
 
 
 def compute_graph_proximity(
@@ -132,31 +143,34 @@ def _apply_sticky_tiebreak(
     i = 0
 
     while i < n:
-        # Start a new tie group
+        # Start a new tie group. The group max is the score of the group's first
+        # element (input is sorted descending), so every member is within
+        # STICKY_TIEBREAK_THRESHOLD of the group's HIGHEST score.
+        #
+        # PRECONDITION: scored_rules is sorted DESCENDING here, so scored_rules[group_start]
+        # is the group max. This holds only because query() calls apply_authority_preference
+        # (pipeline.py) immediately before this, and that pass is currently a no-op (its
+        # threshold defaults to 0.0 and is never wired from config), so it never reorders.
+        # If apply_authority_preference is ever wired to actually swap pairs, the
+        # group_start==max assumption must be re-verified (re-sort descending first, or
+        # take max(group) explicitly).
         group_start = i
-        group_max_score = scored_rules[i]["score"]
+        group_max = scored_rules[group_start]["score"]
         i += 1
 
         # Extend the group: each next element must be within threshold of the
-        # previous element (adjacent pair comparison).
-        while i < n and (scored_rules[i - 1]["score"] - scored_rules[i]["score"]) <= STICKY_TIEBREAK_THRESHOLD + _TIEBREAK_EPSILON:
+        # GROUP MAX, not of the previous adjacent element. Bounding by the max
+        # stops a harmonically-decaying tail from chaining transitively into one
+        # group, which let a rule far below the top score be promoted above it.
+        while i < n and (group_max - scored_rules[i]["score"]) <= STICKY_TIEBREAK_THRESHOLD + _TIEBREAK_EPSILON:
             i += 1
 
         group = scored_rules[group_start:i]
 
         if len(group) > 1:
-            # Stable sort: preferred rules ordered by their position in
+            # Stable reorder: preferred rules first, ordered by their position in
             # prefer_rule_ids; non-preferred rules keep original relative order.
-            def sort_key(rule: dict) -> tuple[int, int]:
-                rid = rule["rule_id"]
-                if rid in pref_index:
-                    return (0, pref_index[rid])
-                # Non-preferred: preserve original order via enumeration
-                return (1, 0)
-
-            # We need to preserve original positions for non-preferred rules.
-            # Use a two-pass approach: extract preferred and non-preferred,
-            # then interleave.
+            # Two-pass: extract preferred and non-preferred, then interleave.
             preferred = [(r, pref_index[r["rule_id"]]) for r in group if r["rule_id"] in pref_index]
             non_preferred = [r for r in group if r["rule_id"] not in pref_index]
 
@@ -187,7 +201,9 @@ class RetrievalPipeline:
         rule_metadata: dict[str, dict],
         weights: RankingWeights | None = None,
         authority_preference_threshold: float = 0.0,
+        abstention_threshold: float = 0.0,
         abstractions: list[dict] | None = None,
+        node_routes: dict[str, list[str]] | None = None,
     ) -> None:
         self._keyword = keyword_index
         self._vector = vector_store
@@ -196,7 +212,33 @@ class RetrievalPipeline:
         self._metadata = rule_metadata
         self._weights = weights or RankingWeights()
         self._authority_preference_threshold = authority_preference_threshold
+        # S4 CRAG abstention: return no rules when the top raw vector cosine is
+        # below this (0.0 = off).
+        self._abstention_threshold = abstention_threshold
         self._abstractions = abstractions or []
+        # Phase 0 T0.4: maps a node's identity (node_type label or node_id) to
+        # the route tags of its category. When present, the default semantic
+        # filter admits a candidate only if its route list contains 'semantic'.
+        # When None, the pipeline keeps the pre-Phase-0 Rule-only + domain-exclude
+        # fallback so pre-migration graphs (no route metadata) behave unchanged.
+        self._node_routes = node_routes
+
+    def _routes_for(self, rule_id: str) -> list[str]:
+        """Resolve a candidate's category route tags for the Stage 1 filter.
+
+        Lookup order in self._node_routes: the candidate's own id first (per-node
+        override), then its node_type label. Falls back to the candidate's own
+        'routes' metadata if the map carries no entry. Returns [] when no routes
+        are known, which the semantic route filter treats as not-admitted.
+        """
+        routes_map = self._node_routes or {}
+        if rule_id in routes_map:
+            return routes_map[rule_id]
+        meta = self._metadata.get(rule_id, {})
+        node_type = meta.get("node_type", "Rule")
+        if node_type in routes_map:
+            return routes_map[node_type]
+        return meta.get("routes", []) or []
 
     def query(
         self,
@@ -208,6 +250,7 @@ class RetrievalPipeline:
         prefer_rule_ids: list[str] | None = None,
         retrieval_mode: str = "semantic",
         node_types: list[str] | None = None,
+        project: str | None = None,
     ) -> dict:
         """Execute the full 5-stage pipeline.
 
@@ -230,112 +273,51 @@ class RetrievalPipeline:
             active_weights = RankingWeights.literal()
         else:
             active_weights = self._weights
-        # Resolve allowed types. Explicit node_types wins. Otherwise:
-        # - semantic mode (default) restricts to coding-rule corpus: {Rule} with
-        #   domain NOT in methodology-domain set (process, communication, meta-authoring).
-        #   This preserves pre-Phase-1 ambiguous-coding MRR as methodology nodes
-        #   enter the graph but do not contaminate default queries.
-        # - literal mode unlocks the full candidate pool (Rule + methodology types).
-        if node_types is not None:
-            allowed_types = set(node_types)
-            methodology_domain_exclude = False
-        elif retrieval_mode == "literal":
-            allowed_types = None
-            methodology_domain_exclude = False
-        else:
-            allowed_types = {"Rule"}
-            methodology_domain_exclude = True
 
-        # Stage 1: Domain filter.
-        # Applied as post-filter on BM25/vector results since indexes
-        # contain all non-mandatory rules.
+        allowed_types, methodology_domain_exclude, route_filter = self._resolve_stage1_filter(
+            node_types, retrieval_mode,
+        )
+        # M.3 project scope: admit only the caller's project + the shared corpus --
+        # the anti-leak guarantee. project=None preserves search-all.
+        allowed_projects = {project, "_shared"} if project is not None else None
+        domain_lower = domain.lower() if domain else None  # A8: hoist query-constant
 
         # Stage 2: BM25 keyword search.
         bm25_results = self._keyword.search(query_text, limit=BM25_CANDIDATE_LIMIT)
-        bm25_results = [r for r in bm25_results if r["rule_id"] not in exclude]
-        if domain:
-            bm25_results = [
-                r for r in bm25_results
-                if self._metadata.get(r["rule_id"], {}).get("domain", "").lower() == domain.lower()
-            ]
-        if allowed_types is not None:
-            bm25_results = [
-                r for r in bm25_results
-                if self._metadata.get(r["rule_id"], {}).get("node_type", "Rule") in allowed_types
-            ]
-        if methodology_domain_exclude:
-            bm25_results = [
-                r for r in bm25_results
-                if self._metadata.get(r["rule_id"], {}).get("domain", "").lower() not in {"process", "communication", "meta-authoring"}
-            ]
+        bm25_results = self._filter_candidates(
+            bm25_results, lambda r: r["rule_id"], exclude, domain_lower, allowed_types,
+            methodology_domain_exclude, route_filter, allowed_projects,
+        )
 
         # Stage 3: ANN vector search.
         query_vector = self._model.encode(query_text).tolist()
         vector_results: list[ScoredResult] = self._vector.search(query_vector, k=VECTOR_CANDIDATE_LIMIT)
-        vector_results = [r for r in vector_results if r.rule_id not in exclude]
-        if domain:
-            vector_results = [
-                r for r in vector_results
-                if self._metadata.get(r.rule_id, {}).get("domain", "").lower() == domain.lower()
-            ]
-        if allowed_types is not None:
-            vector_results = [
-                r for r in vector_results
-                if self._metadata.get(r.rule_id, {}).get("node_type", "Rule") in allowed_types
-            ]
-        if methodology_domain_exclude:
-            vector_results = [
-                r for r in vector_results
-                if self._metadata.get(r.rule_id, {}).get("domain", "").lower() not in {"process", "communication", "meta-authoring"}
-            ]
-
-        # Merge candidates from both stages.
-        candidate_ids: dict[str, dict] = {}
-        bm25_scores = {r["rule_id"]: r["score"] for r in bm25_results}
-        vector_scores = {r.rule_id: r.score for r in vector_results}
-
-        all_ids = set(bm25_scores.keys()) | set(vector_scores.keys())
-        for rid in all_ids:
-            candidate_ids[rid] = {
-                "bm25_score": bm25_scores.get(rid, 0.0),
-                "vector_score": vector_scores.get(rid, 0.0),
+        # S4 CRAG abstention gate: the raw cosine of the single best semantic
+        # match. self._vector.search returns descending, so [0].score is top-1.
+        # When even the best match is weak (below the threshold), no rule is
+        # relevant -- return an empty set rather than injecting a false positive.
+        top_raw_cosine = max((r.score for r in vector_results), default=0.0)
+        if self._abstention_threshold > 0.0 and top_raw_cosine < self._abstention_threshold:
+            return {
+                "rules": [],
+                "mode": "abstained",
+                "total_candidates": 0,
+                "latency_ms": round((time.perf_counter() - start) * 1000, 3),
+                "abstain_signal": round(top_raw_cosine, 6),
             }
+        vector_results = self._filter_candidates(
+            vector_results, lambda r: r.rule_id, exclude, domain_lower, allowed_types,
+            methodology_domain_exclude, route_filter, allowed_projects,
+        )
 
-        # Normalize BM25 and vector scores via reciprocal rank.
-        if candidate_ids:
-            ids_list = list(candidate_ids.keys())
-            bm25_raw = [candidate_ids[rid]["bm25_score"] for rid in ids_list]
-            vector_raw = [candidate_ids[rid]["vector_score"] for rid in ids_list]
-            bm25_norm = normalize_ranks(bm25_raw)
-            vector_norm = normalize_ranks(vector_raw)
-            for i, rid in enumerate(ids_list):
-                candidate_ids[rid]["bm25_norm"] = bm25_norm[i]
-                candidate_ids[rid]["vector_norm"] = vector_norm[i]
+        # Merge + reciprocal-rank normalize candidates from both stages.
+        candidate_ids = self._merge_and_normalize(bm25_results, vector_results)
 
         # Stage 4: Graph traversal enrichment (from adjacency cache).
         enrichment = self._cache.get_enrichment(list(candidate_ids.keys()))
 
         # Stage 5a: First-pass ranking (without graph proximity, INV-4).
-        fp_bm25, fp_vec, fp_sev, fp_conf = active_weights.first_pass_weights()
-        first_pass_weights = RankingWeights(
-            w_bm25=fp_bm25, w_vector=fp_vec, w_severity=fp_sev, w_confidence=fp_conf,
-            w_graph=0.0, w_bundle_cohesion=0.0,
-        )
-        first_pass_scores: list[tuple[str, float]] = []
-        for rid, scores in candidate_ids.items():
-            meta = self._metadata.get(rid, {})
-            fp_score = compute_score(
-                bm25_norm=scores.get("bm25_norm", 0.0),
-                vector_norm=scores.get("vector_norm", 0.0),
-                severity=meta.get("severity", "medium"),
-                confidence=meta.get("confidence", "production-validated"),
-                weights=first_pass_weights,
-                times_seen_positive=meta.get("times_seen_positive", 0) or 0,
-                times_seen_negative=meta.get("times_seen_negative", 0) or 0,
-            )
-            first_pass_scores.append((rid, fp_score))
-
-        first_pass_scores.sort(key=lambda x: x[1], reverse=True)
+        first_pass_scores = self._first_pass_rank(candidate_ids, active_weights)
 
         # Phase 3c: exclude ai-provisional from proximity seeding.
         first_pass_with_auth = [
@@ -348,47 +330,15 @@ class RetrievalPipeline:
         all_candidate_list = list(candidate_ids.keys())
         proximity = compute_graph_proximity(all_candidate_list, top3_ids, self._cache)
 
-        # Stage 5b': Compute bundle cohesion per candidate (plan Section 3.2 deliverable 4).
-        # A candidate gets a bonus proportional to the fraction of its bundle
-        # members (1-hop neighbors) that are also in the top-N first-pass set.
-        top_n_set = set(rid for rid, _ in first_pass_scores[:FIRST_PASS_TOP_N])
-        bundle_cohesion: dict[str, float] = {}
-        for rid in all_candidate_list:
-            neighbors = self._cache.get_neighbors(rid)
-            if not neighbors:
-                bundle_cohesion[rid] = 0.0
-                continue
-            overlap = sum(1 for n in neighbors if n["rule_id"] in top_n_set)
-            bundle_cohesion[rid] = overlap / len(neighbors)
+        # Stage 5b': bundle cohesion per candidate.
+        bundle_cohesion = self._compute_bundle_cohesion(
+            all_candidate_list, first_pass_scores, active_weights,
+        )
 
         # Stage 5c: Final ranking with graph proximity + bundle cohesion.
-        scored_rules: list[dict] = []
-        for rid, scores in candidate_ids.items():
-            meta = self._metadata.get(rid, {})
-            final_score = compute_score(
-                bm25_norm=scores.get("bm25_norm", 0.0),
-                vector_norm=scores.get("vector_norm", 0.0),
-                severity=meta.get("severity", "medium"),
-                confidence=meta.get("confidence", "production-validated"),
-                graph_proximity=proximity.get(rid, 0.0),
-                bundle_cohesion=bundle_cohesion.get(rid, 0.0),
-                weights=active_weights,
-                times_seen_positive=meta.get("times_seen_positive", 0) or 0,
-                times_seen_negative=meta.get("times_seen_negative", 0) or 0,
-            )
-            rule_entry = {
-                "rule_id": rid,
-                "node_type": meta.get("node_type", "Rule"),
-                "score": round(final_score, 4),
-                "authority": meta.get("authority", "human"),
-                "statement": meta.get("statement", ""),
-                "trigger": meta.get("trigger", ""),
-                "violation": meta.get("violation", ""),
-                "pass_example": meta.get("pass_example", ""),
-                "rationale": meta.get("rationale", ""),
-                "relationships": enrichment.get(rid, []),
-            }
-            scored_rules.append(rule_entry)
+        scored_rules = self._final_rank(
+            candidate_ids, active_weights, proximity, bundle_cohesion, enrichment,
+        )
 
         # Sort by score descending.
         scored_rules.sort(key=lambda r: r["score"], reverse=True)
@@ -415,31 +365,184 @@ class RetrievalPipeline:
             "mode": mode,
             "total_candidates": len(candidate_ids),
             "latency_ms": round(elapsed_ms, 3),
+            "abstain_signal": round(top_raw_cosine, 6),
         }
 
+    def _resolve_stage1_filter(self, node_types, retrieval_mode):
+        """Resolve the Stage 1 candidate filter. Precedence (plan Section 4):
+          1. Explicit node_types passed to query() wins -- caller-chosen
+             whitelist, bypasses the route filter entirely.
+          2. literal mode unlocks the full candidate pool (no filter).
+          3. semantic mode (default):
+             a. node_routes present  -> route filter: admit a candidate only
+                if its category route list contains 'semantic'.
+             b. node_routes None     -> legacy fallback: {Rule}-only + exclude
+                process/communication/meta-authoring domains. Preserves
+                pre-Phase-0 behavior for pre-migration graphs.
+        Returns (allowed_types, methodology_domain_exclude, route_filter).
+        """
+        route_filter = False
+        if node_types is not None:
+            allowed_types = set(node_types)
+            methodology_domain_exclude = False
+        elif retrieval_mode == "literal":
+            allowed_types = None
+            methodology_domain_exclude = False
+        elif self._node_routes is not None:
+            allowed_types = None
+            methodology_domain_exclude = False
+            route_filter = True
+        else:
+            allowed_types = {"Rule"}
+            methodology_domain_exclude = True
+        return allowed_types, methodology_domain_exclude, route_filter
 
-def _compute_corpus_hash(rule_ids: list[str], vectors: list[list[float]]) -> str:
-    """Compute a SHA-256 hash of the corpus for cache invalidation.
+    def _filter_candidates(self, results, id_of, exclude, domain_lower, allowed_types,
+                           methodology_domain_exclude, route_filter, allowed_projects):
+        """Stage 1 candidate filter. The BM25 hits are dict-shaped and the vector hits
+        are ScoredResult-shaped, so the identical predicate chain is parameterized only
+        by how each carries its rule_id (id_of). All filters are pure AND-ed predicates,
+        so the result set is independent of their order.
 
-    Kept for callers that already have embeddings in hand and want to
-    cache-key on the embedded vectors. Prefer `_compute_corpus_hash_from_text`
-    in new code: that variant lets the caller check the HNSW cache before
-    paying for the embedding pass, which is the dominant cold-start cost.
-    """
-    pairs = sorted(zip(rule_ids, [str(v) for v in vectors]))
-    digest_input = "|".join(f"{rid}:{vec}" for rid, vec in pairs)
-    return hashlib.sha256(digest_input.encode()).hexdigest()
+        A8: single pass with ONE metadata lookup per candidate (was up to 5 dict.get +
+        a per-element domain.lower()). M.3 project scope is the last filter.
+        """
+        out = []
+        for r in results:
+            rid = id_of(r)
+            if rid in exclude:
+                continue
+            m = self._metadata.get(rid, {})
+            if domain_lower is not None and m.get("domain", "").lower() != domain_lower:
+                continue
+            if allowed_types is not None and m.get("node_type", "Rule") not in allowed_types:
+                continue
+            if methodology_domain_exclude and m.get("domain", "").lower() in _METHODOLOGY_EXCLUDE_DOMAINS:
+                continue
+            if route_filter and "semantic" not in self._routes_for(rid):
+                continue
+            if allowed_projects is not None and m.get("project", "writ") not in allowed_projects:
+                continue
+            out.append(r)
+        return out
+
+    def _merge_and_normalize(self, bm25_results, vector_results) -> dict:
+        """Merge BM25 + vector hits into candidate_ids and attach reciprocal-rank
+        normalized scores (bm25_norm / vector_norm) in place. Returns candidate_ids."""
+        candidate_ids: dict[str, dict] = {}
+        bm25_scores = {r["rule_id"]: r["score"] for r in bm25_results}
+        vector_scores = {r.rule_id: r.score for r in vector_results}
+
+        all_ids = set(bm25_scores.keys()) | set(vector_scores.keys())
+        for rid in all_ids:
+            candidate_ids[rid] = {
+                "bm25_score": bm25_scores.get(rid, 0.0),
+                "vector_score": vector_scores.get(rid, 0.0),
+            }
+
+        # Normalize BM25 and vector scores via reciprocal rank.
+        if candidate_ids:
+            ids_list = list(candidate_ids.keys())
+            bm25_raw = [candidate_ids[rid]["bm25_score"] for rid in ids_list]
+            vector_raw = [candidate_ids[rid]["vector_score"] for rid in ids_list]
+            bm25_norm = normalize_ranks(bm25_raw)
+            vector_norm = normalize_ranks(vector_raw)
+            for i, rid in enumerate(ids_list):
+                candidate_ids[rid]["bm25_norm"] = bm25_norm[i]
+                candidate_ids[rid]["vector_norm"] = vector_norm[i]
+        return candidate_ids
+
+    def _first_pass_rank(self, candidate_ids, active_weights) -> list:
+        """Stage 5a: first-pass ranking without graph proximity (INV-4).
+        Returns [(rule_id, score)] sorted by score descending."""
+        fp_bm25, fp_vec, fp_sev, fp_conf = active_weights.first_pass_weights()
+        first_pass_weights = RankingWeights(
+            w_bm25=fp_bm25, w_vector=fp_vec, w_severity=fp_sev, w_confidence=fp_conf,
+            w_graph=0.0, w_bundle_cohesion=0.0,
+        )
+        first_pass_scores: list[tuple[str, float]] = []
+        for rid, scores in candidate_ids.items():
+            meta = self._metadata.get(rid, {})
+            fp_score = compute_score(
+                bm25_norm=scores.get("bm25_norm", 0.0),
+                vector_norm=scores.get("vector_norm", 0.0),
+                severity=meta.get("severity", "medium"),
+                confidence=meta.get("confidence", "production-validated"),
+                weights=first_pass_weights,
+                times_seen_positive=meta.get("times_seen_positive", 0) or 0,
+                times_seen_negative=meta.get("times_seen_negative", 0) or 0,
+            )
+            first_pass_scores.append((rid, fp_score))
+
+        first_pass_scores.sort(key=lambda x: x[1], reverse=True)
+        return first_pass_scores
+
+    def _compute_bundle_cohesion(self, all_candidate_list, first_pass_scores, active_weights) -> dict:
+        """Stage 5b': bundle cohesion per candidate (plan Section 3.2 deliverable 4).
+        A candidate gets a bonus proportional to the fraction of its bundle members
+        (1-hop neighbors) that are also in the top-N first-pass set.
+
+        Skipped entirely when w_bundle_cohesion is 0 (the default): the per-candidate
+        neighbor scan is pure overhead when the term is zero-weighted (audit P3).
+        compute_score sees the empty dict's .get default (0.0), so the result is
+        byte-identical to computing it -- this is an optimization, not a behavior change.
+        """
+        bundle_cohesion: dict[str, float] = {}
+        if active_weights.w_bundle_cohesion > 0:
+            top_n_set = set(rid for rid, _ in first_pass_scores[:FIRST_PASS_TOP_N])
+            for rid in all_candidate_list:
+                neighbors = self._cache.get_neighbors(rid)
+                if not neighbors:
+                    bundle_cohesion[rid] = 0.0
+                    continue
+                overlap = sum(1 for n in neighbors if n["rule_id"] in top_n_set)
+                bundle_cohesion[rid] = overlap / len(neighbors)
+        return bundle_cohesion
+
+    def _final_rank(self, candidate_ids, active_weights, proximity, bundle_cohesion, enrichment) -> list:
+        """Stage 5c: final ranking with graph proximity + bundle cohesion.
+        Returns the scored rule-entry dicts (unsorted; the caller sorts)."""
+        scored_rules: list[dict] = []
+        for rid, scores in candidate_ids.items():
+            meta = self._metadata.get(rid, {})
+            final_score = compute_score(
+                bm25_norm=scores.get("bm25_norm", 0.0),
+                vector_norm=scores.get("vector_norm", 0.0),
+                severity=meta.get("severity", "medium"),
+                confidence=meta.get("confidence", "production-validated"),
+                graph_proximity=proximity.get(rid, 0.0),
+                bundle_cohesion=bundle_cohesion.get(rid, 0.0),
+                weights=active_weights,
+                times_seen_positive=meta.get("times_seen_positive", 0) or 0,
+                times_seen_negative=meta.get("times_seen_negative", 0) or 0,
+            )
+            rule_entry = {
+                "rule_id": rid,
+                "node_type": meta.get("node_type", "Rule"),
+                "score": round(final_score, 4),
+                "authority": meta.get("authority", "human"),
+                # severity + domain surfaced so the render shows them instead of "(?, ?, ?)".
+                "severity": meta.get("severity", "medium"),
+                "domain": meta.get("domain", ""),
+                "statement": meta.get("statement", ""),
+                "trigger": meta.get("trigger", ""),
+                "violation": meta.get("violation", ""),
+                "pass_example": meta.get("pass_example", ""),
+                "rationale": meta.get("rationale", ""),
+                "relationships": enrichment.get(rid, []),
+            }
+            scored_rules.append(rule_entry)
+        return scored_rules
 
 
 def _compute_corpus_hash_from_text(rule_ids: list[str], texts: list[str]) -> str:
     """Compute a SHA-256 hash of the corpus from rule_id + text pairs.
 
-    Equivalent invalidation semantics to `_compute_corpus_hash` because
-    the embedding is a deterministic function of text + model: any text
-    change produces a different embedding, and we already pin the model
-    via DEFAULT_ONNX_DIR. The advantage of hashing text directly: callers
-    can compute the cache key BEFORE running the expensive `encode_batch`
-    pass, then skip encoding entirely on a cache hit.
+    Invalidation semantics key on text because the embedding is a deterministic
+    function of text + model: any text change produces a different embedding, and
+    we already pin the model via DEFAULT_ONNX_DIR. The advantage of hashing text
+    directly: callers can compute the cache key BEFORE running the expensive
+    `encode_batch` pass, then skip encoding entirely on a cache hit.
 
     Item 4 (Approach C, 2026-05-15): per-stage instrumentation showed
     `encode_batch` is ~84% of cold-start at 276 rules (~2.3s) and scales
@@ -485,29 +588,16 @@ def _fold_auxiliary_text_into_body(node: dict, label: str) -> str:
     return " ".join(p for p in parts if p)
 
 
-async def build_pipeline(
-    db: Neo4jConnection,
-    model_name: str = DEFAULT_EMBEDDING_MODEL,
-    weights: RankingWeights | None = None,
-    embedding_model: object | None = None,
-) -> RetrievalPipeline:
-    """Build the full pipeline with pre-warmed indexes.
+async def _load_candidates(db: Neo4jConnection) -> tuple[list[dict], dict]:
+    """Load Rule + retrievable methodology nodes from Neo4j into the candidate pool.
 
-    Called once at service startup. Per PERF-LAZY-001: expensive loading
-    happens here, not at query time.
-
-    Model selection: ONNX Runtime preferred (no PyTorch dependency).
-    Falls back to SentenceTransformer if ONNX model not exported.
-
-    Phase 1: loads Rule + all 5 retrievable methodology node types (Skill,
-    Playbook, Technique, AntiPattern, ForbiddenResponse). Non-retrievable types
-    (Phase, Rationalization, PressureScenario, WorkedExample, SubagentRole)
-    enter Stage 4 via the adjacency cache but do not appear as candidates.
+    Returns (all_candidates, rule_metadata). The Rule exclusion predicate is the
+    single-source RANKED_INCLUDE_WHERE constant so the {excluded-from-ranked}=={mandatory}
+    validator (integrity.py) checks the exact predicate the pool uses (WRIT-BLUEPRINT 3.5/3.6a).
     """
-    # Load all non-mandatory rules from Neo4j.
-    query = """
+    query = f"""
         MATCH (r:Rule)
-        WHERE r.mandatory IS NULL OR r.mandatory = false
+        WHERE {RANKED_INCLUDE_WHERE}
         RETURN r
     """
     rules: list[dict] = []
@@ -518,13 +608,9 @@ async def build_pipeline(
 
     # Load retrievable methodology nodes. Each becomes a candidate alongside Rules.
     retrievable_methodology_labels = ("Skill", "Playbook", "Technique", "AntiPattern", "ForbiddenResponse")
-    retrievable_id_fields = {
-        "Skill": "skill_id",
-        "Playbook": "playbook_id",
-        "Technique": "technique_id",
-        "AntiPattern": "antipattern_id",
-        "ForbiddenResponse": "forbidden_id",
-    }
+    # Reuse the canonical label->id-field registry rather than a local copy.
+    from writ.graph.schema import NODE_ID_FIELDS
+    retrievable_id_fields = {label: NODE_ID_FIELDS[label] for label in retrievable_methodology_labels}
     methodology_nodes: list[dict] = []
     for label in retrievable_methodology_labels:
         id_field = retrievable_id_fields[label]
@@ -558,27 +644,22 @@ async def build_pipeline(
 
     # Build metadata lookup (keyed by rule_id which now doubles as node_id).
     rule_metadata: dict[str, dict] = {r["rule_id"]: r for r in all_candidates}
+    return all_candidates, rule_metadata
 
-    # Build BM25 index (Stage 2) -- includes methodology body per plan Section 3.2.
-    keyword_index = KeywordIndex()
-    keyword_index.build(all_candidates)
 
-    # Build vector index (Stage 3).
-    texts = [f"{r.get('trigger', '')} {r.get('statement', '')}" for r in all_candidates]
-    rule_ids = [r["rule_id"] for r in all_candidates]
+def _resolve_encoder(embedding_model, model_name: str, texts: list[str], loaded_from_cache: bool):
+    """Select the embedding model and (on cache miss) compute corpus embeddings. Three states:
+      1. embedding_model passed in -> use it (DI path for tests / pre-warmed servers).
+      2. ONNX construction succeeds -> production path.
+      3. ONNX construction fails -> raise unless WRIT_ALLOW_EMBEDDING_FALLBACK=1.
 
-    # Embedding-model selection: three states.
-    #   1. embedding_model passed in -> use it (DI path for tests / pre-warmed servers).
-    #   2. ONNX construction succeeds -> production path.
-    #   3. ONNX construction fails -> raise unless WRIT_ALLOW_EMBEDDING_FALLBACK=1.
-    #
-    # Prior behavior silently swallowed FileNotFoundError / ImportError and
-    # fell through to SentenceTransformer. That made production daemons and
-    # CI environments answer to the same name while running different code:
-    # cold-start, latency, and memory numbers were unverifiable across
-    # environments. The override env var keeps the dev-only fallback
-    # available, but requires an explicit opt-in so the operational risk
-    # is visible.
+    Prior behavior silently swallowed FileNotFoundError / ImportError and fell through to
+    SentenceTransformer, making production daemons and CI answer to the same name while
+    running different code. The override env var keeps the dev-only fallback available but
+    requires an explicit opt-in so the operational risk is visible.
+
+    Returns (query_encoder, embeddings); embeddings is None on a cache hit (loaded_from_cache).
+    """
     onnx_model = None
     onnx_construction_error: Exception | None = None
     if embedding_model is None:
@@ -587,40 +668,12 @@ async def build_pipeline(
         except (FileNotFoundError, ImportError) as exc:
             onnx_construction_error = exc
 
-    # Item 4 (Approach C, 2026-05-15): compute the HNSW cache key from
-    # rule text BEFORE running the expensive encode_batch pass, then
-    # check the cache. On a cache hit, the HNSW persistence already
-    # contains the vectors -- we still need the model loaded for
-    # query-time encoding, but the corpus-wide encode_batch is the
-    # cold-start bottleneck (~84% of total at 276 rules per
-    # scripts/instrument-cold-start.py). Skipping it on cache hit cuts
-    # warm-cache cold-start from O(N) embedding cost down to O(1) cache
-    # load plus the fixed model load. At 10K rules this is the
-    # difference between ~80s and ~3s.
-    cache_dir = get_hnsw_cache_dir()
-    corpus_hash = _compute_corpus_hash_from_text(rule_ids, texts)
-    # 384 is the fixed output dimensionality of all-MiniLM-L6-v2 (the
-    # only model the pipeline supports). Hardcoding lets us initialize
-    # the vector store before we have any embeddings to inspect.
-    vector_store = HnswlibStore(dimensions=384, cache_dir=cache_dir)
-    loaded_from_cache = False
-    try:
-        vector_store.load_index(corpus_hash=corpus_hash)
-        loaded_from_cache = True
-        _logger.info(
-            "Loaded HNSW index from cache (hash=%s); skipping encode_batch",
-            corpus_hash[:12],
-        )
-    except Exception as exc:
-        _logger.debug("HNSW cache miss: %s", exc)
-
-    # Embeddings only needed when we have to rebuild the HNSW index.
+    # Embeddings only needed when we have to rebuild the HNSW index (cache miss).
     embeddings: list[list[float]] | None = None
 
     if onnx_model is not None:
-        # ONNX for everything: cached single encode at query time. Bulk
-        # encode only on HNSW cache miss.
-        # No PyTorch/sentence-transformers in the runtime path.
+        # ONNX for everything: cached single encode at query time. Bulk encode only on
+        # HNSW cache miss. No PyTorch/sentence-transformers in the runtime path.
         query_encoder = CachedEncoder(onnx_model)
         if not loaded_from_cache:
             embeddings = onnx_model.encode_batch(texts)
@@ -639,9 +692,8 @@ async def build_pipeline(
             else:
                 embeddings = raw_model.encode(texts).tolist()
     elif os.environ.get("WRIT_ALLOW_EMBEDDING_FALLBACK") == "1":
-        # Dev opt-in: ONNX unavailable, fallback explicitly permitted.
-        # Logged at WARNING on every startup so the operator sees the
-        # divergence from the production path.
+        # Dev opt-in: ONNX unavailable, fallback explicitly permitted. Logged at WARNING on
+        # every startup so the operator sees the divergence from the production path.
         _logger.warning(
             "ONNX embedding model unavailable (%s: %s); using "
             "SentenceTransformer fallback because "
@@ -654,13 +706,10 @@ async def build_pipeline(
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
-            # Approach C (Finding D): sentence-transformers moved from
-            # core deps to the [fallback] optional-dependencies group
-            # because the production runtime no longer imports it. The
-            # operator set WRIT_ALLOW_EMBEDDING_FALLBACK=1 but did not
-            # install the [fallback] extras group; the fallback cannot
-            # actually run. Raise the same shape of actionable error
-            # used for the ONNX-unavailable case above.
+            # Approach C (Finding D): sentence-transformers moved from core deps to the
+            # [fallback] optional-dependencies group because the production runtime no
+            # longer imports it. The operator set the env var but did not install the
+            # extras group; the fallback cannot actually run. Raise the same actionable shape.
             raise RuntimeError(
                 "WRIT_ALLOW_EMBEDDING_FALLBACK=1 was set, but the "
                 "sentence-transformers library could not be imported: "
@@ -693,6 +742,74 @@ async def build_pipeline(
             "(NOT recommended for production; latency and memory numbers "
             "will diverge from the production-path measurements)."
         )
+    return query_encoder, embeddings
+
+
+async def build_pipeline(
+    db: Neo4jConnection,
+    model_name: str = DEFAULT_EMBEDDING_MODEL,
+    weights: RankingWeights | None = None,
+    embedding_model: object | None = None,
+    authority_preference_threshold: float = 0.0,
+    # Neutral factory: the gate is OFF by default so authoring
+    # (suggest_relationships) and offline diagnostics that share this factory stay
+    # ungated. Rule-injection callers opt in with RULE_INJECTION_ABSTENTION_THRESHOLD.
+    abstention_threshold: float = 0.0,
+) -> RetrievalPipeline:
+    """Build the full pipeline with pre-warmed indexes.
+
+    Called once at service startup. Per PERF-LAZY-001: expensive loading
+    happens here, not at query time.
+
+    Model selection: ONNX Runtime preferred (no PyTorch dependency).
+    Falls back to SentenceTransformer if ONNX model not exported.
+
+    Phase 1: loads Rule + all 5 retrievable methodology node types (Skill,
+    Playbook, Technique, AntiPattern, ForbiddenResponse). Non-retrievable types
+    (Phase, Rationalization, PressureScenario, WorkedExample, SubagentRole)
+    enter Stage 4 via the adjacency cache but do not appear as candidates.
+    """
+    all_candidates, rule_metadata = await _load_candidates(db)
+
+    # Build BM25 index (Stage 2) -- includes methodology body per plan Section 3.2.
+    keyword_index = KeywordIndex()
+    keyword_index.build(all_candidates)
+
+    # Build vector index (Stage 3).
+    texts = [f"{r.get('trigger', '')} {r.get('statement', '')}" for r in all_candidates]
+    rule_ids = [r["rule_id"] for r in all_candidates]
+
+    # Item 4 (Approach C, 2026-05-15): compute the HNSW cache key from
+    # rule text BEFORE running the expensive encode_batch pass, then
+    # check the cache. On a cache hit, the HNSW persistence already
+    # contains the vectors -- we still need the model loaded for
+    # query-time encoding, but the corpus-wide encode_batch is the
+    # cold-start bottleneck (~84% of total at 276 rules per
+    # scripts/instrument-cold-start.py). Skipping it on cache hit cuts
+    # warm-cache cold-start from O(N) embedding cost down to O(1) cache
+    # load plus the fixed model load. At 10K rules this is the
+    # difference between ~80s and ~3s.
+    cache_dir = get_hnsw_cache_dir()
+    corpus_hash = _compute_corpus_hash_from_text(rule_ids, texts)
+    # 384 is the fixed output dimensionality of all-MiniLM-L6-v2 (the
+    # only model the pipeline supports). Hardcoding lets us initialize
+    # the vector store before we have any embeddings to inspect.
+    vector_store = HnswlibStore(dimensions=384, cache_dir=cache_dir)
+    loaded_from_cache = False
+    try:
+        vector_store.load_index(corpus_hash=corpus_hash)
+        loaded_from_cache = True
+        _logger.info(
+            "Loaded HNSW index from cache (hash=%s); skipping encode_batch",
+            corpus_hash[:12],
+        )
+    except Exception as exc:
+        _logger.debug("HNSW cache miss: %s", exc)
+
+    # Select the embedding model and (on cache miss) bulk-encode the corpus.
+    query_encoder, embeddings = _resolve_encoder(
+        embedding_model, model_name, texts, loaded_from_cache,
+    )
 
     if not loaded_from_cache:
         # Cache miss: we have just-computed embeddings; build + persist
@@ -722,6 +839,31 @@ async def build_pipeline(
     # instead of raw rule renders when budget_tokens < SUMMARY_THRESHOLD.
     abstractions = await db.get_all_abstractions()
 
+    node_routes = await db.get_category_routes_by_node()
+    if not node_routes:
+        # Empty map = graph carries no BELONGS_TO/Category routing data (e.g. a
+        # Rules-only test graph). Fall back to the legacy Stage-1 filter.
+        node_routes = None
+    else:
+        missing = [rid for rid in rule_metadata if not node_routes.get(rid)]
+        if missing:
+            # Incomplete coverage: some candidate has no Category route (e.g. a
+            # graph-authored rule from `writ add` / `/propose`, which never sets a
+            # Category). _routes_for is fail-closed, so wiring a partial map would
+            # silently drop these ids from every semantic query. Fall back to the
+            # legacy Stage-1 filter for the whole pipeline -- behaviorally identical
+            # to the route map on a fully categorized corpus -- rather than failing
+            # the build: build_pipeline runs inside the FastAPI lifespan, so a raise
+            # here would crash-loop the daemon. `writ validate`
+            # (detect_category_reachability) surfaces the gap for a human to fix.
+            _logger.warning(
+                "node_routes incomplete: %d/%d candidate ids have no Category route "
+                "(e.g. %s); falling back to the legacy Rule-only/domain-exclude Stage-1 "
+                "filter. Assign a Category to these nodes to enable data-driven routing.",
+                len(missing), len(rule_metadata), missing[:5],
+            )
+            node_routes = None
+
     return RetrievalPipeline(
         keyword_index=keyword_index,
         vector_store=vector_store,
@@ -729,5 +871,8 @@ async def build_pipeline(
         embedding_model=query_encoder,
         rule_metadata=rule_metadata,
         weights=weights,
+        authority_preference_threshold=authority_preference_threshold,
+        abstention_threshold=abstention_threshold,
         abstractions=abstractions,
+        node_routes=node_routes,
     )

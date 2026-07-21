@@ -10,10 +10,12 @@ Per ARCH-DI-001: pipeline injected, not imported globally.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from writ.graph.schema import REDUNDANCY_SIMILARITY_THRESHOLD as REDUNDANCY_THRESHOLD
 from writ.graph.schema import Rule
 
 if TYPE_CHECKING:
@@ -21,8 +23,8 @@ if TYPE_CHECKING:
 
 # Per ARCH-CONST-001: named constants for gate thresholds.
 # Defaults from EVOLUTION_PLAN.md; overridable via writ.toml.
+# REDUNDANCY_THRESHOLD is the single source in writ.graph.schema (POL-3/C1), imported above.
 NOVELTY_THRESHOLD = 0.85
-REDUNDANCY_THRESHOLD = 0.95
 
 # Handbook Section 2.1: words that disqualify a rule from being enforceable.
 VAGUE_DISQUALIFIERS = (
@@ -239,9 +241,15 @@ async def propose_rule(
     candidate["authority"] = "ai-provisional"
     candidate["confidence"] = "speculative"
 
-    # Run structural gate.
-    gate_result = structural_gate(
-        candidate, pipeline,
+    # Per the server.py:283 / PERF-IO convention: structural_gate runs a blocking
+    # ONNX encode + vector search. Offload the whole synchronous gate off the event
+    # loop so the daemon is not stalled during inference. structural_gate stays
+    # synchronous (its signature/contract are unchanged); we offload at the async
+    # boundary, not by making encode async.
+    gate_result = await asyncio.to_thread(
+        structural_gate,
+        candidate,
+        pipeline,
         novelty_threshold=novelty_threshold,
         redundancy_threshold=redundancy_threshold,
     )
@@ -254,9 +262,12 @@ async def propose_rule(
             "similar_rules": gate_result.similar_rules,
         }
 
-    # Ingest into graph.
+    # Ingest into graph. Graph-first authoring: no markdown home yet (0.10), so reconcile
+    # must NOT delete it. source_origin='graph-authored' (the source-existence axis), NOT
+    # keyed on authority='ai-provisional' (a trust axis) -- promoting authority must never
+    # strip the deletion exemption.
     clean = {k: v for k, v in candidate.items() if not k.startswith("_")}
-    await db.create_rule(clean)
+    await db.create_rule(clean, source_origin="graph-authored")
 
     # Write origin context.
     if origin_db_path is not None:

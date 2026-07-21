@@ -109,36 +109,40 @@ def _is_in_string(line: str, match_start: int) -> bool:
     return in_single or in_double
 
 
-def _is_in_block_comment(lines: list[str], line_idx: int) -> bool:
-    """Check if a line is inside a /* */ block comment."""
+def _block_comment_lines(lines: list[str]) -> frozenset[int]:
+    """Line indices inside a /* */ block comment, in ONE O(L) pass.
+
+    C-1: scan_code previously re-walked every line per match via
+    _is_in_block_comment -> O(patterns x lines x matches x L). Precomputing the
+    set once makes the per-match check O(1). Membership matches the old per-line
+    walk exactly: a line counts as in-block after its own '/*' is seen, up to and
+    INCLUDING its own '*/' line.
+    """
+    inside: set[int] = set()
     in_block = False
     for i, line in enumerate(lines):
         if "/*" in line:
             in_block = True
-        if i == line_idx:
-            return in_block
+        if in_block:
+            inside.add(i)
         if "*/" in line:
             in_block = False
-    return False
+    return frozenset(inside)
 
 
 def _assess_confidence(
     line: str,
     match_start: int,
     match_text: str,
-    lines: list[str],
+    block_comment_lines: frozenset[int],
     line_idx: int,
 ) -> str:
     """Determine confidence tier for a pattern match."""
     # Check for substring match (pattern matches inside a longer identifier)
-    # Only check characters that aren't part of the operator (-> or ::)
-    # The pattern includes -> or :: as prefix, so check before that
-    effective_start = match_start
-    if match_text.startswith("->") or match_text.startswith("::"):
-        effective_start = match_start  # -> is an operator, char before it is fine
-    elif match_text.startswith("new "):
-        effective_start = match_start  # 'new ' is a keyword boundary
-    else:
+    # -> / :: are operators and 'new ' is a keyword boundary, so the char before
+    # the match is fine there; only the default case rejects a substring match.
+    # (E-EFFSTART: dropped the dead `effective_start` assignments.)
+    if not (match_text.startswith("->") or match_text.startswith("::") or match_text.startswith("new ")):
         before = line[match_start - 1] if match_start > 0 else " "
         if before.isalnum() or before == "_":
             return "low"
@@ -149,7 +153,7 @@ def _assess_confidence(
         return "low"
 
     # Check comment/string context
-    if _is_in_block_comment(lines, line_idx):
+    if line_idx in block_comment_lines:
         return "medium"
     if _is_in_comment(line, match_start):
         return "medium"
@@ -165,13 +169,14 @@ def scan_code(code: str, patterns: list[ViolationPattern]) -> list[Finding]:
         return []
 
     lines = code.split("\n")
+    block_comment_lines = _block_comment_lines(lines)  # C-1: one O(L) pass, not per-match
     findings: list[Finding] = []
 
     for vp in patterns:
         for line_idx, line in enumerate(lines):
             for m in vp.pattern.finditer(line):
                 confidence = _assess_confidence(
-                    line, m.start(), m.group(), lines, line_idx,
+                    line, m.start(), m.group(), block_comment_lines, line_idx,
                 )
                 findings.append(Finding(
                     rule_id=vp.rule_id,

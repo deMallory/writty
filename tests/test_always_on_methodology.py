@@ -26,8 +26,10 @@ import urllib.request
 
 import pytest
 
+from tests._daemon import _port
 
-SERVER = "http://localhost:8765"
+
+SERVER = f"http://localhost:{_port()}"
 
 
 def _get_always_on(mode: str | None = "work") -> dict:
@@ -42,25 +44,20 @@ def _get_always_on(mode: str | None = "work") -> dict:
 
 
 class TestAlwaysOnSkillPlaybookSurfaced:
-    """Skill / Playbook nodes tagged always_on=true must appear in
-    /always-on alongside Rule and ForbiddenResponse."""
+    """1.7 CUTOVER (D1): /always-on is now RULES + ForbiddenResponse ONLY.
+    Methodology (Skill/Playbook/Technique) moved entirely to CHANNEL 2
+    (/methodology-companion), so it must NOT appear in /always-on anymore."""
 
-    def test_always_on_returns_at_least_one_skill_node(self) -> None:
+    def test_no_methodology_in_always_on_after_cutover(self) -> None:
         data = _get_always_on("work")
         ids = [r["rule_id"] for r in data.get("rules", [])]
-        skl = [i for i in ids if i.startswith("SKL-")]
-        assert skl, (
-            f"expected at least one SKL- node in always-on bundle, "
-            f"got rule_ids: {ids[:20]}"
-        )
-
-    def test_always_on_returns_at_least_one_playbook_node(self) -> None:
-        data = _get_always_on("work")
-        ids = [r["rule_id"] for r in data.get("rules", [])]
-        pbk = [i for i in ids if i.startswith("PBK-")]
-        assert pbk, (
-            f"expected at least one PBK- node in always-on bundle, "
-            f"got rule_ids: {ids[:20]}"
+        methodology = [
+            i for i in ids
+            if i.startswith("SKL-") or i.startswith("PBK-") or i.startswith("TEC-")
+        ]
+        assert not methodology, (
+            f"methodology leaked into /always-on after the 1.7 cutover "
+            f"(it belongs to /methodology-companion): {methodology}"
         )
 
     def test_always_on_includes_existing_rule_and_frb_nodes(self) -> None:
@@ -99,4 +96,68 @@ class TestAlwaysOnModeScoping:
         assert not proc_skills, (
             f"process-domain SKL- nodes leaked into conversation mode: "
             f"{proc_skills}"
+        )
+
+
+# Increment 1: debug mode must receive process-domain always-on doctrine.
+# The /always-on filter (server.py:1108-1112) strips ALL domain==process nodes
+# in non-work modes, which silently drops ENF-PROC-DEBUG-001 (always_on=true,
+# domain=process) in debug mode -- the one mode it is authored for. The fix
+# narrows the strip to {conversation, review, universal} via
+# _ALWAYS_ON_PROCESS_MODES = {"work", "debug"}.
+#
+# Empirical baseline at skeleton-authoring time (live server):
+#   work=11 rules (ENF-PROC-DEBUG-001 present), debug=3 (absent),
+#   conversation=3 (absent), review=3 (absent).
+# Expected post-fix: debug includes ENF-PROC-DEBUG-001; conversation/review
+# remain unchanged (still exclude process-domain).
+DEBUG_DOCTRINE_RULE_ID = "ENF-PROC-DEBUG-001"
+
+
+class TestDebugModeProcessDomainInclusion:
+    """Increment 1 contract: process-domain always-on rules reach debug mode,
+    while conversation/review remain blast-radius-pinned to the old behavior."""
+
+    def test_process_domain_rule_included_in_debug_mode(self) -> None:
+        """RED before the fix, GREEN after: the debug doctrine surfaces in debug."""
+        data = _get_always_on("debug")
+        ids = [r["rule_id"] for r in data.get("rules", [])]
+        assert DEBUG_DOCTRINE_RULE_ID in ids, (
+            f"{DEBUG_DOCTRINE_RULE_ID} (always_on=true, domain=process) must "
+            f"appear in debug-mode always-on bundle after the filter fix; "
+            f"got rule_ids: {ids}"
+        )
+
+    def test_process_domain_included_in_work_mode_unchanged(self) -> None:
+        """Baseline that must stay GREEN: work mode keeps process-domain rules."""
+        data = _get_always_on("work")
+        ids = [r["rule_id"] for r in data.get("rules", [])]
+        assert DEBUG_DOCTRINE_RULE_ID in ids, (
+            f"{DEBUG_DOCTRINE_RULE_ID} must remain in work-mode always-on "
+            f"(work was never filtered); got rule_ids: {ids}"
+        )
+
+    def test_process_domain_still_excluded_in_review_mode(self) -> None:
+        """Blast-radius pin: review must STILL exclude process-domain nodes.
+
+        The fix adds only 'debug' to _ALWAYS_ON_PROCESS_MODES, never 'review'.
+        """
+        data = _get_always_on("review")
+        ids = [r["rule_id"] for r in data.get("rules", [])]
+        assert DEBUG_DOCTRINE_RULE_ID not in ids, (
+            f"{DEBUG_DOCTRINE_RULE_ID} leaked into review mode -- the filter "
+            f"fix must be scoped to debug only; got rule_ids: {ids}"
+        )
+        proc_skills = [i for i in ids if i.startswith("SKL-PROC-")]
+        assert not proc_skills, (
+            f"process-domain SKL- nodes leaked into review mode: {proc_skills}"
+        )
+
+    def test_process_domain_still_excluded_in_conversation_mode(self) -> None:
+        """Blast-radius pin: conversation must STILL exclude process-domain."""
+        data = _get_always_on("conversation")
+        ids = [r["rule_id"] for r in data.get("rules", [])]
+        assert DEBUG_DOCTRINE_RULE_ID not in ids, (
+            f"{DEBUG_DOCTRINE_RULE_ID} leaked into conversation mode; "
+            f"got rule_ids: {ids}"
         )

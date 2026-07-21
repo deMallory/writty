@@ -25,6 +25,7 @@ from tests.fixtures.regression_floors import (
     HIT_RATE_FLOOR,
     MRR5_FLOOR,
 )
+from tests.fixtures.retrieval_scoring import hit_rate_at_5, mrr_at_5
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.graph.ingest import validate_parsed_rule
@@ -36,6 +37,11 @@ from writ.retrieval.ranking import (
     compute_score,
     normalize_ranks,
 )
+
+# build_pipeline() needs the ONNX embedding model; skip this whole module
+# (rather than erroring) when onnxruntime is not installed in the active
+# interpreter (KG step 0b).
+pytest.importorskip("onnxruntime")
 
 # All async tests share the module-scoped event loop so that
 # module-scoped async fixtures (db, pipeline) work correctly.
@@ -170,19 +176,23 @@ class TestIngestionBenchmark:
         }
 
         latencies: list[float] = []
-        for _ in range(10):
-            start = time.perf_counter()
-            validate_parsed_rule(synthetic_rule)
-            await db.create_rule(synthetic_rule)
-            text = f"{synthetic_rule['trigger']} {synthetic_rule['statement']}"
-            model.encode(text)
-            elapsed_s = time.perf_counter() - start
-            latencies.append(elapsed_s)
-
-        # Clean up synthetic rule so it doesn't leak into the production graph.
-        query = "MATCH (r:Rule {rule_id: $rule_id}) DETACH DELETE r"
-        async with db._driver.session(database=db._database) as session:
-            await session.run(query, rule_id="BENCH-INGEST-001")
+        try:
+            for _ in range(10):
+                start = time.perf_counter()
+                validate_parsed_rule(synthetic_rule)
+                await db.create_rule(synthetic_rule)
+                text = f"{synthetic_rule['trigger']} {synthetic_rule['statement']}"
+                model.encode(text)
+                elapsed_s = time.perf_counter() - start
+                latencies.append(elapsed_s)
+        finally:
+            # Clean up synthetic rule so it doesn't leak into the production
+            # graph. Runs even on a mid-loop failure (TEST-ISOLATE-001); the
+            # cleanup is a single bounded delete, so it never masks the
+            # original exception, which still propagates after this block.
+            query = "MATCH (r:Rule {rule_id: $rule_id}) DETACH DELETE r"
+            async with db._driver.session(database=db._database) as session:
+                await session.run(query, rule_id="BENCH-INGEST-001")
 
         latencies.sort()
         p95_idx = int(len(latencies) * 0.95)
@@ -246,25 +256,10 @@ class TestRetrievalPrecision:
         ambiguous = [q for q in ground_truth if q["set"] == "ambiguous"]
         assert len(ambiguous) >= 15, f"Expected >= 15 ambiguous queries, got {len(ambiguous)}"
 
-        reciprocal_ranks: list[float] = []
-        for q in ambiguous:
-            result = pipeline.query(q["query"])
-            top5_ids = [r["rule_id"] for r in result["rules"][:5]]
-            expected = q["expected_rule_id"]
-            if expected in top5_ids:
-                rank = top5_ids.index(expected) + 1
-                reciprocal_ranks.append(1.0 / rank)
-            else:
-                reciprocal_ranks.append(0.0)
-
-        mrr5 = sum(reciprocal_ranks) / len(reciprocal_ranks)
-        hits = sum(1 for rr in reciprocal_ranks if rr > 0)
+        mrr5, misses = mrr_at_5(pipeline, ambiguous)
+        hits = len(ambiguous) - len(misses)
         print(f"\nMRR@5 (ambiguous, n={len(ambiguous)}): {mrr5:.4f} (floor: {MRR5_FLOOR})")
         print(f"  Hits in top 5: {hits}/{len(ambiguous)}")
-
-        misses = [
-            q["id"] for q, rr in zip(ambiguous, reciprocal_ranks) if rr == 0.0
-        ]
         if misses:
             print(f"  Misses: {', '.join(misses)}")
 
@@ -273,19 +268,10 @@ class TestRetrievalPrecision:
         )
 
     def test_hit_rate_all_queries(self, pipeline, ground_truth) -> None:
-        """Regression check: expected rule in top 5 for > 90% of all queries."""
-        hits = 0
-        misses: list[str] = []
-        for q in ground_truth:
-            result = pipeline.query(q["query"])
-            top5_ids = [r["rule_id"] for r in result["rules"][:5]]
-            if q["expected_rule_id"] in top5_ids:
-                hits += 1
-            else:
-                misses.append(q["id"])
-
+        """Regression check: expected rule in top 5 for at least HIT_RATE_FLOOR (0.75) of all queries."""
+        hit_rate, misses = hit_rate_at_5(pipeline, ground_truth)
         total = len(ground_truth)
-        hit_rate = hits / total
+        hits = total - len(misses)
         print(f"\nHit rate (all {total} queries): {hits}/{total} = {hit_rate:.2%} (floor: {HIT_RATE_FLOOR:.0%})")
         if misses:
             print(f"  Misses: {', '.join(misses)}")
@@ -351,6 +337,30 @@ class TestRetrievalPrecision:
         assert rate >= DOMAIN_HIT_RATE_TOP5_FLOOR, (
             f"Domain hit rate {rate:.2%} below floor "
             f"{DOMAIN_HIT_RATE_TOP5_FLOOR:.0%}. Misses: {misses}"
+        )
+
+    def test_ndcg10_no_regression(self, pipeline, ground_truth) -> None:
+        """nDCG@10 regression gate (KG step 0b).
+
+        RED today: `ndcg_at_10` and `NDCG10_FLOOR` do not exist yet in
+        `tests/fixtures/retrieval_scoring.py` / `tests/fixtures/regression_floors.py`.
+        Read-only: reuses the module-scoped `pipeline` / `ground_truth`
+        fixtures (which skip when Neo4j has zero rules) and does not wipe
+        the graph.
+        """
+        from tests.fixtures.regression_floors import NDCG10_FLOOR  # noqa: PLC0415
+        from tests.fixtures.retrieval_scoring import ndcg_at_10  # noqa: PLC0415
+
+        ndcg10, misses = ndcg_at_10(pipeline, ground_truth)
+        total = len(ground_truth)
+        hits = total - len(misses)
+        print(f"\nnDCG@10 (all {total} queries): {ndcg10:.4f} (floor: {NDCG10_FLOOR})")
+        print(f"  Hits in top 10: {hits}/{total}")
+        if misses:
+            print(f"  Misses: {', '.join(misses[:20])}{'...' if len(misses) > 20 else ''}")
+
+        assert ndcg10 >= NDCG10_FLOOR, (
+            f"nDCG@10 {ndcg10:.4f} below {NDCG10_FLOOR} floor. Misses: {misses}"
         )
 
 

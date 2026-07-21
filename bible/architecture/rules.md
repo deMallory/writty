@@ -2,6 +2,7 @@
 ## Rule ARCH-ASYNC-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -34,6 +35,8 @@ Linter rule (eslint @typescript-eslint/no-floating-promises, ruff RUF006 / async
 ### Rationale
 Floating async work loses errors and timing. The await (or supervised spawn) is the structural defense.
 
+Related rules: ARCH-ASYNC-002, PERF-BATCH-001.
+
 <!-- RULE END: ARCH-ASYNC-001 -->
 ---
 
@@ -41,6 +44,7 @@ Floating async work loses errors and timing. The await (or supervised spawn) is 
 ## Rule ARCH-ASYNC-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -72,6 +76,8 @@ Linter rule (asyncio-blocker-style check). Code review.
 ### Rationale
 A single blocking call inside the event loop stalls every concurrent task. Async I/O preserves the concurrency model.
 
+Related rules: ARCH-ASYNC-001, PERF-ASYNC-001, PY-ASYNC-001.
+
 <!-- RULE END: ARCH-ASYNC-002 -->
 ---
 
@@ -79,6 +85,7 @@ A single blocking call inside the event loop stalls every concurrent task. Async
 ## Rule ARCH-BOUNDARY-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -111,6 +118,8 @@ Code review.
 ### Rationale
 Raw external calls in business code couple every caller to the vendor's API shape, error model, and retry semantics. Adapter classes isolate that surface.
 
+Related rules: ERR-CIRCUIT-001, ERR-TIMEOUT-001, SOLID-DIP-001.
+
 <!-- RULE END: ARCH-BOUNDARY-001 -->
 ---
 
@@ -118,6 +127,7 @@ Raw external calls in business code couple every caller to the vendor's API shap
 ## Rule ARCH-BOUNDARY-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -144,6 +154,8 @@ Code review. Import linting can restrict imports of specific libraries to specif
 ### Rationale
 Concentrated library use trades a one-line import for the ability to migrate the library later. Scattered imports trade short-term convenience for long-term lock-in.
 
+Related rules: ARCH-BOUNDARY-001, SOLID-DIP-001.
+
 <!-- RULE END: ARCH-BOUNDARY-002 -->
 ---
 
@@ -151,6 +163,7 @@ Concentrated library use trades a one-line import for the ability to migrate the
 ## Rule ARCH-DTO-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -185,6 +198,8 @@ Code review.
 ### Rationale
 Raw dicts hide the contract between layers and propagate typos as runtime errors. DTOs make the contract explicit and machine-checkable.
 
+Related rules: API-CONTRACT-001, DRY-DUP-003, SEC-VAL-TYPE-001.
+
 <!-- RULE END: ARCH-DTO-001 -->
 ---
 
@@ -192,6 +207,7 @@ Raw dicts hide the contract between layers and propagate typos as runtime errors
 ## Rule ARCH-ENV-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -229,6 +245,7 @@ Env-name branches couple code to a specific environment topology. Config-driven 
 ## Rule ARCH-EVENT-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -259,6 +276,8 @@ Code review.
 ### Rationale
 Direct calls tangle bounded contexts: changes in inventory ripple to orders. Events keep contexts independently deployable and testable.
 
+Related rules: SCALE-QUEUE-002.
+
 <!-- RULE END: ARCH-EVENT-001 -->
 ---
 
@@ -266,6 +285,7 @@ Direct calls tangle bounded contexts: changes in inventory ripple to orders. Eve
 ## Rule ARCH-FEATURE-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -293,6 +313,8 @@ Flag registry with TTL/owner fields. PR template requires sunset date.
 ### Rationale
 Eternal feature flags accumulate as branches that never converge. Sunset dates create momentum to remove them.
 
+Related rules: DRY-CONFIG-002.
+
 <!-- RULE END: ARCH-FEATURE-001 -->
 ---
 
@@ -300,6 +322,7 @@ Eternal feature flags accumulate as branches that never converge. Sunset dates c
 ## Rule ARCH-IDEMPOTENT-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -338,6 +361,8 @@ Code review.
 ### Rationale
 Retries are universal in distributed systems. Idempotency keys turn 'safe to retry' from hope into guarantee.
 
+Related rules: API-IDEMPOTENT-001, ERR-RETRY-001, SCALE-QUEUE-002.
+
 <!-- RULE END: ARCH-IDEMPOTENT-001 -->
 ---
 
@@ -345,6 +370,7 @@ Retries are universal in distributed systems. Idempotency keys turn 'safe to ret
 ## Rule ARCH-LAYER-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -387,6 +413,7 @@ Layer skipping defeats the purpose of layers: business logic ends up duplicated 
 ## Rule ARCH-LAYER-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -421,6 +448,8 @@ Code review.
 ### Rationale
 Framework-coupled domain models drag the framework into every test, every reuse, and every refactor. Plain models are portable.
 
+Related rules: ARCH-LAYER-001, SOLID-DIP-003, SOLID-SRP-003.
+
 <!-- RULE END: ARCH-LAYER-002 -->
 ---
 
@@ -428,6 +457,7 @@ Framework-coupled domain models drag the framework into every test, every reuse,
 ## Rule ARCH-MIGRATION-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -457,6 +487,8 @@ CI gate that migrations run cleanly against a fresh database. Code review.
 ### Rationale
 Versioned migrations make schema state reproducible, reviewable, and rollback-able. Manual DDL turns the schema into a folk artifact.
 
+Related rules: ARCH-MIGRATION-002, SCALE-MIGRATE-001.
+
 <!-- RULE END: ARCH-MIGRATION-001 -->
 ---
 
@@ -464,6 +496,7 @@ Versioned migrations make schema state reproducible, reviewable, and rollback-ab
 ## Rule ARCH-MIGRATION-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -493,6 +526,8 @@ Code review.
 ### Rationale
 Reversible migrations preserve the option to roll back without data loss. Irreversible changes are sometimes necessary but are explicit decisions.
 
+Related rules: ARCH-MIGRATION-001, PROC-ROLLBACK-001, SCALE-MIGRATE-001.
+
 <!-- RULE END: ARCH-MIGRATION-002 -->
 ---
 
@@ -500,6 +535,7 @@ Reversible migrations preserve the option to roll back without data loss. Irreve
 ## Rule ARCH-STATE-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -539,6 +575,8 @@ Code review.
 ### Rationale
 Unguarded concurrent mutation produces nondeterministic bugs that are nearly impossible to reproduce. Synchronization or immutability removes the entire bug class.
 
+Related rules: PERF-CACHE-004, TEST-EDGE-003.
+
 <!-- RULE END: ARCH-STATE-001 -->
 ---
 
@@ -546,6 +584,7 @@ Unguarded concurrent mutation produces nondeterministic bugs that are nearly imp
 ## Rule ARCH-STATE-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -569,7 +608,7 @@ A single state-management pattern (Redux, Zustand, MobX, React Context, Vuex, Pi
 ```
 
 ### Enforcement
-Code review. ESLint rule restricting imports of competing libraries.
+Code review. ESLint rule restricting imports of competing libraries. Related: ARCH-DTO-001.
 
 ### Rationale
 Mixed state-management produces state that lives in multiple places at once and drifts. One pattern is the structural defense.
@@ -581,6 +620,7 @@ Mixed state-management produces state that lives in multiple places at once and 
 ## Rule SOLID-DIP-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -616,6 +656,8 @@ Code review.
 ### Rationale
 Concrete dependencies make business logic untestable, untransferable, and tightly coupled to vendor decisions. Abstractions invert the dependency.
 
+Related rules: CLEAN-COUPLING-001, SOLID-DIP-002.
+
 <!-- RULE END: SOLID-DIP-001 -->
 ---
 
@@ -623,6 +665,7 @@ Concrete dependencies make business logic untestable, untransferable, and tightl
 ## Rule SOLID-DIP-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -655,6 +698,8 @@ Code review. DI container config (Spring, Magento DI, Symfony DI, Dagger).
 ### Rationale
 Injection makes dependencies visible and replaceable. Direct construction hides them and freezes substitutability.
 
+Related rules: CLEAN-COUPLING-001, SOLID-DIP-001.
+
 <!-- RULE END: SOLID-DIP-002 -->
 ---
 
@@ -662,6 +707,7 @@ Injection makes dependencies visible and replaceable. Direct construction hides 
 ## Rule SOLID-DIP-003
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -693,6 +739,8 @@ Code review.
 ### Rationale
 Framework types in domain code make every domain method untestable without the framework and prevent reuse from non-framework callers (background jobs, CLI).
 
+Related rules: ARCH-LAYER-002, SOLID-SRP-002.
+
 <!-- RULE END: SOLID-DIP-003 -->
 ---
 
@@ -700,6 +748,7 @@ Framework types in domain code make every domain method untestable without the f
 ## Rule SOLID-ISP-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -744,6 +793,7 @@ Fat interfaces force consumers to depend on methods they do not use, which propa
 ## Rule SOLID-ISP-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -789,6 +839,7 @@ NotImplementedError in a production class is a runtime time bomb. The structural
 ## Rule SOLID-LSP-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -828,6 +879,8 @@ Code review.
 ### Rationale
 LSP violations turn polymorphism into a runtime trap: code that worked against the parent type breaks unpredictably with a subclass.
 
+Related rules: SOLID-LSP-002.
+
 <!-- RULE END: SOLID-LSP-001 -->
 ---
 
@@ -835,6 +888,7 @@ LSP violations turn polymorphism into a runtime trap: code that worked against t
 ## Rule SOLID-LSP-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -868,6 +922,8 @@ Type checker (mypy strict, pyright). Code review.
 ### Rationale
 Return-type drift in overrides breaks every caller that assumed the parent's contract.
 
+Related rules: ENF-POST-003, SOLID-LSP-001.
+
 <!-- RULE END: SOLID-LSP-002 -->
 ---
 
@@ -875,6 +931,7 @@ Return-type drift in overrides breaks every caller that assumed the parent's con
 ## Rule SOLID-OCP-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -914,6 +971,8 @@ Code review. Framework-specific extension hooks (Magento plugins, Django middlew
 ### Rationale
 Closed-for-modification is the structural defense against regression: existing code paths keep working when new variants ship.
 
+Related rules: SOLID-DIP-001, SOLID-OCP-002.
+
 <!-- RULE END: SOLID-OCP-001 -->
 ---
 
@@ -921,6 +980,7 @@ Closed-for-modification is the structural defense against regression: existing c
 ## Rule SOLID-OCP-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -958,6 +1018,8 @@ Code review.
 ### Rationale
 Long type switches mean each new type requires editing every dispatcher. Polymorphism puts the type-specific logic with the type.
 
+Related rules: SOLID-OCP-001.
+
 <!-- RULE END: SOLID-OCP-002 -->
 ---
 
@@ -965,6 +1027,7 @@ Long type switches mean each new type requires editing every dispatcher. Polymor
 ## Rule SOLID-SRP-001
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1003,6 +1066,8 @@ Code review.
 ### Rationale
 A class that knows about too many concerns changes for too many reasons. Single-responsibility classes evolve independently.
 
+Related rules: CLEAN-FUNC-001, SOLID-SRP-002, SOLID-SRP-003.
+
 <!-- RULE END: SOLID-SRP-001 -->
 ---
 
@@ -1010,6 +1075,7 @@ A class that knows about too many concerns changes for too many reasons. Single-
 ## Rule SOLID-SRP-002
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1037,7 +1103,7 @@ def create_order(payload):
 @app.post('/orders')
 def create_order(payload):
     order = order_service.place(current_user, payload)
-    return jsonify(OrderResponse.from_orm(order).dict())
+    return jsonify(OrderResponse.model_validate(order, from_attributes=True).model_dump())
 ```
 
 ### Enforcement
@@ -1046,6 +1112,8 @@ Code review.
 ### Rationale
 Business logic in controllers is untestable without HTTP plumbing and is invisible to non-HTTP callers (jobs, CLIs).
 
+Related rules: ARCH-LAYER-001, SOLID-DIP-003, SOLID-SRP-001.
+
 <!-- RULE END: SOLID-SRP-002 -->
 ---
 
@@ -1053,6 +1121,7 @@ Business logic in controllers is untestable without HTTP plumbing and is invisib
 ## Rule SOLID-SRP-003
 
 **Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1088,5 +1157,7 @@ Code review.
 
 ### Rationale
 Mixing query syntax into services couples the service to an ORM. The repository layer is the seam where the storage technology can change.
+
+Related rules: DRY-QUERY-001, SOLID-DIP-001, SOLID-SRP-001.
 
 <!-- RULE END: SOLID-SRP-003 -->

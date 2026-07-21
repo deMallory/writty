@@ -1,0 +1,10 @@
+[Unit]
+Description=Writ log rotation/retention sweep (bounds the typed audit/friction/metrics streams)
+
+[Service]
+Type=oneshot
+# __WRIT_BIN__ is substituted with the resolved venv `writ` path at install time.
+ExecStart=__WRIT_BIN__ logs rotate
+
+[Install]
+WantedBy=default.target

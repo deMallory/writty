@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 
-REPO_ROOT = (Path.home() / ".claude/skills/writ")
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def _expand_plugin_root(path: str, root: Path) -> Path:
@@ -26,15 +26,6 @@ def _expand_plugin_root(path: str, root: Path) -> Path:
 def repo_root() -> Path:
     """Absolute path to the Writ repo root."""
     return REPO_ROOT
-
-
-@pytest.fixture()
-def marketplace_manifest(repo_root: Path) -> dict:
-    """Load and parse .claude-plugin/marketplace.json; skip if absent (pre-Phase A)."""
-    manifest_path = repo_root / ".claude-plugin" / "marketplace.json"
-    if not manifest_path.exists():
-        pytest.skip("Phase A artifact .claude-plugin/marketplace.json not yet created")
-    return json.loads(manifest_path.read_text())
 
 
 @pytest.fixture()

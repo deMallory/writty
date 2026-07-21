@@ -79,11 +79,13 @@ class TestSessionStartBootstrapContent:
             "session-start-bootstrap.sh must probe port 7687 via nc -z, curl, or /dev/tcp/"
         )
 
-    def test_session_start_probes_server_health(self, content: str) -> None:
-        """Script must probe http://localhost:8765/health."""
-        assert "localhost:8765/health" in content or "8765/health" in content, (
-            "session-start-bootstrap.sh must probe http://localhost:8765/health"
+    def test_session_start_ensures_server_via_shared_lib(self, content: str) -> None:
+        """Server health/start is delegated to the flock-guarded shared lib (which probes /health)."""
+        assert "writ-server-lib.sh" in content and "writ_ensure_server" in content, (
+            "session-start-bootstrap.sh must source writ-server-lib.sh and call writ_ensure_server"
         )
+        lib = (REPO_ROOT / "scripts" / "lib" / "writ-server-lib.sh").read_text()
+        assert "/health" in lib, "the shared server lib must probe /health"
 
     def test_session_start_graceful_degradation(self, content: str) -> None:
         """Script must exit 0 in all branches; must not exit 1 for missing venv or Neo4j."""

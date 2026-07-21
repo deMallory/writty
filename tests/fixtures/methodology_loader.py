@@ -107,8 +107,19 @@ def load_ground_truth(path: Path | None = None) -> dict[str, Any]:
 
 
 def build_adjacency(nodes: list[MethodologyNode]) -> dict[str, list[tuple[str, str]]]:
-    """node_id -> [(target_id, edge_type), ...] for bundle-completeness measurement."""
-    return {n.node_id: [(e["target"], e["type"]) for e in n.edges] for n in nodes}
+    """node_id -> [(neighbor_id, edge_type), ...] for bundle-completeness measurement.
+
+    Undirected, mirroring the production AdjacencyCache (writ/retrieval/traversal.py), which
+    stores both directions so a node's bundle is its full graph neighborhood regardless of
+    which way an edge points. INC-2 normalized edge direction to the schema's canonical
+    semantics; bundle membership must not depend on direction (and production never did).
+    """
+    adj: dict[str, list[tuple[str, str]]] = {n.node_id: [] for n in nodes}
+    for n in nodes:
+        for e in n.edges:
+            adj.setdefault(n.node_id, []).append((e["target"], e["type"]))
+            adj.setdefault(e["target"], []).append((n.node_id, e["type"]))
+    return adj
 
 
 # --- Phase 0 methodology keyword index -----------------------------------------------------------

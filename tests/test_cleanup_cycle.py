@@ -21,9 +21,8 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 BUDGET_JSON = SKILL_DIR / "writ" / "shared" / "budget.json"
 BIN_SESSION = SKILL_DIR / "bin" / "lib" / "writ-session.py"
 PY_SESSION = SKILL_DIR / "writ" / "retrieval" / "session.py"
-SUBAGENT_START_HOOK = SKILL_DIR / ".claude" / "hooks" / "writ-subagent-start.sh"
+SUBAGENT_START_HOOK = SKILL_DIR / "hooks" / "scripts" / "writ-subagent-start.sh"
 CODEBASE_MD = SKILL_DIR / "CODEBASE.md"
-CONTRIBUTING_MD = SKILL_DIR / "CONTRIBUTING.md"
 GITIGNORE = SKILL_DIR / ".gitignore"
 
 
@@ -101,11 +100,11 @@ class TestSubagentGateBypass:
     not deny writes from such a session when is_subagent=True.
     """
 
-    def test_subagent_write_allowed_without_mode(self, tmp_path: Path) -> None:
+    def test_subagent_write_allowed_without_mode(self, tmp_path: Path, monkeypatch) -> None:
         import io
 
         mod = _load_bin_session_module()
-        mod.CACHE_DIR = str(tmp_path)
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         session_id = "planner-agent"
         cache = mod._read_cache(session_id)
         cache["is_subagent"] = True
@@ -121,10 +120,10 @@ class TestSubagentGateBypass:
             f"{result.get('reason')!r}"
         )
 
-    def test_subagent_write_allowed_without_gates(self, tmp_path: Path) -> None:
+    def test_subagent_write_allowed_without_gates(self, tmp_path: Path, monkeypatch) -> None:
         """Even in work mode without gates, sub-agents bypass."""
         mod = _load_bin_session_module()
-        mod.CACHE_DIR = str(tmp_path)
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         session_id = "impl-agent"
         cache = mod._read_cache(session_id)
         cache["is_subagent"] = True
@@ -144,10 +143,10 @@ class TestSubagentUnlimitedBudget:
             "writ-subagent-start.sh must set is_subagent: true on the fresh cache"
         )
 
-    def test_should_skip_returns_false_for_subagent(self, tmp_path: Path) -> None:
+    def test_should_skip_returns_false_for_subagent(self, tmp_path: Path, monkeypatch) -> None:
         """An is_subagent session must not be skipped even with remaining_budget exhausted."""
         mod = _load_bin_session_module()
-        mod.CACHE_DIR = str(tmp_path)
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         session_id = "sub-test"
         cache = mod._read_cache(session_id)
         cache["is_subagent"] = True
@@ -159,10 +158,10 @@ class TestSubagentUnlimitedBudget:
             f"cmd_should_skip must return False for is_subagent sessions; got {result!r}"
         )
 
-    def test_should_skip_returns_true_for_non_subagent_exhausted(self, tmp_path: Path) -> None:
+    def test_should_skip_returns_true_for_non_subagent_exhausted(self, tmp_path: Path, monkeypatch) -> None:
         """Baseline: non-subagent with exhausted budget IS skipped."""
         mod = _load_bin_session_module()
-        mod.CACHE_DIR = str(tmp_path)
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         session_id = "master-test"
         cache = mod._read_cache(session_id)
         cache["is_subagent"] = False
@@ -324,10 +323,3 @@ class TestIdCollisionCheck:
                     )
                     return
         pytest.fail("no authoring module with check_id_collision found")
-
-    def test_contributing_lists_id_collision_gate_explicitly(self) -> None:
-        content = CONTRIBUTING_MD.read_text().lower()
-        # Must mention id collision as a gate check
-        assert "id collision" in content or "id_collision" in content or "rule id collision" in content, (
-            "CONTRIBUTING.md must explicitly list ID collision as a gate check"
-        )

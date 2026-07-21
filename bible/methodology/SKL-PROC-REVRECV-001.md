@@ -16,23 +16,35 @@ evidence: peer-reviewed
 source_attribution: "writ-native"
 source_commit: null
 edges:
-  - { target: FRB-COMMS-001, type: DEMONSTRATES }
-  - { target: ENF-COMMS-001, type: GATES }
+  - { target: ENF-COMMS-001, type: TEACHES }
+category: CAT-COMM-001
+floor_modes: [review]
+action_triggers: ["review-feedback"]
 ---
 
 # Skill: Receive code review
 
+Receiving review is technical evaluation, not compliance.
+
 ## Never-phrases
 
-See `FRB-COMMS-001`. Gratitude, agreement, or implementation-intent BEFORE verification are all forbidden.
+See `FRB-COMMS-001`. Gratitude, agreement, or implementation-intent BEFORE verification are all forbidden. State the fix or push back; do not perform agreement.
 
 ## The workflow
 
-1. Read each item.
-2. For each: verify against the codebase. Is the reviewer correct? Is there something they missed?
-3. If unclear: ask for clarification. Don't implement until understood.
-4. If disagree: push back with reasoning, not defensiveness.
-5. Only then implement. Test each change individually.
+1. Read each item fully before reacting.
+2. For each: restate the requirement, then verify against THIS codebase. Is the reviewer correct here? Is there something they missed?
+3. If anything is unclear, STOP: clarify ALL items before implementing ANY. Items are often related, and a partial understanding ships the wrong change.
+4. If you disagree, push back with technical reasoning, not defensiveness.
+5. Only then implement, one item at a time, testing each.
+
+## External reviewers: suggestions to evaluate, not orders
+
+Before implementing an external suggestion, vet it: correct for THIS codebase? breaks existing behavior? is there a reason for the current implementation? does the reviewer have full context? If you cannot verify it, say so and ask. If it conflicts with a prior decision by your human partner, raise that first.
+
+## YAGNI check
+
+When a reviewer says "implement this properly," grep the codebase for actual usage first. If it is unused, propose removing it (YAGNI) rather than building it out. If it is used, implement it properly.
 
 ## Anti-pattern
 

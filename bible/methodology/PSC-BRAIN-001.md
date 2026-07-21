@@ -24,6 +24,7 @@ rule_under_test: ENF-PROC-BRAIN-001
 difficulty: easy
 edges:
   - { target: ENF-PROC-BRAIN-001, type: PRESSURE_TESTS }
+category: CAT-DISC-001
 ---
 
 # Pressure scenario: One-line refactor temptation

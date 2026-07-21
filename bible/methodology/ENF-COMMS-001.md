@@ -28,9 +28,8 @@ source_attribution: "writ-native"
 source_commit: null
 body: "Always-on advisory. Empty mechanical_enforcement_path per plan Section 2.1 — the blocklist is subject to false positives in legitimate contexts."
 edges:
-  - { target: FRB-COMMS-001, type: TEACHES }
-  - { target: FRB-COMMS-002, type: TEACHES }
-  - { target: SKL-PROC-REVRECV-001, type: TEACHES }
+  - { target: SKL-PROC-REVRECV-001, type: GATES }
+category: CAT-COMM-001
 ---
 
 # Rule: No performative agreement or unverified claims

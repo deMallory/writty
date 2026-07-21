@@ -24,6 +24,22 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 PLANNING_MODEL = "claude-sonnet-4-6-20250514"
 LLM_TIMEOUT = 10.0
 
+# Shared tail of both prompt templates: the rules block + the JSON output
+# contract. Single source so the output schema (the findings JSON shape) cannot
+# drift between the with-findings and no-findings prompts.
+_INSTRUCTIONS_TAIL = """## Rules to check
+{rules_text}
+
+## Instructions
+For each rule, determine if the code violates it. Return a JSON array of findings:
+```json
+[
+  {{"rule_id": "RULE-ID", "status": "violated|pass|uncertain", "line": 42, "evidence": "what was found", "suggestion": "how to fix"}}
+]
+```
+
+Return ONLY the JSON array. No other text."""
+
 _PROMPT_TEMPLATE_WITH_FINDINGS = """You are a code compliance checker. Analyze the following code against the provided rules.
 
 Pattern matching has already found potential violations (listed below). Verify each and check for additional violations the patterns may have missed.
@@ -39,18 +55,7 @@ Phase: {phase}
 ## Pattern findings to verify
 {pattern_findings_text}
 
-## Rules to check
-{rules_text}
-
-## Instructions
-For each rule, determine if the code violates it. Return a JSON array of findings:
-```json
-[
-  {{"rule_id": "RULE-ID", "status": "violated|pass|uncertain", "line": 42, "evidence": "what was found", "suggestion": "how to fix"}}
-]
-```
-
-Return ONLY the JSON array. No other text."""
+""" + _INSTRUCTIONS_TAIL
 
 _PROMPT_TEMPLATE_NO_FINDINGS = """You are a code compliance checker. Analyze the following code against the provided rules.
 
@@ -64,18 +69,7 @@ Phase: {phase}
 {code}
 ```
 
-## Rules to check
-{rules_text}
-
-## Instructions
-For each rule, determine if the code violates it. Return a JSON array of findings:
-```json
-[
-  {{"rule_id": "RULE-ID", "status": "violated|pass|uncertain", "line": 42, "evidence": "what was found", "suggestion": "how to fix"}}
-]
-```
-
-Return ONLY the JSON array. No other text."""
+""" + _INSTRUCTIONS_TAIL
 
 
 def _format_rules(rules: list[dict]) -> str:

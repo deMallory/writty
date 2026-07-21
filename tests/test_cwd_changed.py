@@ -4,6 +4,11 @@ Per TEST-TDD-001: skeletons approved before implementation.
 Covers: detected_domain default in _read_cache, domain detection from marker
 files, session cache update, friction event logging, exit 0 contract, and
 settings.json registration.
+
+W2 (server package split, branch refactor/w2-server-split): TestRagInjectDomainPassthrough
+reads via writ_server_source() (tests/conftest.py), which is layout-agnostic -- it scans
+every *.py under writ/server/ if that directory exists (post-split: this content is
+expected in routes/query.py), else the single writ/server.py file (pre-split).
 """
 
 from __future__ import annotations
@@ -15,9 +20,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from tests.conftest import writ_server_source
 
 # ---------------------------------------------------------------------------
 # Constants / helpers
@@ -26,8 +34,8 @@ import pytest
 SESSION_ID = "test-cwd-session"
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
-HOOK_PATH = f"{SKILL_DIR}/.claude/hooks/writ-cwd-changed.sh"
-SETTINGS_PATH = str(Path.home() / ".claude/settings.json")
+HOOK_PATH = f"{SKILL_DIR}/hooks/scripts/writ-cwd-changed.sh"
+SETTINGS_PATH = str(Path(__file__).resolve().parent.parent / "hooks" / "hooks.json")
 
 MARKER_TO_DOMAIN: dict[str, str] = {
     "composer.json": "php",
@@ -99,12 +107,12 @@ class TestDetectedDomainDefault:
 
     def setup_method(self) -> None:
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        self._env_patch = mock.patch.dict(os.environ, {"WRIT_CACHE_DIR": self._tmpdir})
+        self._env_patch.start()
 
     def teardown_method(self) -> None:
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -140,8 +148,8 @@ class TestCwdChangedDomainDetection:
         self._tmpdir = tempfile.mkdtemp()
         self._cache_tmpdir = tempfile.mkdtemp()
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
-        self.mod.CACHE_DIR = self._cache_tmpdir
+        self._env_patch = mock.patch.dict(os.environ, {"WRIT_CACHE_DIR": self._cache_tmpdir})
+        self._env_patch.start()
         # Pre-create a cache file so the hook can update it
         cache = _make_cache()
         path = self.mod._cache_path(SESSION_ID)
@@ -149,7 +157,7 @@ class TestCwdChangedDomainDetection:
             json.dump(cache, f)
 
     def teardown_method(self) -> None:
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
         shutil.rmtree(self._cache_tmpdir, ignore_errors=True)
@@ -231,8 +239,8 @@ class TestCwdChangedSessionCacheUpdate:
         self._cwd_tmpdir = tempfile.mkdtemp()
         self._cache_tmpdir = tempfile.mkdtemp()
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
-        self.mod.CACHE_DIR = self._cache_tmpdir
+        self._env_patch = mock.patch.dict(os.environ, {"WRIT_CACHE_DIR": self._cache_tmpdir})
+        self._env_patch.start()
         # Pre-create a cache file
         cache = _make_cache()
         path = self.mod._cache_path(SESSION_ID)
@@ -240,7 +248,7 @@ class TestCwdChangedSessionCacheUpdate:
             json.dump(cache, f)
 
     def teardown_method(self) -> None:
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._cwd_tmpdir, ignore_errors=True)
         shutil.rmtree(self._cache_tmpdir, ignore_errors=True)
@@ -369,15 +377,9 @@ class TestCwdChangedSettingsJson:
         assert "writ-cwd-changed.sh" in hook_commands, (
             "CwdChanged event must register writ-cwd-changed.sh"
         )
-
-    def test_cwd_changed_hook_bash_permission_in_settings(self) -> None:
-        """settings.json includes a Bash permission entry for writ-cwd-changed.sh."""
-        settings = self._load_settings()
-        permissions = settings.get("permissions", {})
-        allow_list = permissions.get("allow", [])
-        assert any("writ-cwd-changed.sh" in str(p) for p in allow_list), (
-            "settings.json must grant Bash permission for writ-cwd-changed.sh"
-        )
+        # NOTE: under plugin-canonical, hooks are dispatched by the plugin manifest and do NOT
+        # need a Bash-allowlist entry in ~/.claude/settings.json. The standalone-era
+        # "hook Bash permission present" assertion was removed with the standalone sunset (7a9f4ba).
 
 
 # ---------------------------------------------------------------------------
@@ -389,20 +391,50 @@ class TestRagInjectDomainPassthrough:
     """writ-rag-inject.sh reads detected_domain from cache and passes it as domain."""
 
     def test_rag_inject_includes_detected_domain_in_query_request(self) -> None:
-        """writ-rag-inject.sh source passes detected_domain as 'domain' to /query when non-null and not 'universal'."""
-        rag_inject = f"{SKILL_DIR}/.claude/hooks/writ-rag-inject.sh"
-        with open(rag_inject) as f:
-            source = f.read()
+        """#8: the /prompt-bundle endpoint reads detected_domain from the cache and
+        passes it as 'domain' to /query when non-null and not 'universal'."""
+        source = writ_server_source()
         assert "detected_domain" in source, (
-            "writ-rag-inject.sh must read detected_domain from session cache"
+            "the /prompt-bundle endpoint must read detected_domain from the session cache"
         )
 
     def test_rag_inject_omits_domain_when_detected_domain_is_universal(self) -> None:
-        """writ-rag-inject.sh does not pass domain=universal; 'universal' is treated as no hint."""
-        rag_inject = f"{SKILL_DIR}/.claude/hooks/writ-rag-inject.sh"
-        with open(rag_inject) as f:
-            source = f.read()
-        # Must have logic that skips adding domain when value is 'universal' or null.
+        """#8: the endpoint does not pass domain=universal; 'universal' is treated as no hint."""
+        source = writ_server_source()
+        # Must skip adding domain when the value is 'universal' or null.
         assert "universal" in source, (
-            "writ-rag-inject.sh must handle the 'universal' domain as a no-op"
+            "the /prompt-bundle endpoint must handle the 'universal' domain as a no-op"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestCwdChangedAutoInstallGuard -- seam guards on post-commit, not the retired hook
+# ---------------------------------------------------------------------------
+
+
+class TestCwdChangedAutoInstallGuard:
+    """The auto-install seam must guard on the installed post-commit hook,
+    not the retired prepare-commit-msg hook (Phase 3c, ADR-3c-2)."""
+
+    def _source(self) -> str:
+        with open(HOOK_PATH) as f:
+            return f.read()
+
+    def test_guard_references_post_commit_hook(self) -> None:
+        """The seam builds and greps the post-commit hook path."""
+        source = self._source()
+        assert "hooks/post-commit" in source, (
+            "auto-install guard must target the installed post-commit hook"
+        )
+
+    def test_guard_does_not_reference_retired_prepare_commit_msg(self) -> None:
+        """The retired prepare-commit-msg hook is never the guard target."""
+        source = self._source()
+        assert "prepare-commit-msg" not in source, (
+            "auto-install guard must not reference the retired prepare-commit-msg hook"
+        )
+
+    def test_guard_still_greps_writ_marker(self) -> None:
+        """The marker predicate (# >>> Writ) is unchanged."""
+        source = self._source()
+        assert "# >>> Writ" in source, "guard must still grep the Writ marker"

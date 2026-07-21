@@ -41,8 +41,141 @@ def tmp_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # writ-session.py reads CACHE_DIR at import time, so reach in and
     # override the module-level constant after the env var is set.
     from writ.server import writ_session
-    monkeypatch.setattr(writ_session, "CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("WRIT_CACHE_DIR", str(cache_dir))
     return p
+
+
+class TestQualityJudgmentTypedBody:
+    """Wave1 Cycle6 Target 3: quality-judgment validates its body through a
+    typed SessionQualityJudgmentRequest model instead of the bare
+    `int(body.get("score", 0))` at server.py:1616.
+    """
+
+    def test_nonnumeric_score_returns_422_not_500(self, tmp_log: Path) -> None:
+        """RED today: `int("not-a-number")` raises an unhandled ValueError,
+        which surfaces as a bare 500 -- confirmed live on HEAD via
+        `TestClient(app, raise_server_exceptions=False)` (the module's
+        shared `client` fixture uses the default raise_server_exceptions=True,
+        which would instead propagate the ValueError as a Python exception in
+        this process; using a local client here observes the actual HTTP
+        status the route returns). After the Pydantic model lands, a
+        non-numeric score must be a clean 422 validation error.
+        """
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            "/session/quality-422-sess/quality-judgment",
+            json={"artifact_path": "/tmp/x.md", "score": "not-a-number"},
+        )
+        assert resp.status_code == 422, (
+            f"expected 422 (validation error), not a bare 500; "
+            f"got {resp.status_code}: {resp.text}"
+        )
+
+    def test_numeric_score_still_returns_200(self, client: TestClient, tmp_log: Path) -> None:
+        """Stability guard: the existing numeric-score happy path is
+        unaffected by the typed-body fix. Passes both before and after."""
+        resp = client.post(
+            "/session/quality-200-sess/quality-judgment",
+            json={"artifact_path": "/tmp/x.md", "score": 4, "rubric": "r"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_bool_score_returns_422(self, client: TestClient, tmp_log: Path) -> None:
+        """A JSON bool score must be rejected with 422, not coerced to 0/1.
+
+        Pydantic v2 lax mode coerces true->1 (bool subclasses int); the
+        field_validator(mode="before") on `score` blocks the bool so a
+        wrong-typed value fails validation.
+        """
+        resp = client.post(
+            "/session/quality-bool-sess/quality-judgment",
+            json={"artifact_path": "/tmp/x.md", "score": True, "rubric": "r"},
+        )
+        assert resp.status_code == 422, (
+            f"expected 422 (validation error), got {resp.status_code}: {resp.text}"
+        )
+
+
+class TestActivePlaybookTypedBody:
+    """Wave1 Cycle6 Target 3: active-playbook validates total_steps through a
+    typed SessionActivePlaybookRequest model.
+    """
+
+    def test_wrong_typed_total_steps_returns_422(
+        self, client: TestClient, tmp_log: Path
+    ) -> None:
+        """RED today: `body: dict` never casts total_steps at all --
+        `body.get("total_steps")` is stored and returned as-is, so a
+        non-numeric string is silently accepted, returning 200 (confirmed
+        live on HEAD). Once total_steps is a typed `int | None` field, a
+        non-numeric string must fail Pydantic validation with 422.
+        """
+        resp = client.post(
+            "/session/playbook-422-sess/active-playbook",
+            json={"playbook_id": "pb1", "phase_id": "p1", "total_steps": "ten"},
+        )
+        assert resp.status_code == 422, (
+            f"expected 422 (validation error), got {resp.status_code}: {resp.text}"
+        )
+
+    def test_bool_total_steps_returns_422(
+        self, client: TestClient, tmp_log: Path
+    ) -> None:
+        """A JSON bool total_steps must be rejected with 422, not coerced.
+
+        Pydantic v2 lax mode coerces true->1 (bool subclasses int); the
+        field_validator(mode="before") on `total_steps` blocks the bool while
+        still passing None and real ints/strings through for lax coercion.
+        """
+        resp = client.post(
+            "/session/playbook-bool-sess/active-playbook",
+            json={"playbook_id": "pb1", "phase_id": "p1", "total_steps": True},
+        )
+        assert resp.status_code == 422, (
+            f"expected 422 (validation error), got {resp.status_code}: {resp.text}"
+        )
+
+    def test_numeric_total_steps_still_returns_200(
+        self, client: TestClient, tmp_log: Path
+    ) -> None:
+        """Stability guard: a valid numeric total_steps keeps today's 200."""
+        resp = client.post(
+            "/session/playbook-ok-sess/active-playbook",
+            json={"playbook_id": "pb1", "phase_id": "p1", "total_steps": 3},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+
+class TestVerificationEvidenceTypedBody:
+    """Wave1 Cycle6 / FIX D: verification-evidence validates exit_code through a
+    typed SessionVerificationEvidenceRequest model that rejects a JSON bool.
+    """
+
+    def test_bool_exit_code_returns_422(self, client: TestClient, tmp_log: Path) -> None:
+        """A JSON bool exit_code must be rejected with 422, not coerced to 0/1."""
+        resp = client.post(
+            "/session/ve-bool-sess/verification-evidence",
+            json={"todo_id": "t1", "exit_code": True},
+        )
+        assert resp.status_code == 422, (
+            f"expected 422 (validation error), got {resp.status_code}: {resp.text}"
+        )
+
+    def test_numeric_exit_code_still_returns_200(
+        self, client: TestClient, tmp_log: Path
+    ) -> None:
+        """Stability guard: a valid numeric exit_code keeps today's 200."""
+        resp = client.post(
+            "/session/ve-ok-sess/verification-evidence",
+            json={
+                "todo_id": "t1", "command": "pytest",
+                "output_excerpt": "ok", "exit_code": 0,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
 
 
 class TestQualityJudgmentEvent:

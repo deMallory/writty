@@ -1,7 +1,8 @@
 <!-- RULE START: SEC-UNI-003 -->
 ## Rule SEC-UNI-003
 
-**Domain**: Security
+**Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Entity
 **Mandatory**: false
@@ -35,7 +36,7 @@ public function getCustomer(int $id): CustomerResponseInterface
 ```
 
 ### Enforcement
-ENF-SEC-002 (data exposure minimization).
+SEC-DATA-MASK-001 (error responses must not expose internals).
 
 ### Rationale
 API responses that return entire entity objects "for convenience" create attack surfaces. Every exposed field is a potential information leak. Minimizing response data reduces the blast radius of any future authorization bypass.

@@ -44,7 +44,8 @@ class TestRenderAgentMd:
         out = self.render(row)
         assert out.startswith("---\n")
         assert "\nname: writ-example\n" in out
-        assert "\ndescription: An example agent.\n" in out
+        # description is JSON-quoted so a value containing a colon stays valid YAML.
+        assert '\ndescription: "An example agent."\n' in out
         assert "\nmodel: sonnet\n" in out
         assert "\ntools: Read Glob\n" in out
         assert "\nYou are an example.\n" in out
@@ -60,7 +61,7 @@ class TestRenderAgentMd:
         out = self.render(row)
         assert "model:" not in out
         assert "tools:" not in out
-        assert "description: Bare agent." in out
+        assert 'description: "Bare agent."' in out
 
     def test_statement_fallback_when_description_missing(self) -> None:
         """Older nodes might only have statement; description falls back to it."""
@@ -73,21 +74,20 @@ class TestRenderAgentMd:
             "prompt_template": "Body.",
         }
         out = self.render(row)
-        assert "description: Legacy statement." in out
+        assert 'description: "Legacy statement."' in out
 
 
 class TestExportCheckMode:
     """--check verifies existing files match graph; exit 0 if clean."""
 
-    def test_export_check_passes_after_ingest(self) -> None:
-        """After ingest, --check must report clean. If it fails, the Neo4j
-        fixture is unavailable -- skip rather than fail the suite."""
+    def test_export_check_passes_after_ingest(self, corpus_ready) -> None:
+        """After ingest, --check must report clean. INC-1: corpus_ready guarantees the
+        SubagentRole nodes are present, so "No SubagentRole nodes" can no longer mask drift
+        as a skip; only an unreachable Neo4j is a legitimate skip."""
         proc = subprocess.run(
             [".venv/bin/python", str(EXPORT_SCRIPT), "--check"],
             capture_output=True, text=True, cwd=str(WRIT_ROOT),
         )
-        if proc.returncode != 0 and "No SubagentRole nodes" in proc.stderr:
-            pytest.skip("SubagentRole nodes not present in Neo4j (fixture unavailable)")
         if proc.returncode != 0 and "refused" in proc.stderr.lower():
             pytest.skip("Neo4j not reachable")
         assert proc.returncode == 0, f"Drift detected: {proc.stdout}\n{proc.stderr}"

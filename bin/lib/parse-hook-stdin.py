@@ -24,6 +24,7 @@ Stdlib only -- no external dependencies.
 
 import json
 import os
+import shlex
 import sys
 
 
@@ -68,17 +69,54 @@ def parse() -> None:
             "tool_result_is_error",
             os.environ.get("HOOK_TOOL_IS_ERROR") == "1",
         ),
-        # Flattened fields -- the ones hooks actually need
-        "file_path": tool_input.get(
-            "file_path", tool_input.get("path", "")
+        # Flattened fields -- the ones hooks actually need. NotebookEdit uses
+        # notebook_path/new_source instead of file_path/content; map them here so
+        # the whole write/security/RAG stack (which reads file_path + content) gates
+        # notebook cell edits like any other write (#4).
+        "file_path": (
+            tool_input.get("file_path")
+            or tool_input.get("path")
+            or tool_input.get("notebook_path")
+            or ""
         ),
-        "content": tool_input.get("content", ""),
+        "content": tool_input.get("content") or tool_input.get("new_source", ""),
         "old_string": tool_input.get("old_string", ""),
         "new_string": tool_input.get("new_string", ""),
         "command": tool_input.get("command", ""),
     }
 
-    json.dump(result, sys.stdout)
+    if "--shell" in sys.argv:
+        _emit_shell(result)
+    else:
+        json.dump(result, sys.stdout)
+
+
+def _emit_shell(result: dict) -> None:
+    """Emit shlex-quoted shell assignments for the scalar fields + HOOK_ENVELOPE.
+
+    One `eval` of this output sets all HOOK_* vars in a single python3 spawn, so
+    hooks read fields as bash variables instead of re-spawning python per field.
+    shlex.quote guarantees envelope values cannot be shell-executed by the eval.
+    """
+    def _q(v: object) -> str:
+        return shlex.quote("" if v is None else str(v))
+
+    # Mirror detect_session_id's preference: agent_id (sub-agent isolation) else session_id.
+    session_id = result["agent_id"] or result["session_id"]
+    is_error = "1" if result["is_error"] else "0"
+    lines = [
+        f"HOOK_SESSION_ID={_q(session_id)}",
+        f"HOOK_SESSION_ID_RAW={_q(result['session_id'])}",
+        f"HOOK_AGENT_ID={_q(result['agent_id'])}",
+        f"HOOK_AGENT_TYPE={_q(result['agent_type'])}",
+        f"HOOK_EVENT={_q(result['event'])}",
+        f"HOOK_TOOL_NAME={_q(result['tool_name'])}",
+        f"HOOK_FILE_PATH={_q(result['file_path'])}",
+        f"HOOK_COMMAND={_q(result['command'])}",
+        f"HOOK_IS_ERROR={_q(is_error)}",
+        f"HOOK_ENVELOPE={_q(json.dumps(result))}",
+    ]
+    sys.stdout.write("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

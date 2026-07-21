@@ -1,11 +1,19 @@
 """Phase 4c D1: stderr capture extension to Task / Subagent hooks.
 
 PSR-004 surfaced PreToolUse:Agent hook tracebacks during sub-agent
-dispatches. The Task-matcher hook (writ-sdd-review-order.sh) and
-SubagentStart/Stop hooks need the same diagnostic stderr-tee that
-writ-pre-write-dispatch.sh got in Phase 4b. Verifies all three
-redirect stderr to /tmp/writ-hook-debug.log without changing
-behavior.
+dispatches. The Task-matcher hook (writ-dispatch-discipline.sh) and
+SubagentStart/Stop hooks got the same diagnostic stderr-tee that
+writ-pre-write-dispatch.sh got in Phase 4b.
+
+The logging overhaul then GATED that tee behind WRIT_DEBUG. All four
+hooks now use the shared idiom
+    exec 2> >(tee -a "$(_writ_debug_enabled \\
+        && echo "${WRIT_HOOK_LOG:-/tmp/writ-hook-debug.log}" \\
+        || echo /dev/null)" >&2)
+so the debug file is opened ONLY when WRIT_DEBUG=1; otherwise the tee
+sink is /dev/null (quiet-by-default). These tests verify each hook
+carries the gated idiom and that the idiom captures stderr to the debug
+log when WRIT_DEBUG=1 and stays silent when it is unset.
 """
 from __future__ import annotations
 
@@ -16,12 +24,12 @@ from pathlib import Path
 import pytest
 
 WRIT_ROOT = Path(__file__).resolve().parent.parent
-HOOKS = WRIT_ROOT / ".claude" / "hooks"
+HOOKS = WRIT_ROOT / "hooks" / "scripts"
 DEBUG_LOG = Path("/tmp/writ-hook-debug.log")
 
 
 HOOKS_TO_CHECK = [
-    "writ-sdd-review-order.sh",
+    "writ-dispatch-discipline.sh",
     "writ-subagent-start.sh",
     "writ-subagent-stop.sh",
 ]
@@ -40,19 +48,23 @@ class TestStderrTeePresent:
 
     @pytest.mark.parametrize("hook_name", HOOKS_TO_CHECK)
     def test_hook_redirects_stderr_to_debug_log(self, hook_name: str) -> None:
-        """The hook source must contain the exec 2> >(tee ...) line."""
+        """The hook source must carry the WRIT_DEBUG-gated exec 2> >(tee ...) line."""
         path = HOOKS / hook_name
         assert path.exists(), f"{hook_name} does not exist"
         content = path.read_text()
-        # Match either single-line or split form of the tee redirect
-        has_tee = (
-            "tee -a /tmp/writ-hook-debug.log" in content
-            or "tee -a $HOME/writ-hook-debug.log" in content
-            or "tee -a \"/tmp/writ-hook-debug.log\"" in content
+        # The gated idiom has three markers: the WRIT_DEBUG gate helper, the
+        # tee append, and the /tmp/writ-hook-debug.log fallback path inside the
+        # gated $(...). All three must be present (the bare literal
+        # `tee -a /tmp/writ-hook-debug.log` no longer appears verbatim).
+        has_gated_tee = (
+            "_writ_debug_enabled" in content
+            and "tee -a" in content
+            and "/tmp/writ-hook-debug.log" in content
         )
-        assert has_tee, (
-            f"{hook_name} must redirect stderr via tee to "
-            "/tmp/writ-hook-debug.log so tracebacks are diagnosable"
+        assert has_gated_tee, (
+            f"{hook_name} must tee stderr to /tmp/writ-hook-debug.log only when "
+            "WRIT_DEBUG=1 (gated idiom: _writ_debug_enabled + tee -a + the "
+            "/tmp/writ-hook-debug.log fallback path) so tracebacks are diagnosable"
         )
 
     @pytest.mark.parametrize("hook_name", HOOKS_TO_CHECK)
@@ -65,32 +77,75 @@ class TestStderrTeePresent:
 
 
 class TestStderrTeeIdiomWorks:
-    """Verify the bash idiom itself, not the production hook (which has
-    relative-path dependencies that break under copy-and-modify).
+    """Verify the WRIT_DEBUG-gated bash idiom itself, not the production hook
+    (which has relative-path dependencies that break under copy-and-modify).
 
-    The hooks contain `exec 2> >(tee -a /tmp/writ-hook-debug.log >&2)`.
-    This test creates a minimal script with the same idiom + a known
-    stderr write, runs it, and asserts the log captured the line.
+    The hooks source bin/lib/common.sh (the single source of _writ_debug_enabled)
+    and run
+        exec 2> >(tee -a "$(_writ_debug_enabled \\
+            && echo "${WRIT_HOOK_LOG:-/tmp/writ-hook-debug.log}" \\
+            || echo /dev/null)" >&2)
+    This test builds a minimal script that sources the REAL common.sh and runs
+    the same line, then asserts BOTH gate states (TEST-EDGE-001):
+      - WRIT_DEBUG=1: the marker is written to the debug log (and preserved on
+        stderr).
+      - WRIT_DEBUG unset: the sink resolves to /dev/null, so the marker reaches
+        stderr but the debug log is NOT written (quiet-by-default -- the whole
+        point of the gate).
     """
 
     def test_tee_idiom_captures_stderr(self, tmp_path: Path) -> None:
+        import os
+
         marker = "PHASE4C_TEE_IDIOM_TEST_MARKER"
+        common_sh = WRIT_ROOT / "bin" / "lib" / "common.sh"
+        assert common_sh.exists(), f"common.sh not found at {common_sh}"
+
         script = tmp_path / "fake-hook.sh"
+        # Sources the real common.sh so it binds the actual _writ_debug_enabled
+        # helper (single source of truth), then runs the gated tee idiom and
+        # writes the marker to stderr. WRIT_HOOK_LOG is popped from the child
+        # env below so the fallback path resolves to /tmp/writ-hook-debug.log.
         script.write_text(f"""#!/usr/bin/env bash
 set -euo pipefail
-exec 2> >(tee -a /tmp/writ-hook-debug.log >&2)
+source "{common_sh}"
+exec 2> >(tee -a "$(_writ_debug_enabled && echo "${{WRIT_HOOK_LOG:-/tmp/writ-hook-debug.log}}" || echo /dev/null)" >&2)
 printf '%s\\n' "{marker}" >&2
 exit 0
 """)
         script.chmod(0o755)
 
-        proc = subprocess.run([str(script)], capture_output=True, text=True, timeout=5)
-        assert proc.returncode == 0, f"idiom script failed: {proc.stderr}"
-        # Marker is in stderr (tee preserves it) AND in the debug log.
-        assert marker in proc.stderr
-        assert DEBUG_LOG.exists(), "debug log was not created"
+        # Child env with WRIT_HOOK_LOG removed so the fallback path is DEBUG_LOG.
+        base_env = {k: v for k, v in os.environ.items() if k != "WRIT_HOOK_LOG"}
+
+        # --- State 1: WRIT_DEBUG=1 -> marker is teed to the debug log. ---
+        if DEBUG_LOG.exists():
+            DEBUG_LOG.unlink()
+        on_env = dict(base_env, WRIT_DEBUG="1")
+        proc = subprocess.run(
+            [str(script)], capture_output=True, text=True, timeout=5, env=on_env,
+        )
+        assert proc.returncode == 0, f"idiom script failed (WRIT_DEBUG=1): {proc.stderr}"
+        assert marker in proc.stderr, "tee must preserve the marker on stderr"
+        assert DEBUG_LOG.exists(), "debug log was not created with WRIT_DEBUG=1"
         assert marker in DEBUG_LOG.read_text(), (
-            f"marker {marker!r} not found in {DEBUG_LOG}"
+            f"marker {marker!r} not found in {DEBUG_LOG} with WRIT_DEBUG=1"
+        )
+
+        # --- State 2: WRIT_DEBUG unset -> sink is /dev/null, log NOT written. ---
+        if DEBUG_LOG.exists():
+            DEBUG_LOG.unlink()
+        off_env = dict(base_env)
+        off_env.pop("WRIT_DEBUG", None)
+        proc = subprocess.run(
+            [str(script)], capture_output=True, text=True, timeout=5, env=off_env,
+        )
+        assert proc.returncode == 0, f"idiom script failed (WRIT_DEBUG unset): {proc.stderr}"
+        assert marker in proc.stderr, "marker must still reach stderr when quiet"
+        debug_has_marker = DEBUG_LOG.exists() and marker in DEBUG_LOG.read_text()
+        assert not debug_has_marker, (
+            "quiet-by-default: with WRIT_DEBUG unset the sink is /dev/null, so the "
+            f"marker must NOT land in {DEBUG_LOG}"
         )
 
 
@@ -99,6 +154,15 @@ class TestPreWriteDispatchStillCovered:
 
     def test_pre_write_dispatch_still_has_tee(self) -> None:
         content = (HOOKS / "writ-pre-write-dispatch.sh").read_text()
-        assert "tee -a /tmp/writ-hook-debug.log" in content, (
-            "Phase 4b tee on writ-pre-write-dispatch.sh must remain"
+        # Same WRIT_DEBUG-gated idiom markers as the other hooks: the tee is now
+        # opened only when WRIT_DEBUG=1 (the bare literal is gone).
+        has_gated_tee = (
+            "_writ_debug_enabled" in content
+            and "tee -a" in content
+            and "/tmp/writ-hook-debug.log" in content
+        )
+        assert has_gated_tee, (
+            "Phase 4b tee on writ-pre-write-dispatch.sh must remain, now gated: "
+            "it must tee stderr to /tmp/writ-hook-debug.log only when WRIT_DEBUG=1 "
+            "(_writ_debug_enabled + tee -a + the /tmp/writ-hook-debug.log fallback path)"
         )

@@ -38,7 +38,7 @@ PARSE_HOOK_PATH = os.path.join(
 @pytest.fixture()
 def session_id(tmp_path, monkeypatch):
     """Provide a unique session ID and redirect cache to tmp_path."""
-    monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
     return "test-parent-session"
 
 
@@ -155,21 +155,21 @@ class TestIsolatedCacheCreation:
 
     def test_fresh_cache_has_full_budget(self, session_id, agent_id, tmp_path, monkeypatch):
         """New agent session should have full RAG budget (8000)."""
-        monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         writ_session.cmd_mode(agent_id, "set", "work")
         cache = writ_session._read_cache(agent_id)
         assert cache["remaining_budget"] == 8000
 
     def test_fresh_cache_has_empty_loaded_rules(self, session_id, agent_id, tmp_path, monkeypatch):
         """New agent session should have no loaded rules."""
-        monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         writ_session.cmd_mode(agent_id, "set", "work")
         cache = writ_session._read_cache(agent_id)
         assert cache["loaded_rule_ids"] == []
 
     def test_fresh_cache_has_empty_denial_counts(self, session_id, agent_id, tmp_path, monkeypatch):
         """New agent session should have no denial history."""
-        monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         writ_session.cmd_mode(agent_id, "set", "work")
         cache = writ_session._read_cache(agent_id)
         assert cache.get("denial_counts", {}) == {}
@@ -178,7 +178,7 @@ class TestIsolatedCacheCreation:
         self, session_id, agent_id, tmp_path, monkeypatch
     ):
         """Parent and agent should have different cache file paths."""
-        monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         writ_session.cmd_mode(session_id, "set", "conversation")
         writ_session.cmd_mode(agent_id, "set", "work")
 
@@ -202,7 +202,7 @@ class TestFrictionLogAgentId:
         self, agent_id, tmp_path, monkeypatch
     ):
         """Friction events logged with agent_id should include it."""
-        monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".git").mkdir(exist_ok=True)
 
@@ -223,7 +223,7 @@ class TestFrictionLogAgentId:
         self, session_id, tmp_path, monkeypatch
     ):
         """Friction events from parent should not have agent_id."""
-        monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".git").mkdir(exist_ok=True)
 

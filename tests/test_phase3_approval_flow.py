@@ -22,11 +22,15 @@ COMMANDS_DIR = WRIT_ROOT / ".claude" / "commands"
 
 
 class TestSubagentAgentsPresent:
-    """All 6 plan Section 8 subagent .md files exist with valid YAML front-matter."""
+    """All 5 subagent .md files exist with valid YAML front-matter.
+
+    The spec-reviewer + code-quality-reviewer were merged into one two-pass
+    writ-reviewer.
+    """
 
     REQUIRED = [
         "writ-explorer", "writ-planner", "writ-test-writer",
-        "writ-implementer", "writ-spec-reviewer", "writ-code-quality-reviewer",
+        "writ-implementer", "writ-reviewer",
     ]
 
     @pytest.mark.parametrize("name", REQUIRED)
@@ -58,8 +62,22 @@ class TestWritApproveSlashCommand:
 
     def test_writ_approve_references_confirmation_source_tool(self) -> None:
         content = (COMMANDS_DIR / "writ-approve.md").read_text()
-        assert '"confirmation_source": "tool"' in content, (
+        # The POST body is now a double-quoted bash string (to interpolate $TOKEN), so the
+        # JSON quotes are backslash-escaped. Assert the field + value are present in either
+        # form rather than a single literal spelling.
+        assert "confirmation_source" in content and "tool" in content, (
             "/writ-approve must POST with confirmation_source=tool to satisfy Section 8.2 blocker"
+        )
+
+    def test_writ_approve_passes_gate_token(self) -> None:
+        """Audit P0: the advance must carry the gate token (closes the self-approval hole).
+        The command must read /tmp/writ-gate-token-$SESSION_ID and pass it in the POST."""
+        content = (COMMANDS_DIR / "writ-approve.md").read_text()
+        assert "writ-gate-token-$SESSION_ID" in content, (
+            "/writ-approve must read the gate token file"
+        )
+        assert "token" in content and "\\\"token\\\"" in content, (
+            "/writ-approve must pass the gate token in the advance-phase POST body"
         )
 
 
@@ -88,7 +106,7 @@ class TestRolePromptCLI:
 
     @pytest.mark.parametrize("role", [
         "writ-explorer", "writ-planner", "writ-test-writer",
-        "writ-implementer", "writ-spec-reviewer", "writ-code-quality-reviewer",
+        "writ-implementer", "writ-reviewer",
     ])
     def test_role_prompt_returns_text(self, role: str) -> None:
         result = subprocess.run(

@@ -1,0 +1,83 @@
+#!/bin/sh
+# Writ post-commit hook (decision-memory Phase 1d).
+#
+# After a commit lands (the hash now exists), sends the commit metadata and the
+# changed-file list to the Writ daemon, which creates the Commit + FileChange
+# records, wires them into the graph, and resolves the planning claims. Reaches
+# Neo4j only through the running daemon over HTTP (curl); a down daemon fails
+# open (skips the graph write, exits 0). System python3 and curl only.
+#
+# Exit: always 0 (a commit is never blocked).
+
+hash=$(git rev-parse HEAD 2>/dev/null)
+if [ -z "$hash" ]; then
+    exit 0
+fi
+subject=$(git log -1 --format=%s 2>/dev/null)
+author=$(git log -1 --format=%an 2>/dev/null)
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+files=$(git diff-tree --no-commit-id --name-status -r HEAD 2>/dev/null)
+
+if [ -z "$project_root" ]; then
+    exit 0
+fi
+
+# Git launches this hook, so it has no Claude Code session id. Bridge it via the
+# file auto-approve-gate.sh writes every prompt, so capture_commit can read the
+# session cache for per-file queried rule ids. Absent file -> empty (best-effort).
+WRIT_SESSION_ID="$(cat /tmp/writ-current-session 2>/dev/null || echo '')"
+
+writ_port="${WRIT_PORT:-8765}"
+writ_host="${WRIT_HOST:-localhost}"
+writ_base="http://${writ_host}:${writ_port}"
+
+# Assemble the JSON payload with python3. Metadata is passed through the
+# environment and the name-status text through stdin, never interpolated into a
+# shell command (SEC-INJ-CMD-001).
+request=$(printf '%s' "$files" | \
+    WRIT_PROJECT_ROOT="$project_root" \
+    WRIT_HASH="$hash" \
+    WRIT_SUBJECT="$subject" \
+    WRIT_AUTHOR="$author" \
+    WRIT_BRANCH="$branch" \
+    WRIT_SESSION_ID="$WRIT_SESSION_ID" \
+    python3 -c '
+import sys, json, os
+text = sys.stdin.read()
+entries = []
+for line in text.splitlines():
+    if not line.strip():
+        continue
+    parts = line.split("\t")
+    status = parts[0].strip()
+    if not status:
+        continue
+    letter = status[0]
+    if letter in ("R", "C") and len(parts) >= 3:
+        entries.append({"path": parts[2], "change_type": "rename", "old_path": parts[1]})
+    elif len(parts) >= 2:
+        ct = {"A": "add", "M": "modify", "D": "delete", "T": "modify"}.get(letter, "modify")
+        entries.append({"path": parts[1], "change_type": ct})
+print(json.dumps({
+    "project_root": os.environ["WRIT_PROJECT_ROOT"],
+    "commit_hash": os.environ["WRIT_HASH"],
+    "subject": os.environ.get("WRIT_SUBJECT", ""),
+    "author": os.environ.get("WRIT_AUTHOR", ""),
+    "branch": os.environ.get("WRIT_BRANCH", ""),
+    "files": entries,
+    "session_id": os.environ.get("WRIT_SESSION_ID", ""),
+}))
+' 2>/dev/null)
+
+if [ -z "$request" ]; then
+    exit 0
+fi
+
+# Reach the daemon. A down daemon fails open (the graph write is simply skipped).
+curl -s --connect-timeout 0.5 --max-time 3 \
+    -X POST "${writ_base}/commit/capture" \
+    -H "Content-Type: application/json" \
+    -d "$request" >/dev/null 2>&1 || echo "" >/dev/null
+
+exit 0

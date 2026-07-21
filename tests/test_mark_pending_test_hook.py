@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-HOOK = REPO / ".claude" / "hooks" / "writ-mark-pending-test.sh"
+HOOK = REPO / "hooks" / "scripts" / "writ-mark-pending-test.sh"
 SESSION_HELPER = REPO / "bin" / "lib" / "writ-session.py"
 CACHE_ROOT = REPO / "cache"
 

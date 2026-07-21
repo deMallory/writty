@@ -1,7 +1,8 @@
 <!-- RULE START: PHP-TRY-001 -->
 ## Rule PHP-TRY-001
 
-**Domain**: PHP / Error Handling
+**Domain**: languages
+**Category**: CAT-CODE-LANG-PHP-001
 **Severity**: High
 **Scope**: Entity
 **Mandatory**: false
@@ -48,7 +49,8 @@ PHPMD (ENF-POST-007) flags empty catch blocks.
 <!-- RULE START: PHP-TYPE-001 -->
 ## Rule PHP-TYPE-001
 
-**Domain**: PHP / Coding Standards
+**Domain**: languages
+**Category**: CAT-CODE-LANG-PHP-001
 **Severity**: Low
 **Scope**: Entity
 **Mandatory**: false

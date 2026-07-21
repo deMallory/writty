@@ -1,8 +1,8 @@
 """Tests for hooks/hooks.json event routing (Phase B + C).
 
-Verifies the hooks manifest exists, covers all 31 registrations from
-templates/settings.json, uses ${CLAUDE_PLUGIN_ROOT} for all paths, and
-that every referenced script file exists on disk and is executable.
+Verifies the hooks manifest exists, is the single source of truth for hook
+registration, uses ${CLAUDE_PLUGIN_ROOT} for all paths, and that every
+referenced script file exists on disk and is executable.
 """
 
 from __future__ import annotations
@@ -24,16 +24,15 @@ EXPECTED_EVENT_SCRIPTS: dict[str, list[str]] = {
     "SubagentStart": ["writ-subagent-start.sh"],
     "SubagentStop": ["writ-subagent-stop.sh"],
     "Stop": [
-        "writ-context-tracker.sh",
         "friction-logger.sh",
         "enforce-violations.sh",
         "writ-verify-before-claim.sh",
+        "writ-comms-output-gate.sh",
     ],
     "PreCompact": ["writ-precompact.sh"],
     "PostCompact": ["writ-postcompact.sh"],
     "SessionEnd": ["writ-session-end.sh", "writ-pressure-audit.sh"],
     "CwdChanged": ["writ-cwd-changed.sh"],
-    "InstructionsLoaded": ["writ-instructions-loaded.sh"],
 }
 
 
@@ -58,17 +57,7 @@ def _collect_all_commands(hooks_data: dict) -> list[str]:
     hooks_section = hooks_data.get("hooks", hooks_data)
     for event_entries in hooks_section.values():
         if isinstance(event_entries, list):
-            for entry in event_entries:
-                if isinstance(entry, dict):
-                    if "command" in entry:
-                        commands.append(entry["command"])
-                    inner_hooks = entry.get("hooks")
-                    if isinstance(inner_hooks, list):
-                        for inner in inner_hooks:
-                            if isinstance(inner, dict) and "command" in inner:
-                                commands.append(inner["command"])
-                elif isinstance(entry, str):
-                    commands.append(entry)
+            commands.extend(_collect_event_commands(event_entries))
     return commands
 
 
@@ -111,15 +100,18 @@ class TestHooksJsonStructure:
             "hooks.json must have a top-level 'hooks' key"
         )
 
-    def test_hooks_json_covers_all_36_registrations(self, hooks_data: dict) -> None:
-        """Total registrations must equal 36 (31 Phase B + 1 SessionStart Phase C
-        + 2 v1.2.0 context-watcher + 2 added post-v1.2.0)."""
+    def test_hooks_json_registration_count(self, hooks_data: dict) -> None:
+        """Total matcher-group registrations. The count is derived from hooks.json;
+        bump it (and HANDBOOK's 'registers **N hook scripts**') when adding or
+        removing a registration. #1 removed the dead PreToolUse TodoWrite gate and
+        #3 removed the dead PostToolUseFailure track-failed-writes gate (40 -> 38);
+        #6 added the PreToolUse Bash writ-bash-write-gate (38 -> 39); the token-saving
+        read-junk gate added the PreToolUse Read writ-read-junk-gate (39 -> 40); the
+        comms-output gate added the Stop writ-comms-output-gate (40 -> 41)."""
         registrations = _collect_all_registrations(hooks_data)
-        assert len(registrations) == 36, (
-            f"hooks.json must have 36 total registrations (31 from templates/settings.json "
-            f"plus the Phase C SessionStart bootstrap entry plus the v1.2.0 writ-context-watcher "
-            f"on UserPromptSubmit + PreToolUse plus 2 post-v1.2.0 additions), "
-            f"found {len(registrations)}"
+        assert len(registrations) == 41, (
+            f"hooks.json registration count drifted; found {len(registrations)}, "
+            f"expected 41. Update this and HANDBOOK if the change is intentional."
         )
 
     def test_hooks_json_event_mapping(self, hooks_data: dict) -> None:

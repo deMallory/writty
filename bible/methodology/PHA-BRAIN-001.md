@@ -20,6 +20,7 @@ description: |
   Restate the user's goal in your own words. Confirm the restatement with the user before proceeding to constraint clarification. If the user corrects the restatement, accept the correction and re-confirm — do not proceed until the restatement matches the user's intent.
 parent_playbook_id: PBK-PROC-BRAIN-001
 edges: []
+category: CAT-PROC-001
 ---
 
 # Phase 1: Understand intent

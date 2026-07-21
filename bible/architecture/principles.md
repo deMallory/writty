@@ -1,7 +1,8 @@
 <!-- RULE START: ARCH-COMP-001 -->
 ## Rule ARCH-COMP-001
 
-**Domain**: Architecture
+**Domain**: architecture
+**Category**: CAT-CODE-ARCH-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false

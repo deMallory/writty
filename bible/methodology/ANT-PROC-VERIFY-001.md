@@ -18,8 +18,9 @@ source_commit: null
 counter_nodes: [SKL-PROC-VERIFY-001, ENF-PROC-VERIFY-001]
 named_in: "writ-methodology:verification-before-completion"
 edges:
-  - { target: SKL-PROC-VERIFY-001, type: COUNTERS }
   - { target: ENF-PROC-VERIFY-001, type: COUNTERS }
+  - { target: SKL-PROC-VERIFY-001, type: COUNTERS }
+category: CAT-DISC-001
 ---
 
 # Anti-pattern: Trust subagent success reports

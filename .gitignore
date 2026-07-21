@@ -12,6 +12,7 @@ build/
 # IDE
 .idea/
 .vscode/
+.gemini/
 *.swp
 *.swo
 
@@ -23,6 +24,7 @@ neo4j-data/
 
 # pytest
 .pytest_cache/
+.benchmarks/
 
 # mypy
 .mypy_cache/
@@ -38,11 +40,18 @@ Thumbs.db
 .env
 .env.local
 
+# Local config with secrets (Bitbucket token, Neo4j password). Template: writ.toml.example
+writ.toml
+
 # Writ enforcement runtime artifacts
 workflow-friction.log
 .claude/gates/
 .friction-snapshot
 cache/
+bible/.export_timestamp
+
+# Enterprise-logging runtime tree (default log root: <skill>/var/logs)
+var/
 
 # Per-Work-cycle workflow artifacts (overwritten each cycle)
 plan.md
@@ -50,5 +59,5 @@ capabilities.md
 
 # Plugin distribution: never ship
 .claude/settings.local.json
+.claude/skills/
 writ.egg-info/
-.jolli/

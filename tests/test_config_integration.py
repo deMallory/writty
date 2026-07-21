@@ -3,6 +3,13 @@ from writ.toml via writ/config.py -- no hardcoded strings.
 
 Per TEST-TDD-001: skeletons approved before implementation.
 Per ARCH-CONST-001: no magic values in source -- all tunables from writ.toml.
+
+W2 (server package split, branch refactor/w2-server-split): TestServerNoHardcodedCreds
+reads via writ_server_source() (tests/conftest.py), which is layout-agnostic -- it
+scans every *.py under writ/server/ if that directory exists (post-split), else the
+single writ/server.py file (pre-split). TestRepoWideNoHardcodedCreds is unaffected:
+its glob (`WRIT_ROOT / "writ"`).rglob("*.py") already walks into writ/server/**
+automatically once server.py becomes a package.
 """
 
 from __future__ import annotations
@@ -13,6 +20,8 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+
+from tests.conftest import writ_server_source
 
 # Future config module -- ImportError expected until implementation lands.
 try:
@@ -89,27 +98,28 @@ class TestCliNoHardcodedCreds:
 
 
 class TestServerNoHardcodedCreds:
-    """writ/server.py must not contain hardcoded Neo4j connection strings."""
+    """writ.server (module or, post W2-split, package) must not contain hardcoded
+    Neo4j connection strings."""
 
     def test_server_does_not_contain_hardcoded_uri(self) -> None:
-        """writ/server.py source does not contain the literal bolt://localhost:7687 string."""
-        source = _source_of(WRIT_ROOT / "writ" / "server.py")
+        """writ.server source does not contain the literal bolt://localhost:7687 string."""
+        source = writ_server_source()
         assert HARDCODED_URI not in source, (
-            f"writ/server.py still contains hardcoded URI '{HARDCODED_URI}'"
+            f"writ.server still contains hardcoded URI '{HARDCODED_URI}'"
         )
 
     def test_server_does_not_contain_hardcoded_password(self) -> None:
-        """writ/server.py source does not contain the literal 'writdevpass' string."""
-        source = _source_of(WRIT_ROOT / "writ" / "server.py")
+        """writ.server source does not contain the literal 'writdevpass' string."""
+        source = writ_server_source()
         assert HARDCODED_PASSWORD not in source, (
-            f"writ/server.py still contains hardcoded password '{HARDCODED_PASSWORD}'"
+            f"writ.server still contains hardcoded password '{HARDCODED_PASSWORD}'"
         )
 
     def test_server_imports_config(self) -> None:
-        """writ/server.py imports from writ.config."""
-        source = _source_of(WRIT_ROOT / "writ" / "server.py")
+        """writ.server imports from writ.config."""
+        source = writ_server_source()
         assert "writ.config" in source or "from writ import config" in source, (
-            "writ/server.py does not import writ.config"
+            "writ.server does not import writ.config"
         )
 
 
@@ -190,7 +200,9 @@ class TestRepoWideNoHardcodedCreds:
         """Catches the bug class fixed by Finding 9 (2026-05-14): hardcoded
         Neo4j credentials across scripts, benchmarks, and tests that drifted
         from writ.toml without test coverage. After Finding 9, this property
-        holds repo-wide outside the documented allowlist."""
+        holds repo-wide outside the documented allowlist. Note: this walk
+        already covers writ/server/** transparently once the W2 split turns
+        writ/server.py into a package -- rglob("*.py") descends into it."""
         offenders: list[Path] = []
         for source_path in _iter_python_sources_under(WRIT_ROOT / subtree):
             if HARDCODED_PASSWORD in source_path.read_text():

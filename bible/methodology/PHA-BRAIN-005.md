@@ -19,6 +19,7 @@ name: "Offer visual companion"
 description: "If the design has visual, spatial, or layout elements, offer a diagram/sketch as a separate message. Skip this phase if the design is purely logical/textual."
 parent_playbook_id: PBK-PROC-BRAIN-001
 edges: []
+category: CAT-PROC-001
 ---
 
 # Phase 5: Offer visual companion

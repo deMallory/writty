@@ -23,7 +23,7 @@ Stage 1: Domain Filter -- pre-filter to relevant domain subgraph.
 Stage 2: BM25 Keyword Filter -- Tantivy sparse retrieval on trigger, statement, tags.
 Stage 3: ANN Vector Search -- hnswlib in-process ANN on pre-computed embeddings.
 Stage 4: Graph Traversal -- adjacency cache lookup from top-K results.
-Stage 5a: First-pass ranking -- RRF + metadata weighting (no graph proximity).
+Stage 5a: First-pass ranking -- reciprocal-rank + metadata weighting (no graph proximity).
 Stage 5b: Graph proximity -- compute proximity scores from top-3 first-pass results.
 Stage 5c: Final ranking -- re-score with graph proximity, context budget applied.
 ```
@@ -404,7 +404,7 @@ def normalize_ranks(scores):
     return normalized
 ```
 
-**Note**: this is plain reciprocal rank `1/(rank+1)`, **not classical RRF** `1/(k+rank)`. There is no `k` constant. Module docstrings call it RRF but the formula is reciprocal rank + weighted linear fusion.
+**Note**: this is plain reciprocal rank `1/(rank+1)`, **not classical RRF** `1/(k+rank)`. There is no `k` constant. The module docstrings describe it accurately as reciprocal-rank + weighted linear fusion (relabeled off "RRF" in audit #8, 2026-06-11).
 
 ### Authority preference (`ranking.py:183-212`)
 
@@ -601,7 +601,7 @@ compute_confidence_weight defaults: threshold=50, ratio_min=0.75
 
 ## 14. Notable non-implementations / caveats
 
-- **No standard RRF `k` constant.** `normalize_ranks` is `1/(rank+1)`, with weighted linear fusion in `compute_score`. Docstrings say "RRF" but the formula is reciprocal-rank + weighted sum.
+- **No standard RRF `k` constant.** `normalize_ranks` is `1/(rank+1)`, with weighted linear fusion in `compute_score` -- reciprocal-rank + weighted sum, not classical RRF. The docstrings name it accurately as of audit #8 (2026-06-11).
 - **No recency weighting** anywhere.
 - ~~`compute_confidence_weight` (graduation) not wired into `query()`~~ — **resolved 2026-05-10**: now invoked from `compute_score`. Static enum table still applies below the n=50 threshold.
 - **Authority preference disabled by default** (threshold = 0.0).

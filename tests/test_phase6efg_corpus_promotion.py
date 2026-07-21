@@ -37,22 +37,24 @@ OLD_FIXTURE_PATH = WRIT_ROOT / "tests" / "fixtures" / "synthetic_methodology"
 # SKL-PROC-WORKTREE-001 (post-PSR-008 methodology-gap closure) and
 # PBK-AUTHOR-001 (skill-authoring playbook). Updated 2026-05-21 for
 # v1.4.0 additions: PBK-PROC-WORK-WORKFLOW-001, PBK-PROC-ORCHESTRATOR-001,
-# SKL-PROC-MODE-001, SKL-PROC-WRIT-FAILURE-001. When you add a new
-# methodology file in this corpus, bump the corresponding count here
-# so the snapshot stays honest.
+# SKL-PROC-MODE-001, SKL-PROC-WRIT-FAILURE-001. Updated 2026-06-12 for
+# Phase 0 additions: 22 CAT-*.md category nodes + SKL-PROC-DEBUG-001
+# (total +23). When you add a new methodology file in this corpus, bump
+# the corresponding count here so the snapshot stays honest.
 EXPECTED_FILE_COUNTS = {
-    "PBK": 10,  # Playbooks (+2 v1.4.0: PBK-PROC-WORK-WORKFLOW-001, PBK-PROC-ORCHESTRATOR-001)
-    "SKL": 10,  # Skills (+2 v1.4.0: SKL-PROC-MODE-001, SKL-PROC-WRIT-FAILURE-001)
-    "ANT": 10,  # AntiPatterns
-    "ROL": 3,   # SubagentRoles
+    "PBK": 15,  # Playbooks (+3 debug-mode Increment 3: PBK-PROC-DIAGNOSE-*; +1 INV-3: PBK-PROC-RESEARCH-001; +1 INV-6a: PBK-PROC-AUDIT-FANOUT-001)
+    "SKL": 15,  # Skills (+1 INC-5: SKL-PROC-INVESTIGATE-001; +1 INC-7: SKL-PROC-TDD-DESIGN-FEEDBACK-001; +1 INC-11: SKL-PROC-METHODOLOGY-CHECK-001; +1 Phase3: SKL-PROC-DISPATCH-001; +1 Phase0: SKL-PROC-DEBUG-001) -- INC-9 enriched existing SKL-PROC-REVRECV-001, no new node
+    "ANT": 13,  # AntiPatterns (+1 INC-2: ANT-PROC-FINISH-001; +1 INC-7: ANT-PROC-TDD-006; +1 INC-10: ANT-PROC-WORKTREE-001)
+    "ROL": 5,   # SubagentRoles (explorer, planner, test-writer, implementer, reviewer) -- spec-reviewer + code-quality-reviewer merged into ROL-REVIEWER-001
     "FRB": 2,   # ForbiddenResponses
-    "PHA": 9,   # Phases
-    "RAT": 3,   # Rationalizations
+    "PHA": 20,  # Phases (+11 INC-4: PHA-WORK/ORCH/FANOUT)
+    "RAT": 4,   # Rationalizations (+1 INC-11: RAT-PROC-SKILLCHECK-001)
     "PSC": 3,   # PressureScenarios
-    "EXM": 2,   # WorkedExamples
-    "ENF": 8,   # Rule companions (rule-format files in the methodology corpus)
+    "EXM": 3,   # WorkedExamples (+1 INC-8: EXM-PLAN-001)
+    "ENF": 11,  # Rule companions (+1 INC-3: ENF-META-CONCISE-001; +1 INC-11: ENF-PROC-PRIORITY-001; +1 Phase4-A3: ENF-COMMS-OUTPUT-001)
     "META": 2,  # Meta-authoring nodes
-    "TEC": 4,   # Techniques
+    "TEC": 11,  # Techniques (+2 INC-3: KEYWORDS, PERSUASION; +1 INC-7: RED-VERIFY; +1 INC-8: FILE-STRUCTURE; +2 INC-12: VERIFY-EVIDENCE-MAP, PARALLEL-PROMPT)
+    "CAT": 22,  # Category nodes (Phase 0 Wave B: 22 CAT-*.md membership-target nodes)
 }
 
 

@@ -19,6 +19,7 @@ name: "Present design"
 description: "State the design concretely: chosen approach, key decisions, concrete next steps. No placeholders or TBDs. Ask for approval in the same message."
 parent_playbook_id: PBK-PROC-BRAIN-001
 edges: []
+category: CAT-PROC-001
 ---
 
 # Phase 8: Present design

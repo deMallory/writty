@@ -30,7 +30,7 @@ from pathlib import Path
 
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
-EXIT_PLAN_HOOK = f"{SKILL_DIR}/.claude/hooks/validate-exit-plan.sh"
+EXIT_PLAN_HOOK = f"{SKILL_DIR}/hooks/scripts/validate-exit-plan.sh"
 
 
 def _seed_cache(cache_dir: str, session_id: str, payload: dict) -> str:

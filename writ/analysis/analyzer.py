@@ -146,23 +146,18 @@ def _compute_verdict(findings: list[Finding], escalation_failed: bool) -> str:
     warn: uncertain findings, or medium/low confidence without LLM resolution
     pass: no violations
     """
-    if not findings:
-        return "pass"
-
-    statuses = {f.status for f in findings}
-
-    if "violated" in statuses:
-        # Check if all violations are uncertain confidence without LLM
+    # Base mapping (no-findings/violated->fail/uncertain->warn/else pass) is the
+    # shared _derive_verdict (also used by the pattern-vs-LLM calibration metric).
+    base = _derive_verdict(findings)
+    # Analyzer-specific nuance: a 'fail' driven ONLY by pattern-detected,
+    # medium/low-confidence violations softens to 'warn' when LLM escalation
+    # failed (we could not confirm the ambiguous hits).
+    if base == "fail" and escalation_failed:
         violated_findings = [f for f in findings if f.status == "violated"]
         all_ambiguous = all(
             f.source == "pattern" and f.confidence in ("medium", "low")
             for f in violated_findings
         )
-        if all_ambiguous and escalation_failed:
+        if all_ambiguous:
             return "warn"
-        return "fail"
-
-    if "uncertain" in statuses:
-        return "warn"
-
-    return "pass"
+    return base

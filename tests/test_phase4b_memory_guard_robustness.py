@@ -16,13 +16,34 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from writ.shared.logging import log_root, resolve_project, stream_path  # noqa: E402
+
+# This file exercises friction-log PATH RESOLUTION (project-scope + unwritable-path
+# fallback), so it must NOT have WRIT_FRICTION_LOG forced by the autouse isolation
+# fixture -- it relies on cwd to choose the router's project scope.
+pytestmark = pytest.mark.no_friction_isolation
+
 WRIT_ROOT = Path(__file__).resolve().parent.parent
-HOOK = WRIT_ROOT / ".claude" / "hooks" / "writ-memory-policy-guard.sh"
-FALLBACK_LOG = Path("/tmp/writ-memory-policy-guard.log")
+HOOK = WRIT_ROOT / "hooks" / "scripts" / "writ-memory-policy-guard.sh"
+# P1 router: memory_policy_deny is an `audit`-stream event. When the primary
+# stream file is unwritable the router preserves the event in the durable
+# `<WRIT_LOG_ROOT>/_fallback.jsonl` (off /tmp) -- the "never silent" guarantee.
+# The autouse fixture points WRIT_LOG_ROOT at tmp_path/logs for every test.
+
+
+def _fallback_log() -> Path:
+    return log_root() / "_fallback.jsonl"
+
+
+def _audit_stream(cwd: Path) -> Path:
+    """The router's audit-stream file for the project scope derived from cwd."""
+    return stream_path(resolve_project(str(cwd)), "audit")
 
 
 def _run(stdin_json: dict, cwd: Path) -> tuple[str, str, int]:
@@ -70,12 +91,17 @@ def project_root(tmp_path: Path) -> Path:
 
 @pytest.fixture(autouse=True)
 def reset_fallback_log():
-    """Truncate the fallback log between tests to keep assertions clean."""
-    if FALLBACK_LOG.exists():
-        FALLBACK_LOG.unlink()
+    """Truncate the router fallback log between tests to keep assertions clean.
+
+    The autouse WRIT_LOG_ROOT fixture already sandboxes the root under tmp_path,
+    so the fallback is per-test; this keeps it clean if a prior body wrote to it.
+    """
+    fb = _fallback_log()
+    if fb.exists():
+        fb.unlink()
     yield
-    if FALLBACK_LOG.exists():
-        FALLBACK_LOG.unlink()
+    if fb.exists():
+        fb.unlink()
 
 
 class TestQuotingRobustness:
@@ -93,9 +119,9 @@ class TestQuotingRobustness:
         assert code == 0
         assert '"deny"' in stdout
 
-        events = _read_friction_log(project_root / "workflow-friction.log")
+        events = _read_friction_log(_audit_stream(project_root))
         denies = [e for e in events if e.get("event") == "memory_policy_deny"]
-        assert len(denies) == 1, "memory_policy_deny event must land in friction log"
+        assert len(denies) == 1, "memory_policy_deny event must land in the audit stream"
         assert "matched_patterns" in denies[0]
         assert isinstance(denies[0]["matched_patterns"], list)
         assert len(denies[0]["matched_patterns"]) > 0
@@ -108,7 +134,7 @@ class TestQuotingRobustness:
         stdout, _, code = _run(_payload(content), cwd=project_root)
         assert code == 0
         assert '"deny"' in stdout
-        events = _read_friction_log(project_root / "workflow-friction.log")
+        events = _read_friction_log(_audit_stream(project_root))
         assert any(e.get("event") == "memory_policy_deny" for e in events)
 
     def test_backslash_in_match(self, project_root: Path) -> None:
@@ -120,18 +146,18 @@ class TestQuotingRobustness:
         stdout, _, code = _run(_payload(content), cwd=project_root)
         assert code == 0
         assert '"deny"' in stdout
-        events = _read_friction_log(project_root / "workflow-friction.log")
+        events = _read_friction_log(_audit_stream(project_root))
         assert any(e.get("event") == "memory_policy_deny" for e in events)
 
 
 class TestFallbackLogPath:
-    """When PROJECT_ROOT can't be discovered, the fallback log receives the event."""
+    """The deny event always lands in the router's log store (project stream or fallback)."""
 
     def test_no_project_root_uses_fallback(self, tmp_path: Path) -> None:
-        """tmp_path has no marker file; project-root walk finds nothing."""
-        # tmp_path has no .git, .composer.json, etc. Walks up to /, eventually
-        # hits a marker (likely /home or higher), but not always. Use a deeply
-        # nested clean tmpdir to maximize the chance of no marker found.
+        """A clean nested cwd still routes the event to the router store."""
+        # tmp_path has no .git marker; the router resolves a project scope from
+        # cwd (or the 'writ' literal) and writes to <root>/<project>/audit.jsonl,
+        # falling back to <root>/_fallback.jsonl only if that primary is unwritable.
         deep = tmp_path / "no" / "markers" / "here"
         deep.mkdir(parents=True)
 
@@ -142,29 +168,31 @@ class TestFallbackLogPath:
         assert code == 0
         assert '"deny"' in stdout
 
-        # Either project log OR fallback log should have the event.
-        # We can't easily prove which without knowing the upstream walker
-        # outcome; the guarantee is *one of them* received it.
-        project_events = _read_friction_log(deep / "workflow-friction.log")
-        fallback_events = _read_friction_log(FALLBACK_LOG)
+        # The guarantee is the event is preserved somewhere in the router store:
+        # the project's audit stream OR the durable fallback.
+        project_events = _read_friction_log(_audit_stream(deep))
+        fallback_events = _read_friction_log(_fallback_log())
 
         all_events = project_events + fallback_events
         denies = [e for e in all_events if e.get("event") == "memory_policy_deny"]
         assert len(denies) >= 1, (
             "memory_policy_deny event must appear in at least one log "
-            "(project or fallback)"
+            "(project audit stream or router fallback)"
         )
 
 
 class TestStderrOnFailure:
-    """If the friction log emission fails, surface to stderr (not silent)."""
+    """If the primary stream write fails, the event is preserved (never silent)."""
 
     def test_log_write_failure_surfaces(self, tmp_path: Path) -> None:
-        """If the project log path is not writable, emit a stderr line."""
-        # Make the project log path point at a directory (write will fail).
+        """If the router's primary stream file is not writable, the event survives."""
         (tmp_path / ".git").mkdir()
-        bad_log = tmp_path / "workflow-friction.log"
-        bad_log.mkdir()  # directory, not file -- write open will fail
+        # Force the router's primary target (<root>/<project>/audit.jsonl) to be
+        # unwritable by pre-creating it as a directory: open('a') then raises
+        # OSError and the router must degrade to the durable fallback + stderr.
+        target = _audit_stream(tmp_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.mkdir()  # directory, not file -- append open will fail
 
         _, stderr, code = _run(
             _payload("skip the verification take output at face value"),
@@ -172,10 +200,10 @@ class TestStderrOnFailure:
         )
         # The hook itself still exits 0 (deny was emitted on stdout).
         assert code == 0
-        # But the friction-log failure should be visible somewhere:
-        # either in stderr OR in the fallback log.
-        stderr_signal = "writ-memory-policy-guard" in stderr or "friction" in stderr.lower()
-        fallback_events = _read_friction_log(FALLBACK_LOG)
+        # The primary-write failure must be visible somewhere: either the router's
+        # stderr note OR the durable fallback entry (the "never silent" guarantee).
+        stderr_signal = "writ.logging" in stderr or "friction" in stderr.lower()
+        fallback_events = _read_friction_log(_fallback_log())
         fallback_signal = any(
             e.get("event") == "memory_policy_deny" for e in fallback_events
         )

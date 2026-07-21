@@ -1,0 +1,145 @@
+{
+  "_instructions": "Negatives for the false-injection-rate diagnostic (KG #85). Each query is one a developer might plausibly type at a coding-rules retrieval system but for which NO rule in the corpus applies; the correct behavior is to inject nothing (or only a very-low-relevance result). expected_rule_id is null (no relevant rule). flavor A = clearly off-domain (non-coding); flavor B = coding-adjacent but not covered by the corpus. Adversarially validated (each B item grep-checked against bible/ to confirm no rule applies). MEASURED 2026-07-17: the pipeline's NORMALIZED top-1 score does NOT separate these from real queries (100% overlap -> ~100% false injection, un-gateable), but the RAW vector cosine DOES (neg median 0.23 vs pos 0.52; a ~0.40 cosine gate gives false-inj 15% at pos-retention 79%). A CRAG abstention gate (S4) is therefore feasible but must gate on RAW cosine, not the normalized score. Not a pass/fail floor -- the abstain threshold is an S4 product decision. See scripts/measure_false_injection.py.",
+  "negatives": [
+    {
+      "id": "N1",
+      "flavor": "A",
+      "query": "What's a good recipe for a weeknight chicken curry?",
+      "expected_rule_id": null,
+      "_confidence": 0.99
+    },
+    {
+      "id": "N2",
+      "flavor": "A",
+      "query": "What's the best time of year to visit Portugal to avoid crowds?",
+      "expected_rule_id": null,
+      "_confidence": 0.99
+    },
+    {
+      "id": "N3",
+      "flavor": "A",
+      "query": "Should I max out my 401k or pay off my mortgage early?",
+      "expected_rule_id": null,
+      "_confidence": 0.99
+    },
+    {
+      "id": "N4",
+      "flavor": "A",
+      "query": "Who won the Super Bowl in 2019?",
+      "expected_rule_id": null,
+      "_confidence": 0.99
+    },
+    {
+      "id": "N5",
+      "flavor": "A",
+      "query": "What's the capital of Kazakhstan?",
+      "expected_rule_id": null,
+      "_confidence": 0.99
+    },
+    {
+      "id": "N6",
+      "flavor": "A",
+      "query": "How many calories are in an avocado?",
+      "expected_rule_id": null,
+      "_confidence": 0.99
+    },
+    {
+      "id": "N7",
+      "flavor": "A",
+      "query": "What's a good stretching routine for lower back pain after sitting all day?",
+      "expected_rule_id": null,
+      "_confidence": 0.98
+    },
+    {
+      "id": "N8",
+      "flavor": "A",
+      "query": "How do I remove a red wine stain from a white carpet?",
+      "expected_rule_id": null,
+      "_confidence": 0.99
+    },
+    {
+      "id": "N9",
+      "flavor": "A",
+      "query": "What's the best way to train a puppy not to bark at the doorbell?",
+      "expected_rule_id": null,
+      "_confidence": 0.99
+    },
+    {
+      "id": "N10",
+      "flavor": "A",
+      "query": "How often should I rotate my car's tires?",
+      "expected_rule_id": null,
+      "_confidence": 0.97
+    },
+    {
+      "id": "N11",
+      "flavor": "B",
+      "query": "How do I center a div vertically and horizontally with flexbox?",
+      "expected_rule_id": null,
+      "_confidence": 0.95
+    },
+    {
+      "id": "N12",
+      "flavor": "B",
+      "query": "What's the right way to resolve a merge conflict after a git rebase -i?",
+      "expected_rule_id": null,
+      "_confidence": 0.96
+    },
+    {
+      "id": "N13",
+      "flavor": "B",
+      "query": "How do I set up VSCode to auto-lint Python files with flake8 on save?",
+      "expected_rule_id": null,
+      "_confidence": 0.96
+    },
+    {
+      "id": "N14",
+      "flavor": "B",
+      "query": "How do I add a request interceptor in axios to attach an auth header to every outgoing call?",
+      "expected_rule_id": null,
+      "_confidence": 0.9
+    },
+    {
+      "id": "N15",
+      "flavor": "B",
+      "query": "What flags do I need to pass to docker build to use a multi-stage build with build secrets?",
+      "expected_rule_id": null,
+      "_confidence": 0.94
+    },
+    {
+      "id": "N16",
+      "flavor": "B",
+      "query": "How do I write a GitHub Actions matrix build that tests against three Python versions?",
+      "expected_rule_id": null,
+      "_confidence": 0.85
+    },
+    {
+      "id": "N17",
+      "flavor": "B",
+      "query": "What's the regex pattern to validate an email address in Python?",
+      "expected_rule_id": null,
+      "_confidence": 0.85
+    },
+    {
+      "id": "N18",
+      "flavor": "B",
+      "query": "What autovacuum settings should I tune in Postgres to stop table bloat?",
+      "expected_rule_id": null,
+      "_confidence": 0.95
+    },
+    {
+      "id": "N19",
+      "flavor": "B",
+      "query": "Can you explain how the TCP three-way handshake works?",
+      "expected_rule_id": null,
+      "_confidence": 0.87
+    },
+    {
+      "id": "N20",
+      "flavor": "B",
+      "query": "How do I add a custom KnockoutJS component to a Magento 2 checkout step via layout XML?",
+      "expected_rule_id": null,
+      "_confidence": 0.93
+    }
+  ]
+}

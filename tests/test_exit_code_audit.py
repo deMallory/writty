@@ -21,9 +21,9 @@ import pytest
 from pathlib import Path
 
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
-VALIDATE_RULES_SH = f"{SKILL_DIR}/.claude/hooks/validate-rules.sh"
-VALIDATE_FILE_SH = f"{SKILL_DIR}/.claude/hooks/validate-file.sh"
-VALIDATE_HANDOFF_SH = f"{SKILL_DIR}/.claude/hooks/validate-handoff.sh"
+VALIDATE_RULES_SH = f"{SKILL_DIR}/hooks/scripts/validate-rules.sh"
+VALIDATE_FILE_SH = f"{SKILL_DIR}/hooks/scripts/validate-file.sh"
+VALIDATE_HANDOFF_SH = f"{SKILL_DIR}/hooks/scripts/validate-handoff.sh"
 
 
 # ---------------------------------------------------------------------------
@@ -61,32 +61,35 @@ def _write_hook_stdin(file_path: str, tool_name: str = "Write") -> str:
 
 
 class TestValidateRulesExitCodes:
-    """validate-rules.sh must exit 1 for per-write advisories and exit 2 for gate invalidation."""
+    """validate-rules.sh per-write advisory exit is violation-conditioned (WARN_EXIT:
+    0 when there are no confirmed violations, 1 when there are); gate invalidation exits 2.
 
-    def test_per_write_advisory_no_plan_exits_1(self) -> None:
-        """Per-write path when plan.md does not exist exits 1 (advisory, not blocking).
+    POL-5e: a "warn" verdict with zero confirmed (status=="violated") findings is not
+    actionable -- the hook stays silent and exits 0 instead of surfacing a non-blocking
+    "hook error" on every edit. The advisory exits therefore use `exit "$WARN_EXIT"`.
+    """
 
-        Verifies via source inspection that the no-plan.md advisory path uses exit 1.
-        This path is at ~line 300 (after 'No plan.md -> warning mode only').
-        The hook requires a running /analyze endpoint for subprocess testing, so
-        source inspection is the reliable verification method.
+    def test_per_write_advisory_no_plan_exits_warn_exit(self) -> None:
+        """Per-write path when plan.md does not exist exits with the violation-conditioned
+        WARN_EXIT (0 when no confirmed violations, 1 when there are), not a bare exit 1.
+
+        Source inspection: the no-plan.md advisory path (after 'No plan.md -> warning
+        mode only') must use `exit "$WARN_EXIT"`.
         """
         with open(VALIDATE_RULES_SH) as f:
             content = f.read()
         lines = content.split("\n")
 
-        # Find the "No plan.md" comment and verify the next exit is 1
         found_no_plan = False
         for i, line in enumerate(lines):
             if "No plan.md" in line and "warning" in line.lower():
                 found_no_plan = True
-                # Look for exit statement in the next few lines
-                for j in range(i + 1, min(i + 5, len(lines))):
+                for j in range(i + 1, min(i + 6, len(lines))):
                     stripped = lines[j].strip()
                     if stripped.startswith("exit "):
-                        assert stripped == "exit 1", (
-                            f"No-plan.md advisory path must use exit 1, got '{stripped}' "
-                            f"at line {j + 1}"
+                        assert stripped == 'exit "$WARN_EXIT"', (
+                            f"No-plan.md advisory path must use exit \"$WARN_EXIT\" "
+                            f"(violation-conditioned), got '{stripped}' at line {j + 1}"
                         )
                         break
                 break
@@ -94,13 +97,12 @@ class TestValidateRulesExitCodes:
             "validate-rules.sh must have a 'No plan.md' advisory path"
         )
 
-    def test_per_write_advisory_boundary_not_reached_exits_1(self) -> None:
-        """Per-write path when phase boundary has not been reached exits 1 (advisory).
+    def test_per_write_advisory_boundary_not_reached_exits_warn_exit(self) -> None:
+        """Per-write path when phase boundary has not been reached exits with the
+        violation-conditioned WARN_EXIT, not a bare exit 1.
 
-        Anchors on the literal guard `if [ "$BOUNDARY_MODE" != "boundary" ]`
-        and asserts the very next exit statement is `exit 1`. This guard is
-        the canonical boundary-not-reached branch in the v1.2.0 sentinel-driven
-        exit map.
+        Anchors on the literal guard `if [ "$BOUNDARY_MODE" != "boundary" ]` and
+        asserts the next exit statement is `exit "$WARN_EXIT"`.
         """
         with open(VALIDATE_RULES_SH) as f:
             lines = f.read().split("\n")
@@ -118,8 +120,9 @@ class TestValidateRulesExitCodes:
         for j in range(guard_idx + 1, min(guard_idx + 8, len(lines))):
             s = lines[j].strip()
             if s.startswith("exit "):
-                assert s == "exit 1", (
-                    f"Boundary-not-reached path must use exit 1, got '{s}' at line {j + 1}"
+                assert s == 'exit "$WARN_EXIT"', (
+                    f"Boundary-not-reached path must use exit \"$WARN_EXIT\", got '{s}' "
+                    f"at line {j + 1}"
                 )
                 return
         raise AssertionError(

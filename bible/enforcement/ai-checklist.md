@@ -71,11 +71,9 @@ Before writing any code, verify:
 - [ ] Algorithm complexity is appropriate for the use case (Big O)
 - [ ] Dependencies are injected, not instantiated (Dependency Inversion)
 - [ ] Tests are planned or implemented
-- [ ] **Task classified** -- tier declared per `ENF-ROUTE-001` before any phase or code generation begins. Bible always consulted regardless of tier.
-- [ ] **Tier-appropriate protocol followed**:
-  - Tier 0 (Research): Bible docs consulted, findings delivered, no code
-  - Tier 1 (Patch): Bible docs + CORE_PRINCIPLES.md, code written, static analysis run
-  - Tier 2 (Standard): Phases A-C combined (one approval), test skeletons (`ENF-GATE-007`), single slice, static analysis
-  - Tier 3 (Complex): Full Phased Implementation Protocol -- phases A-D individually presented and approved (`ENF-GATE-001`–`005`), test skeletons (`ENF-GATE-007`), dependency-ordered slices (`ENF-GATE-006`), post-generation verification (`ENF-POST-006`–`008`), ENF-GATE-FINAL
+- [ ] **Mode declared** -- set the session mode (`SKL-PROC-MODE-001`) before any phase or code generation begins. The RAG is consulted in every mode.
+- [ ] **Mode-appropriate workflow followed**:
+  - Conversation / Debug / Review: no code generation (discussion, investigation, or rule-evaluation only)
+  - Work: the gated workflow (`PBK-PROC-WORK-WORKFLOW-001`) -- plan approved (`ENF-PROC-PLAN-001`), test skeletons first (`ENF-PROC-TDD-001`), then implementation, then verify before completion (`SKL-PROC-VERIFY-001`)
 
 **Core philosophy**: Write code once in the right place, make it reusable, keep it simple, and design for extension rather than modification.

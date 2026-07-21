@@ -272,7 +272,7 @@ Builds query as `f"{trigger} {statement}"`. Excludes self. Calls `pipeline.query
 def check_redundancy(rule_data: dict, pipeline: RetrievalPipeline,
                     threshold: float = REDUNDANCY_THRESHOLD) -> list[dict]:
 ```
-Encodes via `pipeline._model.encode(query_text).tolist()`. Calls `pipeline._vector.search(query_vector, k=10)`. Returns rules with `r.score >= threshold` (cosine similarity, INV-5 — independent of RRF score).
+Encodes via `pipeline._model.encode(query_text).tolist()`. Calls `pipeline._vector.search(query_vector, k=10)`. Returns rules with `r.score >= threshold` (cosine similarity, INV-5 — independent of the reciprocal-rank fusion score).
 
 ### `check_conflicts` (`authoring.py:107-125`)
 ```python

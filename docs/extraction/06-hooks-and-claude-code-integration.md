@@ -147,7 +147,7 @@ Structure:
 **Mode-gated**: only fires in `review` or `debug` modes. Same shape as pretool-rag (path-based query, /query call, format, cache update). `query_source: "file-read"`.
 
 ### `writ-sdd-review-order.sh` — PreToolUse Task (71 lines)
-Bails unless work mode. Acts only when `tool_input.subagent_type` contains "code-review" or equals "writ-code-reviewer". Reads `cache.review_ordering_state[task_id]`. If `spec_reviewer_completed != true` → deny with `ENF-PROC-SDD-001`.
+Bails unless work mode. Acts only when `tool_input.subagent_type` contains "code-review" or equals "writ-code-quality-reviewer". Reads `cache.review_ordering_state[task_id]`. If `spec_reviewer_completed != true` → deny with `ENF-PROC-SDD-001`.
 
 ### `writ-session-end.sh` — SessionEnd (98 lines)
 PPID-derived session_id. Sequence: (1) `auto-feedback`, (2) `coverage`, (3) gate metrics: appends `## Gate: NAME -- TIMESTAMP` to `${PROJECT_ROOT}/.claude/session-metrics.md`, (4) emits `session_end` rollup with `rules_loaded, total_violations, files_written, queries, mode, final_phase`.
@@ -351,12 +351,12 @@ Each is a regex pass implemented inline as `python3 - <<'PYEOF' "$file" "$lang"`
 
 | Function | Phase | Mandatory rules backed |
 |---|---|---|
-| `analyze_security_injection` | 1A | SEC-INJ-SQL-001, XSS-001, CMD-001, SSRF-001, DESER-001, CSRF-001 (+ advisory SEC-INJ-PATH-001, LDAP-001, SSTI-001, HEADER-001, LOG-001, XSS-002, XSS-003, CMD-002, REDIR-001) |
-| `analyze_security_auth_authz` | 1B | SEC-AUTH-HASH-001, TOKEN-001; SEC-AUTHZ-ENFORCE-001, IDOR-001, DEFAULT-001, MASS-001; SEC-VAL-SERVER-001, FILE-001 |
-| `analyze_security_crypto_headers` | 1C | SEC-CRYPTO-KEY-001, RAND-001 (+ advisory ALGO-001, CERT-001) |
-| `analyze_security_data_protection` | 1D | SEC-DATA-PII-001 |
-| `analyze_performance_n_plus_one` | 3B | PERF-QUERY-001 (warning, not error — heuristic) |
-| `analyze_scaling_stateless` | 4 | SCALE-STATELESS-001 (warning, not error — heuristic) |
+| `analyze_all_regex_scanners` | 1A | SEC-INJ-SQL-001, XSS-001, CMD-001, SSRF-001, DESER-001, CSRF-001 (+ advisory SEC-INJ-PATH-001, LDAP-001, SSTI-001, HEADER-001, LOG-001, XSS-002, XSS-003, CMD-002, REDIR-001) |
+| `analyze_all_regex_scanners` | 1B | SEC-AUTH-HASH-001, TOKEN-001; SEC-AUTHZ-ENFORCE-001, IDOR-001, DEFAULT-001, MASS-001; SEC-VAL-SERVER-001, FILE-001 |
+| `analyze_all_regex_scanners` | 1C | SEC-CRYPTO-KEY-001, RAND-001 (+ advisory ALGO-001, CERT-001) |
+| `analyze_all_regex_scanners` | 1D | SEC-DATA-PII-001 |
+| `analyze_all_regex_scanners` | 3B | PERF-QUERY-001 (warning, not error — heuristic) |
+| `analyze_all_regex_scanners` | 4 | SCALE-STATELESS-001 (warning, not error — heuristic) |
 
 Each analyzer emits JSON-per-line via `emit(line_no, rule, tool, message, severity)`, where `severity ∈ {error, warning}`. `pre-validate-file.sh` denies the write only on `severity = error`; warnings surface as advisories.
 

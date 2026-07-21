@@ -17,7 +17,7 @@ Stage 1: Domain filter (post-filter on BM25/vector results)
 Stage 2: BM25 keyword search (Tantivy, top-50 candidates)
 Stage 3: ANN vector search (hnswlib, ONNX embeddings, top-10 candidates)
 Stage 4: Graph traversal (pre-computed adjacency cache, DEPENDS_ON/CONFLICTS_WITH/SUPPLEMENTS)
-Stage 5: Two-pass RRF ranking
+Stage 5: Two-pass reciprocal-rank fusion ranking (1/(rank+1) + weighted sum; not classical RRF)
   Pass 1: score = 0.198*bm25 + 0.594*vector + 0.099*severity + 0.099*confidence
   Pass 2: add graph proximity from top-3, apply authority preference, apply context budget
   |
@@ -32,7 +32,7 @@ All indexes are pre-warmed at startup. No I/O in the hot path (PERF-IO-001).
 | Module | Lines | Role | Load-bearing? |
 |--------|-------|------|---------------|
 | `writ/retrieval/pipeline.py` | 346 | Pipeline orchestrator. All 5 stages. | YES -- any change here affects every query. Run benchmarks after changes. |
-| `writ/retrieval/ranking.py` | 292 | RRF scoring, authority preference, context budget. | YES -- ranking changes affect MRR@5 and hit rate. Run benchmarks. |
+| `writ/retrieval/ranking.py` | 292 | reciprocal-rank fusion scoring, authority preference, context budget. | YES -- ranking changes affect MRR@5 and hit rate. Run benchmarks. |
 | `writ/retrieval/embeddings.py` | 226 | ONNX embedding model, hnswlib vector store, LRU cache. | YES -- model or index changes affect vector search quality. |
 | `writ/retrieval/keyword.py` | 96 | Tantivy BM25 index wrapper. | Moderate -- field changes affect BM25 recall. |
 | `writ/retrieval/traversal.py` | 109 | Pre-computed adjacency cache (1-hop, 2-hop neighbors). | Moderate -- cache structure affects graph proximity scoring. |
@@ -61,14 +61,14 @@ These must hold after any change. Violating them breaks the system.
 4. **AI-provisional rules excluded from graph proximity seeding.** Only human and ai-promoted rules seed the adjacency cache. This prevents untested rules from boosting each other.
 5. **Mandatory rules (ENF-*) bypass the pipeline.** They are always loaded by the skill directly, never returned by `/query`. The pipeline only handles non-mandatory domain rules.
 6. **Embedding dimensions are 384.** The ONNX model produces 384-dim vectors. Changing the model requires re-indexing all vectors.
-7. **Ranking weights must sum to 1.0.** The RRF formula in `ranking.py` assumes normalized weights from writ.toml `[ranking]`.
+7. **Ranking weights must sum to 1.0.** The reciprocal-rank fusion formula in `ranking.py` assumes normalized weights from writ.toml `[ranking]`.
 8. **Graduation requires n>=50 with ratio>=0.75.** The frequency graduation thresholds are derived from Wilson CI analysis. Do not lower them without statistical justification.
 
 ### Configuration
 
 All tunable parameters are in `writ.toml`. Key sections:
 
-- `[ranking]` -- RRF weights (bm25, vector, severity, confidence, graph)
+- `[ranking]` -- reciprocal-rank fusion weights (bm25, vector, severity, confidence, graph)
 - `[authority]` -- preference threshold, AI confidence ceilings
 - `[context_budget]` -- summary/standard thresholds (2000/8000 tokens)
 - `[gate]` -- novelty (0.85) and redundancy (0.95) cosine thresholds

@@ -16,7 +16,13 @@ import secrets
 import sys
 import tempfile
 
-import pytest
+# ruff: noqa: F811 -- the shared session_id/project_root fixtures below are consumed
+# as test-method parameters, which ruff misreads as redefinitions of this import.
+from tests.fixtures.session_state import (  # noqa: F401
+    call_can_write,
+    project_root,
+    session_id,
+)
 
 # ---------------------------------------------------------------------------
 # Import the session helper as a module (it's not in a package)
@@ -33,23 +39,6 @@ spec.loader.exec_module(writ_session)
 SKILL_DIR = os.path.join(os.path.dirname(__file__), os.pardir)
 
 
-@pytest.fixture()
-def session_id(tmp_path, monkeypatch):
-    """Provide a unique session ID and redirect cache to tmp_path."""
-    monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
-    return "test-phase3-session"
-
-
-@pytest.fixture()
-def project_root(tmp_path):
-    """Create a minimal project root with .git marker and gates dir."""
-    root = tmp_path / "project"
-    root.mkdir()
-    (root / ".git").mkdir()
-    (root / ".claude" / "gates").mkdir(parents=True)
-    return root
-
-
 def _set_mode(session_id: str, mode: str) -> None:
     writ_session.cmd_mode(session_id, "set", mode)
 
@@ -62,12 +51,9 @@ def _call_can_write(
     session_id: str, file_path: str, monkeypatch, capsys, skill_dir: str = ""
 ) -> dict:
     """Call cmd_can_write with a synthetic tool envelope and return the JSON result."""
-    capsys.readouterr()  # clear any prior output
-    envelope = json.dumps({"tool_input": {"file_path": file_path}})
-    monkeypatch.setattr("sys.stdin", io.StringIO(envelope))
-    writ_session.cmd_can_write(session_id, skill_dir or SKILL_DIR)
-    out = capsys.readouterr().out.strip()
-    return json.loads(out)
+    return call_can_write(
+        writ_session, session_id, file_path, monkeypatch, capsys, skill_dir or SKILL_DIR
+    )
 
 
 def _call_advance_phase(

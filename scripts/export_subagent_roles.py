@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -36,7 +37,7 @@ def render_agent_md(row: dict) -> str:
     lines = ["---", f"name: {row['name']}"]
     description = row.get("description") or row.get("statement") or ""
     if description:
-        lines.append(f"description: {description}")
+        lines.append(f"description: {json.dumps(description)}")
     if row.get("model_preference"):
         lines.append(f"model: {row['model_preference']}")
     if row.get("tools"):

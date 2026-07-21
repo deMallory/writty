@@ -1,7 +1,8 @@
 <!-- RULE START: PHP-ERR-001 -->
 ## Rule PHP-ERR-001
 
-**Domain**: PHP / Error Handling
+**Domain**: languages
+**Category**: CAT-CODE-LANG-PHP-001
 **Severity**: High
 **Scope**: Entity
 **Mandatory**: false
@@ -46,13 +47,16 @@ Code review.
 ### Rationale
 Silent failures mask bugs and make debugging extremely difficult. A `return 0.0` on missing order produces a valid-looking discount of zero -- the bug is invisible until someone audits the final numbers. Early, explicit failures surface problems immediately.
 
+Related rules: CLEAN-ERR-001, PHP-TRY-001.
+
 <!-- RULE END: PHP-ERR-001 -->
 ---
 
 <!-- RULE START: PHP-ERR-002 -->
 ## Rule PHP-ERR-002
 
-**Domain**: PHP / Error Handling
+**Domain**: languages
+**Category**: CAT-CODE-LANG-PHP-001
 **Severity**: Medium
 **Scope**: Entity
 **Mandatory**: false
@@ -85,7 +89,7 @@ catch (\Throwable $e) {
 ```
 
 ### Enforcement
-ENF-SEC-002 (data exposure minimization) catches debug info in responses. Code review.
+SEC-DATA-MASK-001 (error responses must not expose internals) catches debug info in responses. Code review.
 
 ### Rationale
 Different contexts require different error handling strategies. A stack trace shown to users is both a security risk (exposes file paths, class names, SQL) and poor UX. Internal details belong in logs, not in responses.

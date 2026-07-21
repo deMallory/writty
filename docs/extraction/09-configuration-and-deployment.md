@@ -196,7 +196,7 @@ No `[tool.ruff]`, `[tool.black]`, `[tool.mypy]`, or `[tool.pytest.ini_options]` 
 {
   "name": "writ",
   "version": "2.0.0",
-  "description": "Hybrid RAG rule retrieval + enforcement layer. Injects relevant coding rules via a 5-stage pipeline (BM25 + vector + graph traversal + RRF ranking) and enforces mode-based workflow gates.",
+  "description": "Hybrid RAG rule retrieval + enforcement layer. Injects relevant coding rules via a 5-stage pipeline (BM25 + vector + graph traversal + reciprocal-rank fusion) and enforces mode-based workflow gates.",
   "permissions": ["read"],
   "defaultEnabled": true,
   "lifecycle": {

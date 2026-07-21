@@ -27,7 +27,7 @@ spec.loader.exec_module(writ_session)
 
 @pytest.fixture()
 def session_id(tmp_path, monkeypatch):
-    monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
     return "test-read-rag"
 
 
@@ -102,7 +102,7 @@ class TestReadRagHookSyntax:
     def test_hook_file_exists(self):
         hook_path = os.path.join(
             os.path.dirname(__file__), os.pardir,
-            ".claude", "hooks", "writ-read-rag.sh"
+            "hooks", "scripts", "writ-read-rag.sh"
         )
         assert os.path.exists(hook_path), f"Hook file not found: {hook_path}"
 
@@ -110,7 +110,7 @@ class TestReadRagHookSyntax:
         import subprocess
         hook_path = os.path.join(
             os.path.dirname(__file__), os.pardir,
-            ".claude", "hooks", "writ-read-rag.sh"
+            "hooks", "scripts", "writ-read-rag.sh"
         )
         result = subprocess.run(
             ["bash", "-n", hook_path],

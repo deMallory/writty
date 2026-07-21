@@ -12,9 +12,11 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
 import tempfile
 from contextlib import redirect_stdout
 from typing import Any
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -36,6 +38,7 @@ SESSION_ID = "test-compaction-hooks-session"
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 SETTINGS_JSON = f"{SKILL_DIR}/../../settings.json"
+HOOKS_JSON = Path(__file__).resolve().parent.parent / "hooks" / "hooks.json"
 
 
 # ---------------------------------------------------------------------------
@@ -154,12 +157,12 @@ class TestCmdClearRulesForCompaction:
 
     def setup_method(self):
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        self._env_patch = mock.patch.dict(os.environ, {"WRIT_CACHE_DIR": self._tmpdir})
+        self._env_patch.start()
 
     def teardown_method(self):
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -225,12 +228,12 @@ class TestCmdResetAfterCompaction:
 
     def setup_method(self):
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        self._env_patch = mock.patch.dict(os.environ, {"WRIT_CACHE_DIR": self._tmpdir})
+        self._env_patch.start()
 
     def teardown_method(self):
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -378,25 +381,19 @@ class TestResetAfterCompactionRoute:
 # ---------------------------------------------------------------------------
 
 
-class TestCycleAHeuristicCoexistence:
-    """Cycle A detect-compaction heuristic stays as fallback alongside PostCompact hook."""
-
-    def test_detect_compaction_still_exists_in_writ_session(self) -> None:
-        """cmd_detect_compaction is still present in writ-session.py (Cycle A heuristic intact)."""
-        mod = _load_writ_session()
-        assert hasattr(mod, "cmd_detect_compaction"), (
-            "cmd_detect_compaction must not be removed; Cycle A heuristic is a fallback"
-        )
+class TestPostCompactIsSoleRecovery:
+    """PostCompact is the sole compaction-recovery signal; the Cycle A
+    detect-compaction heuristic was removed entirely (POL-5a-cleanup)."""
 
     def test_detect_compaction_removed_from_rag_inject_hook(self) -> None:
         """writ-rag-inject.sh no longer calls detect-compaction.
 
         The env-var-based heuristic was removed because the env var it read
-        doesn't exist in Claude Code. PostCompact hook is the authoritative
-        recovery mechanism. The subcommand/route/helper are preserved
-        (see test_detect_compaction_still_exists_in_writ_session above).
+        doesn't exist in Claude Code, and POL-5a-cleanup removed the dead
+        cmd_detect_compaction chain entirely. PostCompact hook is the sole
+        authoritative recovery mechanism.
         """
-        hook = f"{SKILL_DIR}/.claude/hooks/writ-rag-inject.sh"
+        hook = f"{SKILL_DIR}/hooks/scripts/writ-rag-inject.sh"
         with open(hook) as f:
             source = f.read()
         assert "detect-compaction" not in source, (
@@ -408,13 +405,13 @@ class TestCycleAHeuristicCoexistence:
         """Running reset-after-compaction when phase IDs already empty is a no-op (safe)."""
         mod = _load_writ_session()
         with tempfile.TemporaryDirectory() as tmpdir:
-            mod.CACHE_DIR = tmpdir
-            cache = _make_cache_with_rules(
-                loaded_rule_ids_by_phase={"implementation": [], "planning": ["ENF-GATE-001"]},
-            )
-            result = _run_cmd(mod, mod.cmd_reset_after_compaction, SESSION_ID, cache)
-            assert result["rules_cleared"] == []
-            assert result["budget_reset"] is True
+            with mock.patch.dict(os.environ, {"WRIT_CACHE_DIR": tmpdir}):
+                cache = _make_cache_with_rules(
+                    loaded_rule_ids_by_phase={"implementation": [], "planning": ["ENF-GATE-001"]},
+                )
+                result = _run_cmd(mod, mod.cmd_reset_after_compaction, SESSION_ID, cache)
+                assert result["rules_cleared"] == []
+                assert result["budget_reset"] is True
 
     def test_clear_rules_for_compaction_is_idempotent_when_loaded_rules_already_empty(
         self,
@@ -422,11 +419,11 @@ class TestCycleAHeuristicCoexistence:
         """Running clear-rules-for-compaction when loaded_rules already empty returns zeros."""
         mod = _load_writ_session()
         with tempfile.TemporaryDirectory() as tmpdir:
-            mod.CACHE_DIR = tmpdir
-            cache = _make_cache_with_rules(loaded_rules=[])
-            result = _run_cmd(mod, mod.cmd_clear_rules_for_compaction, SESSION_ID, cache)
-            assert result["rules_cleared"] == 0
-            assert result["bytes_freed"] == 0
+            with mock.patch.dict(os.environ, {"WRIT_CACHE_DIR": tmpdir}):
+                cache = _make_cache_with_rules(loaded_rules=[])
+                result = _run_cmd(mod, mod.cmd_clear_rules_for_compaction, SESSION_ID, cache)
+                assert result["rules_cleared"] == 0
+                assert result["bytes_freed"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -438,10 +435,7 @@ class TestSettingsJsonCompactionHooks:
     """PreCompact and PostCompact hooks must be registered in settings.json."""
 
     def _load_settings(self) -> dict[str, Any]:
-        import os
-        home = os.path.expanduser("~")
-        settings_path = os.path.join(home, ".claude", "settings.json")
-        with open(settings_path) as f:
+        with open(HOOKS_JSON) as f:
             return json.load(f)
 
     def _extract_commands(self, entries: list) -> list[str]:

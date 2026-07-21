@@ -10,6 +10,7 @@ Public surface: render_dashboard() -> str (HTML).
 from __future__ import annotations
 
 import html
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -48,13 +49,34 @@ def _section(title: str, body: str) -> str:
     return f'<section>\n<h2>{_esc(title)}</h2>\n{body}\n</section>'
 
 
+# A9: parse_log is ~785ms (Pydantic-bound) and ran on EVERY GET /dashboard.
+# Cache the parsed events keyed on the log's mtime -- the friction log is
+# append-only, so mtime is an exact change key (a stale read only survives until
+# the next append). Idempotent under concurrent GETs (same mtime -> same events),
+# so no lock is needed.
+_EVENTS_CACHE: dict = {"mtime": None, "events": None}
+
+
 def _safe_load_events() -> list[FrictionEvent]:
     """Best-effort parse. Missing log -> empty list. No exceptions escape."""
     try:
         path = resolve_log_path()
-        return parse_log(path)
     except Exception:
         return []
+    try:
+        mtime = os.stat(path).st_mtime
+    except OSError:
+        mtime = None
+    if mtime is not None and _EVENTS_CACHE["mtime"] == mtime and _EVENTS_CACHE["events"] is not None:
+        return _EVENTS_CACHE["events"]
+    try:
+        events = parse_log(path)
+    except Exception:
+        return []
+    if mtime is not None:
+        _EVENTS_CACHE["mtime"] = mtime
+        _EVENTS_CACHE["events"] = events
+    return events
 
 
 def render_dashboard() -> str:

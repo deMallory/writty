@@ -1,7 +1,8 @@
 <!-- RULE START: DB-SQL-002 -->
 ## Rule DB-SQL-002
 
-**Domain**: Database / SQL
+**Domain**: database
+**Category**: CAT-CODE-LANG-SQL-001
 **Severity**: Medium
 **Scope**: Entity
 **Mandatory**: false
@@ -38,13 +39,16 @@ Code review.
 ### Rationale
 Fragmented SQL is harder to read, copy for debugging, and audit for security issues. Missing trailing spaces in concatenated fragments is a common source of syntax errors.
 
+Related rules: DB-SQL-003.
+
 <!-- RULE END: DB-SQL-002 -->
 ---
 
 <!-- RULE START: DB-SQL-003 -->
 ## Rule DB-SQL-003
 
-**Domain**: Database / SQL
+**Domain**: database
+**Category**: CAT-CODE-LANG-SQL-001
 **Severity**: Medium
 **Scope**: Entity
 **Mandatory**: false
@@ -81,5 +85,7 @@ Code review.
 
 ### Rationale
 Readable SQL is easier to review, debug, and maintain. Vertical formatting makes complex queries scannable and diff-friendly.
+
+Related rules: DB-SQL-002.
 
 <!-- RULE END: DB-SQL-003 -->

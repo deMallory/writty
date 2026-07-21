@@ -115,6 +115,35 @@ class TestNodeMarkerParsing:
         assert nodes[0]["node_type"] == "Skill"
         assert nodes[0]["skill_id"] == "SKL-PROC-X-001"
 
+    def test_node_marker_rule_no_prefix_auto_mandatory(self, tmp_path: Path) -> None:
+        """Audit #7: a Rule parsed via NODE START must NOT be auto-marked mandatory
+        from an ENF- prefix. The rule_id.startswith('ENF-') convention was removed
+        2026-05-09; the RULE START parser defaults mandatory=False, and this parser
+        must agree (mandatory is explicit-only)."""
+        (tmp_path / "n.md").write_text(
+            "<!-- NODE START type=Rule id=ENF-X-001 -->\n"
+            "**Domain**: process\n**Severity**: high\n**Scope**: session\n\n"
+            "### Trigger\nWhen X\n### Statement\nDo Y\n### Rationale\nZ\n\n"
+            "<!-- NODE END: ENF-X-001 -->\n"
+        )
+        nodes = parse_nodes_from_file(tmp_path / "n.md")
+        assert len(nodes) == 1
+        assert nodes[0]["mandatory"] is False, (
+            "ENF- prefix must not auto-set mandatory (matches RULE START parser)"
+        )
+
+    def test_node_marker_rule_explicit_mandatory_honored(self, tmp_path: Path) -> None:
+        """An explicit `**Mandatory**: true` is still honored for a NODE START Rule."""
+        (tmp_path / "n.md").write_text(
+            "<!-- NODE START type=Rule id=PERF-X-001 -->\n"
+            "**Domain**: performance\n**Severity**: high\n**Scope**: file\n"
+            "**Mandatory**: true\n\n"
+            "### Trigger\nWhen X\n### Statement\nDo Y\n### Rationale\nZ\n\n"
+            "<!-- NODE END: PERF-X-001 -->\n"
+        )
+        nodes = parse_nodes_from_file(tmp_path / "n.md")
+        assert nodes[0]["mandatory"] is True
+
     def test_parse_multiple_node_markers(self, tmp_path: Path) -> None:
         (tmp_path / "n.md").write_text(
             "<!-- NODE START type=Skill id=SKL-X-X-001 -->\n"

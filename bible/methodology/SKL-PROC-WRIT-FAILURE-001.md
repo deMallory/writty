@@ -18,6 +18,10 @@ source_attribution: writ-1.4.0-migration
 source_commit: pending
 edges:
   - { target: PBK-PROC-WORK-WORKFLOW-001, type: TEACHES }
+category: CAT-PROC-001
+floor_modes: [work]
+action_triggers: ["gate-denial"]
+trigger_keywords: ["test skeleton", "approval", "plan mode"]
 ---
 
 # Skill: Writ workflow edge cases

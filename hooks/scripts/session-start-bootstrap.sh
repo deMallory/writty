@@ -8,6 +8,11 @@
 
 set -u
 
+# 0. Capture the SessionStart payload once (session_id, cwd, source). CC sends it on
+#    stdin; read it before anything else so the carry-forward step (step 5) can use it.
+#    Guarded: an empty / unreadable payload leaves the fields blank and the carry no-ops.
+STDIN_JSON="$(cat 2>/dev/null || true)"
+
 # 1. Resolve install root and persistent-data dir. The plugin loader sets
 #    CLAUDE_PLUGIN_ROOT; if unset, we're not running under the loader so
 #    there's nothing to bootstrap.
@@ -19,8 +24,6 @@ WRIT_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}"
 # Venv lives at ${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv so it
 # survives plugin upgrades that rewrite ${CLAUDE_PLUGIN_ROOT}.
 VENV_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv"
-SERVER_URL="${WRIT_SERVER_URL:-http://localhost:8765}"
-SERVER_HEALTH_URL="http://localhost:8765/health"
 NEO4J_HOST="${WRIT_NEO4J_HOST:-localhost}"
 NEO4J_PORT="${WRIT_NEO4J_PORT:-7687}"
 
@@ -48,28 +51,52 @@ fi
 exec 3<&- 2>/dev/null || true
 exec 3>&- 2>/dev/null || true
 
-# 4. Probe server health at http://localhost:8765/health. If already
-#    running, we're done.
-if curl -fsS --max-time 1 "${SERVER_HEALTH_URL}" >/dev/null 2>&1; then
-  exit 0
-fi
+# 4. Ensure the Writ server is up via the shared, flock-guarded singleton routine. This is the
+#    SAME routine scripts/ensure-server.sh uses, so the plugin SessionStart and the init path
+#    cannot race each other into two `writ serve` launches. The lib probes
+#    http://localhost:8765/health, starts the daemon under flock if it is down, and pins
+#    WRIT_CACHE_DIR. Graceful: it always returns 0.
+WRIT_HOST="localhost"
+WRIT_PORT="8765"
+WRIT_LOG="${WRIT_DATA}/server.log"
+# shellcheck source=scripts/lib/writ-server-lib.sh
+source "${WRIT_DIR}/scripts/lib/writ-server-lib.sh"
+writ_ensure_server
 
-# 5. Start the server in the background. cd into WRIT_DIR so writ.toml is
-#    read from the plugin install dir, not the user's cwd.
-(
-  cd "${WRIT_DIR}" || exit 0
-  # shellcheck disable=SC1091
-  . "${VENV_DIR}/bin/activate" 2>/dev/null || exit 0
-  nohup writ serve >"${WRIT_DATA}/server.log" 2>&1 &
-  disown 2>/dev/null || true
-) >/dev/null 2>&1 &
-
-# Wait up to 5 seconds for the server to come up.
-for _ in 1 2 3 4 5; do
-  if curl -fsS --max-time 1 "${SERVER_HEALTH_URL}" >/dev/null 2>&1; then
-    break
+# 5. Session-id rotation carry-forward. If the harness rotated the session id, the fresh
+#    cache has mode=None and every write is denied [ENF-GATE-MODE]. Parse the payload
+#    (session_id, cwd, source), read the PRE-rotation id from /tmp/writ-current-session
+#    (still holding the old id at SessionStart, before the next turn overwrites it), and
+#    let writ-session.py carry-forward-mode decide (same-project-guarded, mode-only, gates
+#    reset). Fully guarded: every branch is best-effort and exits 0; never blocks the session.
+SESSION_HELPER="${WRIT_DIR}/bin/lib/writ-session.py"
+if [ -n "${STDIN_JSON}" ] && [ -f "${SESSION_HELPER}" ]; then
+  PARSED="$(printf '%s' "${STDIN_JSON}" | "${VENV_DIR}/bin/python3" -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    sid = str(d.get('session_id', '') or '').strip()
+    cwd = str(d.get('cwd', '') or '').strip()
+    source = str(d.get('source', '') or '').strip()
+    print(sid)
+    print(cwd)
+    print(source)
+except Exception:
+    print('')
+    print('')
+    print('')
+" 2>/dev/null || printf '\n\n\n')"
+  SID="$(printf '%s' "${PARSED}" | sed -n '1p')"
+  CWD="$(printf '%s' "${PARSED}" | sed -n '2p')"
+  SOURCE="$(printf '%s' "${PARSED}" | sed -n '3p')"
+  PREV=""
+  if [ -f /tmp/writ-current-session ]; then
+    PREV="$(tr -d '[:space:]' < /tmp/writ-current-session 2>/dev/null || true)"
   fi
-  sleep 1
-done
+  if [ -n "${SID}" ] && [ -n "${CWD}" ]; then
+    "${VENV_DIR}/bin/python3" "${SESSION_HELPER}" carry-forward-mode \
+      "${SID}" "${CWD}" "${PREV}" "${SOURCE}" >/dev/null 2>&1 || true
+  fi
+fi
 
 exit 0

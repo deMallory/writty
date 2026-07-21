@@ -1,7 +1,8 @@
 <!-- RULE START: TEST-INT-001 -->
 ## Rule TEST-INT-001
 
-**Domain**: Testing
+**Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -46,5 +47,8 @@ Self-enforced via design review. Reviewers should verify integration tests exist
 
 ### Rationale
 Unit tests with mocked repositories prove logic flow, not system behavior. A mocked `insertOnDuplicate` proves nothing about whether the actual DB unique constraint prevents duplicates. Integration tests are the only way to validate concurrency claims.
+
+### Edges
+- DEPENDS_ON: ENF-SYS-005
 
 <!-- RULE END: TEST-INT-001 -->

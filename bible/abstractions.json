@@ -1,0 +1,625 @@
+{
+  "project": "writ",
+  "abstractions": [
+    {
+      "abstraction_id": "ABS-API-DESIGN-028",
+      "summary": "List endpoints require pagination with a maximum page size. Unbounded result sets are violations. Pagination is parameterized (limit/offset, cursor, or page/per_page); the default page size is small (10-25); the maximum is bounded (100-200).",
+      "rule_ids": [
+        "API-PAGINATION-001",
+        "API-PAGINATION-002",
+        "PERF-QUERY-004",
+        "SEC-RATE-QUERY-001",
+        "SEC-RATE-UPLOAD-001"
+      ],
+      "compression_ratio": 5.53
+    },
+    {
+      "abstraction_id": "ABS-API-DESIGN-052",
+      "summary": "PUT and DELETE are idempotent: calling the same endpoint twice produces the same final state. PUT replaces; DELETE removes (deleting an already-deleted resource is not an error). Repeated calls do not produce duplicate side effects.",
+      "rule_ids": [
+        "API-IDEMPOTENT-001",
+        "API-REST-001",
+        "API-REST-002",
+        "ARCH-IDEMPOTENT-001"
+      ],
+      "compression_ratio": 4.87
+    },
+    {
+      "abstraction_id": "ABS-API-DESIGN-053",
+      "summary": "Breaking changes (removed field, renamed field, changed type, removed endpoint, narrowed accepted input) are versioned. Silent contract changes are violations: the old version stays usable until clients migrate.",
+      "rule_ids": [
+        "API-BREAKING-001",
+        "API-VERSION-001"
+      ],
+      "compression_ratio": 2.62
+    },
+    {
+      "abstraction_id": "ABS-API-DESIGN-058",
+      "summary": "Error messages are actionable: they tell the caller what to fix, not just what failed. 'Invalid input' is a violation; 'Field `email` must be a valid email address' is the structure.",
+      "rule_ids": [
+        "API-ERROR-002",
+        "CLEAN-ERR-003"
+      ],
+      "compression_ratio": 2.58
+    },
+    {
+      "abstraction_id": "ABS-API-DESIGN-059",
+      "summary": "API request/response schemas are documented via OpenAPI, JSON Schema, GraphQL SDL, or framework-native equivalent. The documentation is generated from the source of truth (Pydantic models, TypeScript types, etc.), not hand-written.",
+      "rule_ids": [
+        "API-CONTRACT-001",
+        "DOC-API-001"
+      ],
+      "compression_ratio": 2.44
+    },
+    {
+      "abstraction_id": "ABS-API-DESIGN-060",
+      "summary": "Error responses follow a consistent schema: error code (machine-readable), message (human-readable), and field-level details where applicable. The schema is documented and applied across every endpoint.",
+      "rule_ids": [
+        "API-ERROR-001",
+        "API-STATUS-001",
+        "ERR-VALIDATION-001"
+      ],
+      "compression_ratio": 4.11
+    },
+    {
+      "abstraction_id": "ABS-ARCHITECTURE-002",
+      "summary": "A single state-management pattern (Redux, Zustand, MobX, React Context, Vuex, Pinia, NgRx) is used per project. Mixing two patterns scatters state across incompatible mental models. The choice is documented and consistent.",
+      "rule_ids": [
+        "ARCH-STATE-002",
+        "DRY-TEMPLATE-001"
+      ],
+      "compression_ratio": 2.53
+    },
+    {
+      "abstraction_id": "ABS-ARCHITECTURE-020",
+      "summary": "Configuration supports environment-based overrides without code changes. Defaults live in code; per-environment values come from env vars, config files, or a secrets manager. New deployment targets do not require code edits.",
+      "rule_ids": [
+        "ARCH-ENV-001",
+        "DOC-CONFIG-001",
+        "DRY-CONFIG-001",
+        "SCALE-CONFIG-001"
+      ],
+      "compression_ratio": 5.26
+    },
+    {
+      "abstraction_id": "ABS-ARCHITECTURE-021",
+      "summary": "Feature flags have an explicit expiration date and a documented cleanup plan (who removes the flag, when, and what the cleanup looks like). Permanent feature flags are violations: they accumulate as conditional spaghetti.",
+      "rule_ids": [
+        "ARCH-FEATURE-001",
+        "DRY-CONFIG-002"
+      ],
+      "compression_ratio": 2.27
+    },
+    {
+      "abstraction_id": "ABS-ARCHITECTURE-022",
+      "summary": "Data access is separated from business rules via a repository or DAO layer. Services depend on repository interfaces; ORM queries are not inlined into business logic.",
+      "rule_ids": [
+        "ARCH-LAYER-001",
+        "DRY-QUERY-001",
+        "SEC-AUTHZ-TENANT-001",
+        "SOLID-SRP-003"
+      ],
+      "compression_ratio": 7.28
+    },
+    {
+      "abstraction_id": "ABS-ARCHITECTURE-035",
+      "summary": "Domain models have no framework imports. Django ORM Model, SQLAlchemy Base, Spring @Entity, Active Record annotations are framework concerns; the domain model is plain data + behavior. Framework types are converted at boundaries.",
+      "rule_ids": [
+        "ARCH-LAYER-002",
+        "SOLID-DIP-003"
+      ],
+      "compression_ratio": 2.45
+    },
+    {
+      "abstraction_id": "ABS-ARCHITECTURE-040",
+      "summary": "Third-party library usage is concentrated in adapter modules. Imports of the library are confined; the rest of the codebase imports the adapter. Swapping the library affects one module, not the codebase.",
+      "rule_ids": [
+        "ARCH-BOUNDARY-002",
+        "SOLID-OCP-001"
+      ],
+      "compression_ratio": 3.02
+    },
+    {
+      "abstraction_id": "ABS-ARCHITECTURE-043",
+      "summary": "Interfaces contain only methods that all their consumers use. A 'fat interface' that some consumers ignore signals the interface should be split into smaller cohesive interfaces.",
+      "rule_ids": [
+        "PY-PROTO-001",
+        "SOLID-ISP-001",
+        "SOLID-ISP-002"
+      ],
+      "compression_ratio": 5.17
+    },
+    {
+      "abstraction_id": "ABS-ARCHITECTURE-048",
+      "summary": "Subclasses or implementations do not weaken preconditions (require less than the parent) or strengthen postconditions (return less than the parent guarantees). A consumer of the parent type works correctly with any subclass.",
+      "rule_ids": [
+        "SOLID-LSP-001",
+        "SOLID-LSP-002"
+      ],
+      "compression_ratio": 2.63
+    },
+    {
+      "abstraction_id": "ABS-ARCHITECTURE-054",
+      "summary": "Database migrations are backwards-compatible across the deployment window: old code can run against the new schema until the deploy completes. Destructive changes (drop column, rename column) are split into multiple deploys: 1) deploy code that stops using the column; 2) drop in a later deploy.",
+      "rule_ids": [
+        "ARCH-MIGRATION-001",
+        "ARCH-MIGRATION-002",
+        "SCALE-MIGRATE-001"
+      ],
+      "compression_ratio": 2.99
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-006",
+      "summary": "Comments explain WHY the code is the way it is (constraint, hidden invariant, surprising business rule, workaround for a known bug). Comments that restate WHAT the next line does in natural language are deleted or rewritten to add intent.",
+      "rule_ids": [
+        "CLEAN-COMMENT-001",
+        "CLEAN-FORMAT-001",
+        "DOC-INLINE-001"
+      ],
+      "compression_ratio": 3.85
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-009",
+      "summary": "Commented-out code is never committed. Version control is the history; comments are not. Removed code is removed entirely; if it might be needed later, that future-self can recover it from git.",
+      "rule_ids": [
+        "CLEAN-COMMENT-002",
+        "CLEAN-DEAD-001"
+      ],
+      "compression_ratio": 2.41
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-014",
+      "summary": "Retries use exponential backoff with jitter, not fixed intervals. Backoff base is at least 100ms; jitter is random within a window to avoid thundering herd; growth multiplier is 2-3x.",
+      "rule_ids": [
+        "ERR-RETRY-001",
+        "ERR-RETRY-002"
+      ],
+      "compression_ratio": 2.63
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-016",
+      "summary": "Boolean comparisons to True/False literal are forbidden. Use the value directly: `if active:` not `if active == True:`. Negation: `if not active:` not `if active == False:`.",
+      "rule_ids": [
+        "CLEAN-BOOL-001",
+        "CLEAN-FUNC-004",
+        "CLEAN-NAME-002",
+        "CLEAN-TERNARY-001"
+      ],
+      "compression_ratio": 5.13
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-017",
+      "summary": "Functions stay at or below 50 lines of logic (excluding declarations, comments, and blank lines). Longer functions are decomposed into named sub-functions that read as a top-down narrative.",
+      "rule_ids": [
+        "CLEAN-FUNC-002",
+        "CLEAN-FUNC-003",
+        "CLEAN-NEST-001",
+        "CLEAN-SIDE-001"
+      ],
+      "compression_ratio": 5.54
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-018",
+      "summary": "Magic literals are extracted to named constants with domain context. Numbers like 86400, 1000, 3, strings like 'admin', 'success' are replaced with named constants. Tax rates, fee thresholds, retry counts, status codes all carry names.",
+      "rule_ids": [
+        "CLEAN-MAGIC-001",
+        "CLEAN-NAME-001",
+        "DRY-DUP-002"
+      ],
+      "compression_ratio": 3.76
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-032",
+      "summary": "Log values that originate from user input must be sanitized to prevent log injection or forging: strip or escape CR/LF, structure log entries as JSON or key-value pairs (one record per line) so injected newlines cannot fake additional log entries.",
+      "rule_ids": [
+        "CLEAN-LOG-001",
+        "SEC-INJ-LOG-001"
+      ],
+      "compression_ratio": 2.26
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-049",
+      "summary": "Modules depend on abstractions (interfaces, protocols, base classes), not concrete implementations. Direct construction of concrete classes inside business logic is a violation; dependencies are injected.",
+      "rule_ids": [
+        "CLEAN-COUPLING-001",
+        "CLEAN-COUPLING-002",
+        "PY-IMPORT-001",
+        "SOLID-DIP-001"
+      ],
+      "compression_ratio": 6.01
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-051",
+      "summary": "Every external call is wrapped in error handling with an explicit timeout. Bare network or file calls without try/except + timeout are violations. The handler logs, maps to a domain error, or retries deliberately.",
+      "rule_ids": [
+        "ARCH-BOUNDARY-001",
+        "ERR-HANDLE-001",
+        "ERR-TIMEOUT-001",
+        "ERR-TIMEOUT-002"
+      ],
+      "compression_ratio": 5.44
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-055",
+      "summary": "No empty catch blocks. Caught exceptions are either re-raised (preserving cause), logged with full context, or converted to a domain-specific error type. Swallowing exceptions silently is forbidden.",
+      "rule_ids": [
+        "CLEAN-ERR-001",
+        "CLEAN-ERR-002",
+        "PHP-TRY-001"
+      ],
+      "compression_ratio": 3.9
+    },
+    {
+      "abstraction_id": "ABS-CODE-QUALITY-061",
+      "summary": "Error responses must never expose internal paths, query text, schema details, library versions, stack traces, or env-var content to end users. Production handlers return a generic message with a correlation ID; the full detail goes to logs.",
+      "rule_ids": [
+        "ERR-HANDLE-003",
+        "PHP-ERR-002",
+        "SEC-DATA-MASK-001"
+      ],
+      "compression_ratio": 4.69
+    },
+    {
+      "abstraction_id": "ABS-DATABASE-013",
+      "summary": "Define SQL in a single heredoc or multi-line string. Split only when conditional WHERE clauses or dynamic JOINs require it.",
+      "rule_ids": [
+        "DB-SQL-002",
+        "DB-SQL-003"
+      ],
+      "compression_ratio": 4.04
+    },
+    {
+      "abstraction_id": "ABS-DOCUMENTATION-008",
+      "summary": "Advisory only. New-developer onboarding (local setup, test run, deploy to staging, common-task walkthroughs) is documented. Enforced at the repository-integrity-check level rather than per-file (the docs may live across multiple files).",
+      "rule_ids": [
+        "DOC-ONBOARD-001",
+        "DOC-README-001"
+      ],
+      "compression_ratio": 2.52
+    },
+    {
+      "abstraction_id": "ABS-DOCUMENTATION-047",
+      "summary": "Return types are explicit. Implicit `Any`, `unknown`, `interface{}`, or unset return types are violations -- the contract is invisible to callers and the type checker.",
+      "rule_ids": [
+        "CLEAN-RETURN-001",
+        "DOC-TYPE-001",
+        "DOC-TYPE-002"
+      ],
+      "compression_ratio": 4.9
+    },
+    {
+      "abstraction_id": "ABS-ENFORCEMENT-019",
+      "summary": "Queue-based features must declare complete infrastructure (primary queue, DLQ, retry policy, consumer config, monitoring) AND complete consumer behavior guarantees (idempotency, duplicate handling, retry failure escalation).",
+      "rule_ids": [
+        "ENF-OPS-002",
+        "FW-M2-RT-005",
+        "SCALE-QUEUE-002"
+      ],
+      "compression_ratio": 4.22
+    },
+    {
+      "abstraction_id": "ABS-ENFORCEMENT-023",
+      "summary": "Before writing validation logic, the AI must declare: what makes the entity legitimate at the domain level, whether legitimacy is structural (format) or persistence-based (exists in DB), and if persistence-based, which repository or service contract verifies existence.",
+      "rule_ids": [
+        "ENF-POST-004",
+        "ENF-PRE-002",
+        "FW-M2-001"
+      ],
+      "compression_ratio": 3.68
+    },
+    {
+      "abstraction_id": "ABS-ENFORCEMENT-025",
+      "summary": "Do not optimize without measurement. Optimizations must cite the profiling evidence or performance requirement that justifies them. \"For performance\" is not a justification.",
+      "rule_ids": [
+        "ENF-OPS-001",
+        "PERF-OPT-001",
+        "TEST-PERF-001"
+      ],
+      "compression_ratio": 5.95
+    },
+    {
+      "abstraction_id": "ABS-ENFORCEMENT-038",
+      "summary": "Every state transition must declare a state machine (legal states and transitions), transition guards, an atomicity strategy, and contention handling. Bare read-then-write without a concurrency guard is always a violation.",
+      "rule_ids": [
+        "ARCH-STATE-001",
+        "ENF-SYS-003",
+        "ENF-SYS-006",
+        "FW-M2-RT-002"
+      ],
+      "compression_ratio": 7.41
+    },
+    {
+      "abstraction_id": "ABS-ENFORCEMENT-045",
+      "summary": "Before writing any plugin declaration, the AI must justify: why this specific class (not the interface, not a parent), why this hook type (before/around/after), what state is available at this execution point, and whether the logic depends on data only reliable after a specific side effect.",
+      "rule_ids": [
+        "ENF-PRE-001",
+        "ENF-PRE-003",
+        "FW-M2-004"
+      ],
+      "compression_ratio": 3.93
+    },
+    {
+      "abstraction_id": "ABS-ENFORCEMENT-050",
+      "summary": "Before injecting any dependency, verify it is safe in all execution contexts where the class will be invoked. MessageManager, session, or UI-dependent classes injected into service-layer classes are violations unless explicitly justified.",
+      "rule_ids": [
+        "ENF-PRE-004",
+        "SOLID-DIP-002"
+      ],
+      "compression_ratio": 4.52
+    },
+    {
+      "abstraction_id": "ABS-FRAMEWORKS-000",
+      "summary": "`CartTotalRepository::get()` only calls `$quote->collectTotals()` for virtual quotes. For non-virtual quotes, it reads previously-collected totals directly. Do not assume REST totals endpoints trigger fresh collection for all quote types.",
+      "rule_ids": [
+        "FW-M2-003",
+        "FW-M2-005",
+        "FW-M2-006"
+      ],
+      "compression_ratio": 4.46
+    },
+    {
+      "abstraction_id": "ABS-LANGUAGES-056",
+      "summary": "Request payloads must be validated against a typed schema (Pydantic, Marshmallow, Zod, Yup, JSON Schema, Joi, class-validator, Bean Validation) before business logic runs. Hand-rolled `if 'field' in request.json` checks are insufficient.",
+      "rule_ids": [
+        "PY-PYDANTIC-001",
+        "SEC-VAL-TYPE-001"
+      ],
+      "compression_ratio": 2.52
+    },
+    {
+      "abstraction_id": "ABS-META-AUTHORING-010",
+      "summary": "A node body must justify its token cost. The statement is the retrieval surface and carries the rule; the body stays lean. Per-node-type body budgets: Rule/AntiPattern <= 200 words, Technique/Skill <= 320, Playbook <= 600. Cut anything the agent already knows or that another node already says.",
+      "rule_ids": [
+        "ENF-META-CONCISE-001",
+        "ENF-PROC-PRIORITY-001"
+      ],
+      "compression_ratio": 3.09
+    },
+    {
+      "abstraction_id": "ABS-META-AUTHORING-011",
+      "summary": "The trigger field of a node must describe WHEN the node should activate, not WHAT the node does. Description-as-workflow-summary causes Claude to follow descriptions instead of reading skill bodies, fragmenting methodology retrieval at scale.",
+      "rule_ids": [
+        "META-AUTH-001",
+        "META-AUTH-002"
+      ],
+      "compression_ratio": 3.22
+    },
+    {
+      "abstraction_id": "ABS-PERFORMANCE-012",
+      "summary": "Queries specify the columns needed, not `SELECT *`. Wide rows transferred over the network when the consumer needs three fields wastes bandwidth, memory, and ORM hydration time.",
+      "rule_ids": [
+        "PERF-QUERY-002",
+        "PERF-QUERY-003"
+      ],
+      "compression_ratio": 3.12
+    },
+    {
+      "abstraction_id": "ABS-PERFORMANCE-026",
+      "summary": "Cache entries have an explicit TTL. Indefinite caching without an invalidation strategy is a violation. The TTL is short enough that stale data is bounded; the invalidation strategy is short enough that fresh data is bounded.",
+      "rule_ids": [
+        "PERF-CACHE-001",
+        "PERF-CACHE-002",
+        "PERF-CACHE-003",
+        "PERF-CACHE-004"
+      ],
+      "compression_ratio": 4.72
+    },
+    {
+      "abstraction_id": "ABS-PERFORMANCE-029",
+      "summary": "Object references are released after use. Long-running processes do not retain unbounded structures (caches without eviction, growing dicts, accumulating lists). Memory-leak patterns are reviewed and bounded.",
+      "rule_ids": [
+        "ERR-GRACEFUL-001",
+        "PERF-MEM-001",
+        "PERF-MEM-002",
+        "SCALE-DB-002",
+        "SEC-DATA-RETAIN-001"
+      ],
+      "compression_ratio": 7.54
+    },
+    {
+      "abstraction_id": "ABS-PERFORMANCE-039",
+      "summary": "I/O-bound operations use async / non-blocking calls, not synchronous blocking. The event loop is not stalled waiting for HTTP, DB, or file I/O.",
+      "rule_ids": [
+        "ARCH-ASYNC-002",
+        "PERF-ASYNC-001",
+        "PERF-BATCH-001",
+        "PERF-IO-001",
+        "PY-ASYNC-001"
+      ],
+      "compression_ratio": 10.94
+    },
+    {
+      "abstraction_id": "ABS-PROCESS-004",
+      "summary": "Code is reviewed by at least one other person or a reviewer agent before merge. Auto-merge on green CI is permitted only for trivial mechanical changes (dependency updates, formatter pushes) and is configured per-repo.",
+      "rule_ids": [
+        "PROC-REVIEW-001",
+        "TEST-CI-001"
+      ],
+      "compression_ratio": 2.09
+    },
+    {
+      "abstraction_id": "ABS-PROCESS-015",
+      "summary": "Every bug fix is accompanied by a regression test that reproduces the bug. The test fails before the fix and passes after. The bug ticket / commit message references the test.",
+      "rule_ids": [
+        "PROC-BRANCH-001",
+        "PROC-COMMIT-001",
+        "TEST-REGRESSION-001"
+      ],
+      "compression_ratio": 3.87
+    },
+    {
+      "abstraction_id": "ABS-PROCESS-042",
+      "summary": "Test skeletons are written and approved before the implementation. Tests carry the contract; the implementation conforms to them. ENF-PROC-TDD-001 mechanically enforces this in the Writ workflow.",
+      "rule_ids": [
+        "PROC-PLAN-001",
+        "PROC-TEST-001"
+      ],
+      "compression_ratio": 3.23
+    },
+    {
+      "abstraction_id": "ABS-RESEARCH-001",
+      "summary": "A claim rests on the most authoritative source reachable, not the first hit. Primary sources (the spec, the code, the dataset, the original announcement) outrank secondary descriptions, which outrank tertiary aggregations. If a primary source is one click away, the secondary one is a lead, not a citation.",
+      "rule_ids": [
+        "RESEARCH-CITE-001",
+        "RESEARCH-CORROBORATE-001",
+        "RESEARCH-SOURCE-001",
+        "RESEARCH-STALENESS-001"
+      ],
+      "compression_ratio": 4.32
+    },
+    {
+      "abstraction_id": "ABS-SCALING-007",
+      "summary": "Readiness (`/ready`) and liveness (`/live`) probes are distinct. Ready = can serve traffic now (deps healthy, warmup done). Live = process is responsive but not necessarily ready. A liveness failure restarts the pod; a readiness failure removes it from rotation.",
+      "rule_ids": [
+        "PROC-ROLLBACK-001",
+        "SCALE-HEALTH-001",
+        "SCALE-HEALTH-002"
+      ],
+      "compression_ratio": 3.45
+    },
+    {
+      "abstraction_id": "ABS-SECURITY-003",
+      "summary": "Symmetric encryption must use AES-256-GCM, ChaCha20-Poly1305, or AES-256-SIV. ECB mode is forbidden. DES, 3DES, RC4, Blowfish are forbidden. Modes without authentication (CBC, CTR alone) require an explicit HMAC.",
+      "rule_ids": [
+        "SEC-CRYPTO-ALGO-001",
+        "SEC-CRYPTO-CERT-001",
+        "SEC-CRYPTO-IV-001",
+        "SEC-CRYPTO-TLS-001",
+        "SEC-DATA-ENCRYPT-001",
+        "SEC-HDR-HSTS-001"
+      ],
+      "compression_ratio": 9.04
+    },
+    {
+      "abstraction_id": "ABS-SECURITY-005",
+      "summary": "Dependencies are pinned to an exact version or a narrow range (`~1.2.3`, `>=1.2,<1.3`), not open-ended (`*`, `^1.0.0` on critical libs, `latest`). Lockfiles capture exact resolution; manifests bound which resolutions are acceptable.",
+      "rule_ids": [
+        "SEC-DEP-AUDIT-001",
+        "SEC-DEP-LOCK-001",
+        "SEC-DEP-PIN-001",
+        "SEC-DEP-REVIEW-001"
+      ],
+      "compression_ratio": 5.77
+    },
+    {
+      "abstraction_id": "ABS-SECURITY-024",
+      "summary": "Validation uses an allowlist (explicit set of permitted values) whenever the valid set is enumerable. Blocklists (reject these characters/values) are forbidden where allowlists are possible: blocklists are routinely incomplete and silently fail open on unanticipated inputs.",
+      "rule_ids": [
+        "DRY-DUP-003",
+        "SEC-VAL-ALLOW-001",
+        "SEC-VAL-ENCODING-001",
+        "SEC-VAL-RANGE-001"
+      ],
+      "compression_ratio": 4.55
+    },
+    {
+      "abstraction_id": "ABS-SECURITY-027",
+      "summary": "Login and password-reset endpoints must return identical responses (same status, same body, same timing) for valid and invalid accounts. Discoverability of registered usernames or emails is a violation.",
+      "rule_ids": [
+        "SEC-AUTH-ENUM-001",
+        "SEC-AUTH-RESET-001"
+      ],
+      "compression_ratio": 3.44
+    },
+    {
+      "abstraction_id": "ABS-SECURITY-030",
+      "summary": "Authentication endpoints carry their own rate limit, distinct from the general API limit. Login limits are per account AND per IP (per-account stops credential stuffing of a known user; per-IP stops bulk username enumeration).",
+      "rule_ids": [
+        "SEC-AUTH-BRUTE-001",
+        "SEC-RATE-API-001",
+        "SEC-RATE-LOGIN-001"
+      ],
+      "compression_ratio": 4.33
+    },
+    {
+      "abstraction_id": "ABS-SECURITY-031",
+      "summary": "Data export endpoints must implement access controls (the same authz as the underlying records, plus an explicit 'can-export' permission) and audit logging (who exported what, when). Per-request rate limits cap exfil volume.",
+      "rule_ids": [
+        "SEC-DATA-EXPORT-001",
+        "SEC-RATE-BATCH-001"
+      ],
+      "compression_ratio": 2.79
+    },
+    {
+      "abstraction_id": "ABS-SECURITY-033",
+      "summary": "Content-Security-Policy header must be set on HTML responses. `unsafe-inline` and `unsafe-eval` are forbidden unless documented with the specific framework constraint that requires them. Default-src defaults to 'self'.",
+      "rule_ids": [
+        "SEC-HDR-CSP-001",
+        "SEC-HDR-FRAME-001",
+        "SEC-HDR-REFERRER-001",
+        "SEC-INJ-HEADER-001",
+        "SEC-INJ-XSS-002",
+        "SEC-INJ-XSS-003"
+      ],
+      "compression_ratio": 8.49
+    },
+    {
+      "abstraction_id": "ABS-SECURITY-034",
+      "summary": "Session cookies must be set with Secure (HTTPS only), HttpOnly (no JS access), and SameSite=Lax or Strict. Authorization-header bearer tokens are transmitted only to HTTPS endpoints. Plain HTTP transmission of any session credential is forbidden.",
+      "rule_ids": [
+        "SEC-AUTH-TOKEN-002",
+        "SEC-HDR-CORS-001"
+      ],
+      "compression_ratio": 2.57
+    },
+    {
+      "abstraction_id": "ABS-SECURITY-057",
+      "summary": "API responses explicitly select which fields to include via a response schema or serializer. Returning the full entity (`return user`, `return model.to_dict()`) leaks PII and internal state to clients; this is a violation. The serializer enforces the field allowlist; fields the requester is not authorized to see are excluded at the data layer, not redacted in middleware.",
+      "rule_ids": [
+        "SEC-DATA-PII-002",
+        "SEC-UNI-003"
+      ],
+      "compression_ratio": 2.44
+    },
+    {
+      "abstraction_id": "ABS-TESTING-036",
+      "summary": "Mock return values match the actual API/service response shape. A mock that returns `{'ok': True}` when the real service returns `{'data': {...}, 'status': 'success'}` produces tests that pass while real integration fails.",
+      "rule_ids": [
+        "TEST-ISOLATE-002",
+        "TEST-MOCK-001",
+        "TEST-MOCK-002"
+      ],
+      "compression_ratio": 3.86
+    },
+    {
+      "abstraction_id": "ABS-TESTING-037",
+      "summary": "Test fixtures or factories are used for object setup. Constructing the same domain object inline across many tests is a violation; factory functions (factory_boy, FactoryBot, pytest fixtures) own the construction logic.",
+      "rule_ids": [
+        "TEST-FIXTURE-001",
+        "TEST-FIXTURE-002",
+        "TEST-ISOLATE-001"
+      ],
+      "compression_ratio": 3.53
+    },
+    {
+      "abstraction_id": "ABS-TESTING-041",
+      "summary": "For any feature involving concurrent actors, state transitions, or DB constraints, declare which behaviors cannot be proven with mocks and which require integration tests against a real database. Claiming production-readiness for concurrent/async features with only mocked tests is a violation.",
+      "rule_ids": [
+        "ENF-SYS-005",
+        "TEST-EDGE-003",
+        "TEST-INT-001"
+      ],
+      "compression_ratio": 3.56
+    },
+    {
+      "abstraction_id": "ABS-TESTING-044",
+      "summary": "Assertions are specific. `assertEqual(actual, 5)` beats `assertTrue(actual == 5)`; `assertGreater(x, y)` beats `assertTrue(x > y)`. Specific assertions produce specific failure messages.",
+      "rule_ids": [
+        "CLEAN-ASSERT-001",
+        "TEST-ASSERT-001",
+        "TEST-ASSERT-002"
+      ],
+      "compression_ratio": 4.15
+    },
+    {
+      "abstraction_id": "ABS-TESTING-046",
+      "summary": "Every public function or method has at least one test. New public APIs are not committed without a test covering at least the happy path.",
+      "rule_ids": [
+        "TEST-EDGE-001",
+        "TEST-EXIST-001",
+        "TEST-EXIST-002"
+      ],
+      "compression_ratio": 4.72
+    }
+  ]
+}

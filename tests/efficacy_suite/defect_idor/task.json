@@ -1,0 +1,7 @@
+{
+  "task_id": "defect_idor",
+  "arm": "defect",
+  "catching_rule_id": "SEC-AUTHZ-IDOR-001",
+  "defect_signature": "order fetched by id with no owner/authorization check",
+  "prompt_file": "prompt.md"
+}

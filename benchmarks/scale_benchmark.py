@@ -470,16 +470,19 @@ async def main() -> None:
     db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
     results: dict = {}
 
+    # Data safety: refuse to wipe if unsaved graph-first nodes exist (no markdown home).
+    from _corpus_safety import assert_safe_to_wipe, restore_full_corpus
+    await assert_safe_to_wipe(db)
+
     try:
         for scale in SCALE_LEVELS:
             await benchmark_at_scale(scale, db, model, real_rules, results)
     finally:
-        # Restore original 80 rules.
-        print("\nRestoring original 80-rule corpus...")
-        await db.clear_all()
-        for rule in real_rules:
-            await db.create_rule(rule)
-        print(f"  Restored {await db.count_rules()} rules")
+        # Restore the FULL bible corpus (Rule + methodology), not Rule-only -- a benchmark
+        # run must never leave the live graph empty or missing the methodology graph.
+        print("\nRestoring the full bible/ corpus (Rule + methodology)...")
+        await restore_full_corpus(db)
+        print(f"  Restored {await db.count_rules()} rules + the methodology graph")
         await db.close()
 
     write_report(results)

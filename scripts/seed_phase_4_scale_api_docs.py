@@ -11,10 +11,12 @@ Per the public rulebook source: out-of-the-box-rules.md sections 9, 10, 12.
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import date
+from pathlib import Path
 
-from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
-from writ.graph.db import Neo4jConnection
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _seed_helpers import connect, upsert_rule
 
 TODAY = date.today().isoformat()
 
@@ -74,7 +76,7 @@ SCALE_RULES = [
         "Stateless processes scale horizontally: any worker can serve any request. Stateful processes pin the user to one machine, lose state on restart, and fail to scale beyond one node.",
         "9",
         mandatory=True,
-        mechanical_enforcement_path="bin/run-analysis.sh::analyze_scaling_stateless",
+        mechanical_enforcement_path="bin/run-analysis.sh::analyze_all_regex_scanners",
     ),
     _rule("SCALE-STATELESS-002", "scaling", "medium", "component",
         "When persisting user-uploaded files or generated artifacts.",
@@ -329,7 +331,7 @@ RULES = SCALE_RULES + API_RULES + DOC_RULES
 
 
 async def main() -> None:
-    db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
+    db = connect()
     try:
         async with db._driver.session(database=db._database) as session:
             # Rename ARCH-TYPE-001 -> DOC-TYPE-001.
@@ -338,19 +340,8 @@ async def main() -> None:
 
             created = updated = 0
             for rule in RULES:
-                result = await session.run(
-                    "MATCH (r:Rule {rule_id: $rid}) RETURN r.rule_id AS x", rid=rule["rule_id"]
-                )
-                exists = await result.single() is not None
-                props = {k: v for k, v in rule.items() if k != "rule_id"}
-                await session.run(
-                    """
-                    MERGE (r:Rule {rule_id: $rid})
-                    SET r += $props
-                    """,
-                    rid=rule["rule_id"], props=props,
-                )
-                if exists:
+                existed = await upsert_rule(session, rule)
+                if existed:
                     updated += 1
                     print(f"UPDATED {rule['rule_id']:30s} {'[M]' if rule['mandatory'] else '   '} {rule['severity']}")
                 else:

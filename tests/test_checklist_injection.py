@@ -1,6 +1,5 @@
-"""Tests for checklist loading and backward context injection.
+"""Tests for backward context injection on re-planning.
 
-C2: Phase-specific checklists from checklists.json
 C9: Backward context injection on re-planning
 """
 
@@ -12,7 +11,6 @@ import tempfile
 import pytest
 
 SKILL_DIR = os.path.join(os.path.dirname(__file__), "..")
-CHECKLISTS_PATH = os.path.join(SKILL_DIR, "bin", "lib", "checklists.json")
 HELPER = os.path.join(SKILL_DIR, "bin", "lib", "writ-session.py")
 
 
@@ -36,30 +34,6 @@ def session_id():
 def read_cache(session_id: str) -> dict:
     result = run_session(["read", session_id])
     return json.loads(result.stdout)
-
-
-# ── C2: Checklist loading ─────────────────────────────────────────────────────
-
-
-class TestChecklistLoading:
-
-    def test_checklists_json_schema_valid(self):
-        with open(CHECKLISTS_PATH) as f:
-            data = json.load(f)
-        for phase_name in ("planning", "code_generation", "testing"):
-            phase = data[phase_name]
-            assert "mode" in phase
-            assert "exit_criteria" in phase
-            for criterion in phase["exit_criteria"]:
-                assert "id" in criterion
-                assert "check" in criterion
-
-    def test_all_phases_tied_to_work_mode(self):
-        """After tier removal, every phase runs in work mode only."""
-        with open(CHECKLISTS_PATH) as f:
-            data = json.load(f)
-        for phase_name in ("planning", "code_generation", "testing"):
-            assert data[phase_name]["mode"] == "work"
 
 
 # ── C9: Backward context injection ───────────────────────────────────────────

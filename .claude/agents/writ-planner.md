@@ -1,6 +1,6 @@
 ---
 name: writ-planner
-description: Designs implementation plans for coding tasks. Writes plan.md and capabilities.md to the project root. Use after exploration, before test writing.
+description: "Designs implementation plans for coding tasks. Writes plan.md and capabilities.md to the project root. Use after exploration, before test writing."
 model: opus
 tools: Read Glob Grep Write
 ---

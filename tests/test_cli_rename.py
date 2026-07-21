@@ -65,3 +65,81 @@ def test_import_markdown_help_shows_expected_usage() -> None:
     assert result.exit_code == 0
     # Expected: usage line and description referencing Markdown/bible source
     assert "import-markdown" in result.output.lower() or "usage" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# T0.10/0.11 -- Phase 0 additions: prune command + validate --bible-dir option
+# ---------------------------------------------------------------------------
+
+
+def test_prune_command_exists() -> None:
+    """'writ prune --help' exits 0 and the output names both 'prune' and '--dry-run'.
+
+    RED until writ/cli.py gains a 'prune' command with a --dry-run option.
+    """
+    result = runner.invoke(app, ["prune", "--help"])
+    assert result.exit_code == 0, (
+        f"'writ prune --help' must exit 0; got {result.exit_code}. "
+        f"Output: {result.output!r}"
+    )
+    assert "prune" in result.output, (
+        f"'prune' must appear in help output; got: {result.output!r}"
+    )
+    assert "--dry-run" in result.output, (
+        f"'--dry-run' option must appear in 'writ prune --help'; got: {result.output!r}"
+    )
+
+
+def test_prune_dry_run_lists_candidates() -> None:
+    """'writ prune --dry-run' prints flagged node IDs and does not emit DELETE.
+
+    detect_parity_violations is mocked to return one violation (ORPHAN-001).
+    The command must print ORPHAN-001 and must NOT print the word 'DELETE'
+    (dry-run must not mutate the graph).
+
+    RED until:
+    - 'writ prune' command exists
+    - it calls detect_parity_violations
+    - --dry-run suppresses graph mutations
+    """
+    from unittest.mock import AsyncMock, patch
+
+    violation = [{"type": "Rule", "id": "ORPHAN-001"}]
+
+    with patch(
+        "writ.graph.integrity.IntegrityChecker.detect_parity_violations",
+        new_callable=lambda: lambda self: AsyncMock(return_value=violation)(),
+    ):
+        result = runner.invoke(app, ["prune", "--dry-run"])
+
+    assert "ORPHAN-001" in result.output, (
+        f"prune --dry-run must list flagged node id ORPHAN-001; got: {result.output!r}"
+    )
+    assert "DELETE" not in result.output, (
+        f"prune --dry-run must NOT emit DELETE (no graph mutation); got: {result.output!r}"
+    )
+
+
+def test_validate_accepts_bible_dir_option() -> None:
+    """'writ validate --bible-dir /tmp/x' must not error with 'No such option'.
+
+    The validate command does not need to succeed end-to-end (it will try to
+    connect to Neo4j), but the CLI layer must recognise --bible-dir as a valid
+    option and not reject it at argument parsing time.
+
+    RED until writ/cli.py's validate() gains a --bible-dir option.
+    """
+    import tempfile
+    import os
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # Invoke with --help so we never actually connect to Neo4j,
+        # but the option must parse without "No such option" errors.
+        result = runner.invoke(app, ["validate", "--help"])
+        assert result.exit_code == 0, (
+            f"validate --help must exit 0; got {result.exit_code}. "
+            f"Output: {result.output!r}"
+        )
+        assert "--bible-dir" in result.output, (
+            f"validate --help must list --bible-dir option; got: {result.output!r}"
+        )

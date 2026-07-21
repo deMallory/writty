@@ -19,10 +19,16 @@ phase_ids: []
 preconditions: []
 dispatched_roles: []
 edges:
-  - { target: ENF-PROC-DEBUG-001, type: GATES }
-  - { target: TEC-PROC-ROOTCAUSE-001, type: DISPATCHES }
-  - { target: TEC-PROC-HYPOTHESIS-001, type: DISPATCHES }
+  - { target: ENF-PROC-DEBUG-001, type: TEACHES }
+  - { target: PBK-PROC-DIAGNOSE-CRASH-STACKTRACE-001, type: INVOKES }
+  - { target: PBK-PROC-DIAGNOSE-FAILING-TEST-001, type: INVOKES }
+  - { target: PBK-PROC-DIAGNOSE-HEISENBUG-001, type: INVOKES }
   - { target: PBK-PROC-TDD-001, type: PRECEDES }
+  - { target: TEC-PROC-HYPOTHESIS-001, type: INVOKES }
+  - { target: TEC-PROC-ROOTCAUSE-001, type: INVOKES }
+category: CAT-PROC-001
+floor_modes: [debug]
+trigger_keywords: ["hypothesis", "root-cause", "debugging", "bug"]
 ---
 
 # Playbook: Systematic debugging

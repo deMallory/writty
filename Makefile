@@ -1,4 +1,4 @@
-.PHONY: test bench check check-venv
+.PHONY: test bench check check-venv validate
 
 # Pin the Python interpreter to the project venv. The system python3 on many
 # machines lacks onnxruntime (and other optional bench dependencies), which
@@ -22,5 +22,8 @@ test: check-venv
 bench: check-venv
 	$(PYTHON) -m pytest benchmarks/bench_targets.py -x -q
 
-check: test bench
+validate: check-venv
+	$(PYTHON) -m writ.cli validate
+
+check: test bench validate
 	@echo "All checks passed."

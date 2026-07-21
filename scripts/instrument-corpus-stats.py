@@ -28,6 +28,7 @@ from writ.graph.db import Neo4jConnection
 from writ.retrieval.embeddings import DEFAULT_ONNX_DIR, OnnxEmbeddingModel
 from writ.retrieval.keyword import KeywordIndex
 from writ.retrieval.pipeline import build_pipeline
+from writ.shared.percentile import percentile
 
 
 def _rule_text(rule: dict) -> str:
@@ -175,7 +176,7 @@ def _h4_intra_domain_similarity(real: list[dict], synth: list[dict]) -> None:
         print(
             f"    ...  overall (all domains pooled): "
             f"median={statistics.median(all_pairwise):.3f}  "
-            f"p75={sorted(all_pairwise)[int(len(all_pairwise)*0.75)]:.3f}  "
+            f"p75={percentile(all_pairwise, 75):.3f}  "
             f"max={max(all_pairwise):.3f}"
         )
 

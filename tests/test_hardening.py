@@ -33,7 +33,7 @@ SKILL_DIR = os.path.join(os.path.dirname(__file__), os.pardir)
 @pytest.fixture()
 def session_id(tmp_path, monkeypatch):
     """Provide a unique session ID and redirect cache to tmp_path."""
-    monkeypatch.setattr(writ_session, "CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
     return "test-hardening-session"
 
 

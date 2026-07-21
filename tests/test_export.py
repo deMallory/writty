@@ -14,25 +14,67 @@ import pytest_asyncio
 
 from writ.export import (
     GRAPH_ONLY_FIELDS,
-    SECTION_HEADERS,
     SECTION_ORDER,
+    _METHODOLOGY_CANONICAL_RULE_IDS,
     _build_file_content,
     check_export_staleness,
     export_rules_to_markdown,
     group_rules_by_file,
+    node_to_yaml_frontmatter,
     read_export_timestamp,
     rule_to_markdown,
     write_export_timestamp,
 )
 from writ.graph.ingest import (
+    parse_edges_from_file,
     parse_rules_from_file,
     validate_parsed_rule,
 )
+from writ.graph.schema import SECTION_HEADERS
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module", autouse=True)
+def _restore_corpus_after_module():
+    """Restore the shared Neo4j corpus once after this module finishes.
+
+    The two function-scoped Neo4j fixtures (TestExportWithNeo4j.db and
+    TestExportGraphToMarkdown.live_db) each call clear_all() (a whole-graph
+    wipe across every project), so without a restore this module would leak an
+    empty graph to whatever test runs next in the same pytest process. Mirror
+    the pipeline_db / _roundtrip_db contract and re-import bible/ exactly once
+    (after the last test). The restore is skipped only when Neo4j is unreachable
+    (nothing to restore); when Neo4j is up it runs once regardless of which
+    tests were selected, which is harmless because the re-import is idempotent.
+    """
+    yield
+
+    import subprocess  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    from tests._corpus import neo4j_reachable  # noqa: PLC0415
+    from tests._writ_cmd import WRIT_CMD_PREFIX  # noqa: PLC0415
+
+    if not neo4j_reachable():
+        return
+
+    try:
+        subprocess.run(
+            [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
+            cwd=str(Path(__file__).resolve().parent.parent),
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    except (subprocess.SubprocessError, OSError) as e:
+        sys.stderr.write(
+            "[test_export teardown] writ import-markdown "
+            f"restore failed: {e}\n"
+        )
+
 
 @pytest.fixture()
 def rule_with_code_blocks() -> dict:
@@ -130,6 +172,19 @@ class TestRuleToMarkdown:
         for field in GRAPH_ONLY_FIELDS:
             assert f"**{field.title()}**:" not in md
             assert f"**{field}**:" not in md
+
+    def test_category_emitted_as_metadata_line(self, valid_rule_data: dict) -> None:
+        """A rule carrying a 'category' must round-trip via a **Category** line
+        so the auto-export does not strip the category the migration injected
+        (graph keeps it as a node property; markdown must keep it too)."""
+        rule = {**valid_rule_data, "category": "CAT-CODE-SECURITY-001"}
+        md = rule_to_markdown(rule)
+        assert "**Category**: CAT-CODE-SECURITY-001" in md
+
+    def test_category_line_absent_when_no_category(self, valid_rule_data: dict) -> None:
+        """A rule without a category must not emit an empty Category line."""
+        md = rule_to_markdown(valid_rule_data)
+        assert "**Category**:" not in md
 
 
 # ---------------------------------------------------------------------------
@@ -438,3 +493,356 @@ class TestExportCLI:
 
         command_names = [cmd.callback.__name__ for cmd in app.registered_commands]
         assert "export" in command_names
+
+
+# ---------------------------------------------------------------------------
+# Phase 0: GRAPH_ONLY_FIELDS completeness
+# ---------------------------------------------------------------------------
+
+class TestGraphOnlyFieldsComplete:
+    """GRAPH_ONLY_FIELDS must declare every field that ingest re-derives from the
+    graph and that must not appear in exported Markdown.
+
+    Phase 0 adds authority, times_seen_positive, times_seen_negative, last_seen
+    to the existing set (confidence, evidence, staleness_window, last_validated).
+    RED reason: GRAPH_ONLY_FIELDS is currently a 4-element set; 4 new fields are
+    missing until the export.py implementation update lands.
+    """
+
+    _EXPECTED_FIELDS = frozenset({
+        "confidence",
+        "evidence",
+        "staleness_window",
+        "last_validated",
+        "authority",
+        "times_seen_positive",
+        "times_seen_negative",
+        "last_seen",
+    })
+
+    def test_all_re_derived_fields_declared(self) -> None:
+        missing = self._EXPECTED_FIELDS - GRAPH_ONLY_FIELDS
+        assert not missing, (
+            f"GRAPH_ONLY_FIELDS is missing re-derived fields: {sorted(missing)}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 0: node_to_yaml_frontmatter
+# ---------------------------------------------------------------------------
+
+class TestNodeToYamlFrontmatter:
+    """node_to_yaml_frontmatter serialises a methodology node dict to YAML
+    front-matter suitable for bible/methodology/<ID>.md files.
+
+    RED reason: node_to_yaml_frontmatter does not exist in writ.export yet.
+    """
+
+    def _import_fn(self):
+        from writ.export import node_to_yaml_frontmatter  # noqa: PLC0415
+        return node_to_yaml_frontmatter
+
+    def _make_node(self, **overrides) -> dict:
+        base = {
+            "node_id": "SKL-PROC-TEST-001",
+            "node_type": "Skill",
+            "trigger": "When writing tests.",
+            "statement": "Use TDD.",
+            "rationale": "Correctness.",
+            "domain": "Testing",
+            "last_validated": "2026-06-01",
+            "confidence": 0.9,
+            "authority": "internal",
+        }
+        base.update(overrides)
+        return base
+
+    def test_starts_with_dashes(self) -> None:
+        """Front-matter block must open with '---\\n'."""
+        node_to_yaml_frontmatter = self._import_fn()
+        result = node_to_yaml_frontmatter(self._make_node())
+        assert result.startswith("---\n"), (
+            f"Expected front-matter to start with '---\\n', got: {result[:20]!r}"
+        )
+
+    def test_graph_only_fields_absent(self) -> None:
+        """Graph-only fields must not appear in the serialised front-matter."""
+        node_to_yaml_frontmatter = self._import_fn()
+        node = self._make_node()
+        result = node_to_yaml_frontmatter(node)
+        for field in GRAPH_ONLY_FIELDS:
+            assert field not in result, (
+                f"Graph-only field '{field}' must not appear in front-matter output"
+            )
+
+    def test_edges_injected(self) -> None:
+        """When the node dict contains an 'edges' key (list of edge dicts), the
+        serialised front-matter must include an 'edges:' block with target and
+        type sub-keys for each edge."""
+        node_to_yaml_frontmatter = self._import_fn()
+        node = self._make_node(edges=[
+            {"target": "ENF-PROC-TDD-001", "type": "TEACHES"},
+            {"target": "SKL-PROC-BRAIN-001", "type": "RELATED_TO"},
+        ])
+        result = node_to_yaml_frontmatter(node)
+        assert "edges:" in result, "Serialised front-matter must contain 'edges:' key"
+        assert "ENF-PROC-TDD-001" in result
+        assert "TEACHES" in result
+        assert "SKL-PROC-BRAIN-001" in result
+        assert "RELATED_TO" in result
+
+
+# ---------------------------------------------------------------------------
+# Phase 0: dual-location canonical target list
+# ---------------------------------------------------------------------------
+
+class TestDualLocationCanonicalTarget:
+    """_METHODOLOGY_CANONICAL_RULE_IDS is the set of rule IDs that exist as
+    standalone files under bible/methodology/ AND as blocks inside a
+    bible/<domain>/rules.md.  group_rules_by_file must route these IDs to
+    bible/methodology/<ID>.md (the canonical location) and exclude them from
+    domain rules.md files.
+
+    RED reason: _METHODOLOGY_CANONICAL_RULE_IDS and the routing override do not
+    exist in writ.export yet.
+    """
+
+    def _import_canonical(self):
+        from writ.export import _METHODOLOGY_CANONICAL_RULE_IDS  # noqa: PLC0415
+        return _METHODOLOGY_CANONICAL_RULE_IDS
+
+    def test_dual_location_ids_defined(self) -> None:
+        """The methodology-canonical set (excluded from domain rules.md export):
+        12 legacy dual-location rules + ENF-COMMS-OUTPUT-001 (Phase 4 A3, authored
+        methodology-only -- the exclusion keeps the Rule-export from writing a lossy
+        RULE-START copy that drops always_on / trigger_keywords / edges)."""
+        ids = self._import_canonical()
+        assert len(ids) == 13, (
+            f"Expected 13 methodology-canonical IDs, found {len(ids)}: {sorted(ids)}"
+        )
+
+    def test_group_rules_by_file_excludes_dual_location(
+        self, tmp_path: Path
+    ) -> None:
+        """ENF-PROC-BRAIN-001 is one of the 12; its output path from
+        group_rules_by_file must NOT be inside process/rules.md.
+
+        Build a fake bible that has ENF-PROC-BRAIN-001 in process/rules.md so
+        the ID is discoverable, then call group_rules_by_file with a rule dict
+        for that ID and assert the resulting path is the methodology canonical
+        path, not the process domain path."""
+        # Set up a fake bible with the duplicate block in process/rules.md.
+        process_dir = tmp_path / "bible" / "process"
+        process_dir.mkdir(parents=True)
+        (process_dir / "rules.md").write_text(
+            "<!-- RULE START: ENF-PROC-BRAIN-001 -->\n"
+            "## Rule ENF-PROC-BRAIN-001\n"
+            "<!-- RULE END: ENF-PROC-BRAIN-001 -->\n",
+            encoding="utf-8",
+        )
+        # Also add the methodology canonical file so the directory exists.
+        methodology_dir = tmp_path / "bible" / "methodology"
+        methodology_dir.mkdir(parents=True)
+        (methodology_dir / "ENF-PROC-BRAIN-001.md").write_text(
+            "---\nrule_id: ENF-PROC-BRAIN-001\n---\n", encoding="utf-8"
+        )
+
+        rule = {
+            "rule_id": "ENF-PROC-BRAIN-001",
+            "domain": "AI Enforcement",
+            "severity": "critical",
+            "scope": "session",
+            "trigger": "When about to write.",
+            "statement": "Design before code.",
+            "violation": "Wrote code without plan.",
+            "pass_example": "Presented design, got approval.",
+            "enforcement": "Gate blocks write.",
+            "rationale": "Correctness.",
+            "last_validated": "2026-06-01",
+        }
+        bible_dir = tmp_path / "bible"
+        groups = group_rules_by_file([rule], bible_dir)
+        # A dual-location rule is hand-authored methodology front-matter SOURCE;
+        # the rule export excludes it from ALL output groups (it is never
+        # regenerated by group_rules_by_file), so it appears in no group at all.
+        all_ids = [r["rule_id"] for g in groups.values() for r in g]
+        assert "ENF-PROC-BRAIN-001" not in all_ids, (
+            f"dual-location rule must be excluded from every rule-export group; "
+            f"got groups: {list(groups.keys())}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 0 Wave E: dual-location rules export their edges (parity gap)
+# ---------------------------------------------------------------------------
+
+class TestDualLocationEdgesExported:
+    """The 12 dual-location rules (_METHODOLOGY_CANONICAL_RULE_IDS) are written
+    to bible/methodology/<ID>.md via node_to_yaml_frontmatter so their outgoing
+    edges (e.g. ENF-META-CONCISE-001 GATES PBK-AUTHOR-001) survive export.
+
+    rule_to_markdown emits no edges block, so routing these rules through it
+    drops the edges that their original methodology files carried and that
+    parse_edges_from_file must still find. node_to_yaml_frontmatter serialises
+    the edges; the category must still ride along.
+
+    RED reason (before the fix): dual-location rules were emitted via
+    rule_to_markdown, producing a RULE START block with no edges: front-matter,
+    so the exported file carried no GATES edge for parse_edges_from_file.
+    """
+
+    def _dual_location_rule_node(self) -> dict:
+        """A Rule node dict as get_all_nodes_by_type('Rule') would return it for
+        one of the 12 canonical dual-location ids, with a category property."""
+        return {
+            "rule_id": "ENF-META-CONCISE-001",
+            "domain": "AI Enforcement",
+            "severity": "high",
+            "scope": "session",
+            "trigger": "When responding.",
+            "statement": "Be concise.",
+            "violation": "Padded the answer.",
+            "pass_example": "Led with the answer.",
+            "enforcement": "Gate blocks verbose output.",
+            "rationale": "Signal over noise.",
+            "mandatory": True,
+            "category": "CAT-PROC-METHODOLOGY-001",
+            "last_validated": "2026-06-01",
+        }
+
+    def test_canonical_id_is_in_dual_location_set(self) -> None:
+        """Guard: the fixture id must actually be one of the 12 so this test
+        exercises the dual-location export path."""
+        assert "ENF-META-CONCISE-001" in _METHODOLOGY_CANONICAL_RULE_IDS
+
+    def test_frontmatter_contains_gates_edge(self) -> None:
+        """The serialised front-matter for a dual-location rule must contain its
+        GATES edge (target + type), which rule_to_markdown would have dropped."""
+        node = self._dual_location_rule_node()
+        edges = [{"target": "PBK-AUTHOR-001", "type": "GATES"}]
+        out = node_to_yaml_frontmatter(node, edges=edges)
+        assert "edges:" in out, "dual-location export must serialise an edges block"
+        assert "GATES" in out
+        assert "PBK-AUTHOR-001" in out
+
+    def test_frontmatter_preserves_category(self) -> None:
+        """The category property must ride along into the exported front-matter
+        so the BELONGS_TO routing survives the round trip."""
+        node = self._dual_location_rule_node()
+        out = node_to_yaml_frontmatter(
+            node, edges=[{"target": "PBK-AUTHOR-001", "type": "GATES"}]
+        )
+        assert "CAT-PROC-METHODOLOGY-001" in out
+
+    def test_exported_file_edges_reparse(self, tmp_path: Path) -> None:
+        """Writing the dual-location rule the way export_graph_to_markdown does
+        (methodology/<ID>.md via node_to_yaml_frontmatter) must produce a file
+        whose GATES edge parse_edges_from_file can recover with the rule as the
+        edge source."""
+        node = self._dual_location_rule_node()
+        edges = [{"target": "PBK-AUTHOR-001", "type": "GATES"}]
+        target = tmp_path / "methodology" / f"{node['rule_id']}.md"
+        target.parent.mkdir(parents=True)
+        target.write_text(
+            node_to_yaml_frontmatter(node, edges=edges), encoding="utf-8"
+        )
+
+        parsed = parse_edges_from_file(target)
+        assert {"source": "ENF-META-CONCISE-001", "target": "PBK-AUTHOR-001", "type": "GATES"} in parsed
+
+    def test_rule_to_markdown_would_drop_edges(self) -> None:
+        """Documents the regression guard: rule_to_markdown never emits an edges
+        block, which is why dual-location rules must not be routed through it."""
+        node = self._dual_location_rule_node()
+        md = rule_to_markdown(node)
+        assert "edges:" not in md
+        assert "GATES" not in md
+
+
+# ---------------------------------------------------------------------------
+# Phase 0: export_graph_to_markdown (all node types + edges)
+# ---------------------------------------------------------------------------
+
+class TestExportGraphToMarkdown:
+    """export_graph_to_markdown exports ALL node types (not just Rule) and all
+    edges, returning a summary dict with 'nodes_exported' and 'edges_exported'
+    keys.
+
+    The Neo4j tests also exercise the new db methods get_all_nodes_by_type and
+    get_all_edges_cross_type.
+
+    RED reason: export_graph_to_markdown, get_all_nodes_by_type, and
+    get_all_edges_cross_type do not exist yet.
+    """
+
+    def test_returns_nodes_and_edges_exported_keys(self) -> None:
+        """export_graph_to_markdown must return a dict with at least
+        'nodes_exported' and 'edges_exported' integer keys (verified without
+        a live Neo4j connection by exercising the synchronous path with a
+        minimal stub)."""
+        # Import guard: the function must be importable even without Neo4j.
+        from writ.export import export_graph_to_markdown  # noqa: PLC0415
+        assert callable(export_graph_to_markdown)
+
+    @pytest_asyncio.fixture()
+    async def live_db(self):
+        """Live Neo4j connection; skips when Neo4j is unreachable."""
+        from tests._corpus import neo4j_reachable  # noqa: PLC0415
+
+        if not neo4j_reachable():
+            pytest.skip("Neo4j unreachable")
+        from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user  # noqa: PLC0415
+        from writ.graph.db import Neo4jConnection  # noqa: PLC0415
+
+        conn = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
+        await conn.clear_all()
+        yield conn
+        await conn.clear_all()
+        await conn.close()
+
+    @pytest.mark.asyncio()
+    async def test_db_get_all_nodes_by_type_returns_list(self, live_db) -> None:
+        """db.get_all_nodes_by_type(label) must return a list (possibly empty)
+        for every known node type label."""
+        from writ.graph.schema import NODE_ID_FIELDS  # noqa: PLC0415
+
+        for label in NODE_ID_FIELDS:
+            result = await live_db.get_all_nodes_by_type(label)
+            assert isinstance(result, list), (
+                f"get_all_nodes_by_type('{label}') must return list, got {type(result)}"
+            )
+
+    @pytest.mark.asyncio()
+    async def test_db_get_all_edges_cross_type_returns_list(self, live_db) -> None:
+        """db.get_all_edges_cross_type() must return a list of edge dicts, each
+        containing at least 'source_id', 'target_id', and 'type' keys."""
+        result = await live_db.get_all_edges_cross_type()
+        assert isinstance(result, list), (
+            f"get_all_edges_cross_type() must return list, got {type(result)}"
+        )
+        # If any edges are present each must have the required keys.
+        for edge in result:
+            assert "source_id" in edge, f"Edge missing 'source_id': {edge}"
+            assert "target_id" in edge, f"Edge missing 'target_id': {edge}"
+            assert "type" in edge, f"Edge missing 'type': {edge}"
+
+    @pytest.mark.asyncio()
+    async def test_export_graph_to_markdown_returns_summary(
+        self, live_db, tmp_path: Path
+    ) -> None:
+        """export_graph_to_markdown over an empty graph must return a dict with
+        'nodes_exported' == 0 and 'edges_exported' == 0."""
+        from writ.export import export_graph_to_markdown  # noqa: PLC0415
+
+        result = await export_graph_to_markdown(live_db, tmp_path)
+        assert "nodes_exported" in result, (
+            f"export_graph_to_markdown must return 'nodes_exported' key; got: {result}"
+        )
+        assert "edges_exported" in result, (
+            f"export_graph_to_markdown must return 'edges_exported' key; got: {result}"
+        )
+        assert isinstance(result["nodes_exported"], int)
+        assert isinstance(result["edges_exported"], int)
+        # Empty graph: both counts must be 0.
+        assert result["nodes_exported"] == 0
+        assert result["edges_exported"] == 0

@@ -15,6 +15,7 @@ from pyinstrument import Profiler
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.retrieval.pipeline import build_pipeline
+from writ.shared.percentile import percentile
 
 QUERIES = [
     "controller SQL query",
@@ -54,9 +55,9 @@ async def main():
     profiler.stop()
 
     latencies.sort()
-    p50 = latencies[len(latencies) // 2]
-    p95 = latencies[int(len(latencies) * 0.95)]
-    p99 = latencies[int(len(latencies) * 0.99)]
+    p50 = percentile(latencies, 50)
+    p95 = percentile(latencies, 95)
+    p99 = percentile(latencies, 99)
     print(f"\nLatency: p50={p50:.2f}ms, p95={p95:.2f}ms, p99={p99:.2f}ms")
     print(f"Total queries: {len(latencies)}\n")
 

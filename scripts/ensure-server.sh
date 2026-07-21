@@ -16,8 +16,6 @@ fi
 
 WRIT_HOST="${WRIT_HOST:-localhost}"
 WRIT_PORT="${WRIT_PORT:-8765}"
-WRIT_URL="http://${WRIT_HOST}:${WRIT_PORT}/health"
-
 NEO4J_PORT="${NEO4J_PORT:-7687}"
 
 # ── Check Neo4j ─────────────────────────────────────────────────────────────
@@ -46,35 +44,17 @@ if ! neo4j_running; then
     fi
 fi
 
-# ── Check Writ server ───────────────────────────────────────────────────────
-writ_running() {
-    curl -s --connect-timeout 0.1 "$WRIT_URL" >/dev/null 2>&1
-}
-
-if writ_running; then
-    echo "[Writ] Server already running on port $WRIT_PORT" >&2
-    exit 0
-fi
-
-# Activate venv if present
-if [ -f "$VENV_DIR/bin/activate" ]; then
-    source "$VENV_DIR/bin/activate"
-fi
-
-# Start Writ server in background
+# ── Ensure the Writ server (singleton-safe, flock-guarded shared routine) ────
+# The flock + health-check + start logic lives in the shared lib so this init path and the
+# plugin's SessionStart bootstrap cannot race each other into two `writ serve` launches.
+# shellcheck source=scripts/lib/writ-server-lib.sh
+source "$WRIT_DIR/scripts/lib/writ-server-lib.sh"
 WRIT_LOG="/tmp/writ-server.log"
-nohup writ serve > "$WRIT_LOG" 2>&1 &
-WRIT_PID=$!
-
-# Wait up to 5s for startup (Writ cold start is ~0.6s at 80 rules)
-for i in $(seq 1 50); do
-    if writ_running; then
-        echo "[Writ] Server started (PID $WRIT_PID, log: $WRIT_LOG)" >&2
-        exit 0
-    fi
-    sleep 0.1
-done
-
-echo "[Writ] Warning: server did not respond within 5s (PID $WRIT_PID, check $WRIT_LOG)" >&2
-# Non-fatal: hooks will show "server unavailable" and proceed gracefully
+# Start-only fallback (no cache-realign restart). The systemd user service
+# (scripts/install-server-service.sh) now owns the daemon's lifecycle and
+# auto-restarts it; this init path must never kill+restart a running daemon, or
+# it races systemd. Realign a misaligned daemon with `systemctl --user restart
+# writ-server`, not a hook. The realign capability stays in the lib (off by
+# default) for any non-systemd install that still wants it.
+writ_ensure_server
 exit 0

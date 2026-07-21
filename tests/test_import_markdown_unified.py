@@ -180,6 +180,38 @@ class TestImportMarkdownDefaultBehavior:
 # Class TestImportMarkdownOnlyFilter
 # ---------------------------------------------------------------------------
 
+class TestImportMarkdownNoExport:
+    """B5: --no-export suppresses the auto-export round-trip (the dominant per-test
+    setup cost -- every full-corpus import otherwise rewrites 273 rule files back to
+    disk). Setup/fixture imports only need the graph populated, not the source
+    regenerated. Default behaviour still exports (production regenerates rules.md)."""
+
+    def test_no_export_suppresses_export(self) -> None:
+        _clear_graph()
+        result = _run_import("bible/", "--no-export")
+        assert result.returncode == 0, (
+            f"import-markdown --no-export failed:\nstdout={result.stdout}\nstderr={result.stderr}"
+        )
+        # Graph is still fully populated...
+        assert _cypher("MATCH (n:Rule) RETURN count(n)") > 0, "Rules must still import with --no-export"
+        # ...but the export round-trip is skipped.
+        assert "Exported" not in result.stdout, (
+            f"--no-export must suppress the auto-export; stdout still reports it:\n{result.stdout}"
+        )
+
+    def test_default_still_exports(self) -> None:
+        """Regression guard: a default full-root import must KEEP exporting rules.md
+        (production relies on it). Pins that --no-export is opt-in, not the default."""
+        _clear_graph()
+        result = _run_import("bible/")
+        assert result.returncode == 0, (
+            f"import-markdown bible/ failed:\nstdout={result.stdout}\nstderr={result.stderr}"
+        )
+        assert "Exported" in result.stdout, (
+            f"default import-markdown bible/ must auto-export; stdout:\n{result.stdout}"
+        )
+
+
 class TestImportMarkdownOnlyFilter:
     """--only TYPE[,TYPE,...] must restrict ingestion to the named types."""
 
@@ -722,39 +754,3 @@ class TestVersionBumpedTo150:
             f"plugin.json version is {manifest.get('version')!r}; expected '1.5.0'"
         )
 
-    def test_marketplace_json_version_is_1_5_0(self) -> None:
-        """`.claude-plugin/marketplace.json` must have version 1.5.0 in both locations."""
-        import json as _json
-        marketplace_json = SKILL_DIR / ".claude-plugin" / "marketplace.json"
-        assert marketplace_json.exists(), f"marketplace.json not found at {marketplace_json}"
-        data = _json.loads(marketplace_json.read_text(encoding="utf-8"))
-
-        metadata_version = data.get("metadata", {}).get("version")
-        assert metadata_version == "1.5.0", (
-            f"marketplace.json metadata.version is {metadata_version!r}; expected '1.5.0'"
-        )
-
-        plugins = data.get("plugins", [])
-        assert plugins, "marketplace.json has no 'plugins' array"
-        plugin_version = plugins[0].get("version")
-        assert plugin_version == "1.5.0", (
-            f"marketplace.json plugins[0].version is {plugin_version!r}; expected '1.5.0'"
-        )
-
-    def test_changelog_has_150_entry(self) -> None:
-        """CHANGELOG.md must have '## [1.5.0] - 2026-05-21' BEFORE '## [1.3.0]'.
-
-        v1.5.0 ships the absorption and unify work as one combined release;
-        there is no separate [1.4.0] entry in the changelog.
-        """
-        changelog = (SKILL_DIR / "CHANGELOG.md").read_text(encoding="utf-8")
-        assert "## [1.5.0] - 2026-05-21" in changelog, (
-            "CHANGELOG.md does not contain '## [1.5.0] - 2026-05-21'"
-        )
-        idx_150 = changelog.index("## [1.5.0] - 2026-05-21")
-        assert "## [1.3.0]" in changelog, "CHANGELOG.md does not contain '## [1.3.0]'"
-        idx_130 = changelog.index("## [1.3.0]")
-        assert idx_150 < idx_130, (
-            f"'## [1.5.0]' appears at position {idx_150} but '## [1.3.0]' "
-            f"appears at {idx_130}; 1.5.0 entry must come before 1.3.0"
-        )

@@ -3,7 +3,8 @@
 Covers three fixes:
 1. Orchestrator mode-set instructions specify --orchestrator flag
 2. Sub-agent post-write verification in agent definitions
-3. Agent-type fallback + pre_write_decision logging
+3. Agent-type fallback + sub-agent start logging; write_attempt is the canonical
+   write-decision event (the bare pre_write_decision event is retired -- Phase 1.3)
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import pytest
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 AGENTS_DIR = SKILL_DIR / ".claude" / "agents"
-HOOKS_DIR = SKILL_DIR / ".claude" / "hooks"
+HOOKS_DIR = SKILL_DIR / "hooks" / "scripts"
 RULES_DIR = SKILL_DIR / "rules"
 
 
@@ -81,33 +82,42 @@ class TestAgentPostWriteVerification:
 
 
 # ---------------------------------------------------------------------------
-# Fix 3a: Pre-write dispatcher decision logging
+# Fix 3a: write_attempt is the canonical write-decision event
+# (the bare pre_write_decision event is retired -- Phase 1.3)
 # ---------------------------------------------------------------------------
 
 
-class TestPreWriteDecisionLogging:
-    """writ-pre-write-dispatch.sh must log pre_write_decision events."""
+class TestPreWriteDecisionRetired:
+    """pre_write_decision was emitted bare (DECISION_PAYLOAD defaulted to '{}'),
+    so analyze-friction reported every decision as 'unknown'. write_attempt
+    (emitted by the gate) already carries the rich file_path/result/gate_status,
+    so the dead event is retired and the analyzer reads write_attempt instead."""
 
-    def test_dispatch_hook_logs_pre_write_decision(self) -> None:
-        hook = HOOKS_DIR / "writ-pre-write-dispatch.sh"
-        assert hook.exists()
-        content = hook.read_text()
-        assert "pre_write_decision" in content, (
-            "writ-pre-write-dispatch.sh must emit pre_write_decision friction event"
+    def test_dispatch_hook_no_longer_logs_pre_write_decision(self) -> None:
+        content = (HOOKS_DIR / "writ-pre-write-dispatch.sh").read_text()
+        # The emit passed the event name quoted: log_friction_event ... "pre_write_decision".
+        # Explanatory comments may still mention the (unquoted) name.
+        assert '"pre_write_decision"' not in content, (
+            "pre_write_decision is retired; write_attempt is the canonical "
+            "write-decision event"
         )
 
-    def test_dispatch_hook_logs_decision_field(self) -> None:
-        """The event payload must include a decision field."""
-        content = (HOOKS_DIR / "writ-pre-write-dispatch.sh").read_text()
-        # Accept any plausible decision field syntax: JSON key (single or double
-        # quoted in Python heredoc), bash var, or shell variable reference.
-        assert (
-            '"decision"' in content
-            or "'decision':" in content
-            or "decision=" in content
-            or "${DECISION" in content
-            or "$DECISION" in content
-        ), "pre_write_decision event must carry a decision field"
+    def test_write_attempt_is_canonical_decision_event(self) -> None:
+        """The gate emits write_attempt with the rich decision fields."""
+        gates = (SKILL_DIR / "writ" / "session" / "gates.py").read_text()
+        assert "write_attempt" in gates, "the gate must emit write_attempt"
+        assert "gate_status" in gates and "file_path" in gates, (
+            "write_attempt must carry gate_status and file_path"
+        )
+
+    def test_analyzer_reads_write_attempt_for_decisions(self) -> None:
+        """analyze-friction's decision summary must come from write_attempt,
+        not the retired pre_write_decision (which produced 'unknown' for all)."""
+        friction = (SKILL_DIR / "writ" / "analysis" / "friction.py").read_text()
+        assert 'evt == "pre_write_decision"' not in friction, (
+            "analyzer must not key its decision summary on the retired event"
+        )
+        assert "write_decisions" in friction and 'evt == "write_attempt"' in friction
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +153,63 @@ class TestSubagentTypeFallback:
         assert "subagent_type_fallback" in content, (
             "writ-subagent-stop.sh must log subagent_type_fallback when fallback fires"
         )
+
+
+# ---------------------------------------------------------------------------
+# Fix 3c (keystone): writ-subagent-start.sh must source common.sh BEFORE the
+# empty-agent_type fallback branch, or `set -e` kills the hook at the undefined
+# log_friction_event -- the root cause of subagent_start being under-logged ~5x
+# and un-typed sub-agents getting no session/rules (Phase 1.1).
+# ---------------------------------------------------------------------------
+
+
+class TestSubagentStartLogsReliably:
+    """Regression: start hook logs subagent_start even when agent_type is empty."""
+
+    def test_common_sourced_before_first_use(self) -> None:
+        content = (HOOKS_DIR / "writ-subagent-start.sh").read_text()
+        src_idx = content.find("bin/lib/common.sh")
+        # Match the CALL form `log_friction_event "...` (a space+quote follows),
+        # not prose comments that merely name the function.
+        first_use = content.find('log_friction_event "')
+        assert src_idx != -1, "start hook must source common.sh"
+        assert first_use != -1, "start hook must call log_friction_event"
+        assert src_idx < first_use, (
+            "common.sh must be sourced BEFORE the first log_friction_event call "
+            "(else set -e kills the hook on the empty-agent_type fallback branch)"
+        )
+
+    def test_start_hook_logs_subagent_start_with_empty_agent_type(self, tmp_path: Path) -> None:
+        import json
+        import subprocess
+
+        hook = HOOKS_DIR / "writ-subagent-start.sh"
+        friction = tmp_path / "workflow-friction.log"
+        env = {
+            **os.environ,
+            "WRIT_FRICTION_LOG": str(friction),
+            "WRIT_CACHE_DIR": str(tmp_path),
+            "WRIT_PORT": "0",  # force the /health probe to fail fast -> skip RAG
+        }
+        envelope = {"agent_id": "kt-agent-1", "agent_type": "", "session_id": "kt-parent"}
+        proc = subprocess.run(
+            ["bash", str(hook)],
+            input=json.dumps(envelope),
+            env=env, cwd=str(tmp_path),
+            capture_output=True, text=True,
+        )
+        assert proc.returncode == 0, proc.stderr
+        events = (
+            [json.loads(ln) for ln in friction.read_text().splitlines() if ln.strip()]
+            if friction.exists() else []
+        )
+        kinds = [e.get("event") for e in events]
+        assert "subagent_start" in kinds, (
+            f"start hook must log subagent_start even with empty agent_type; "
+            f"got {kinds}, stderr={proc.stderr!r}"
+        )
+        # The start-hook fallback telemetry now actually fires (was 0 before the fix).
+        assert "subagent_type_fallback" in kinds
 
 
 # ---------------------------------------------------------------------------

@@ -18,8 +18,10 @@ from typing import Any
 
 import pytest
 
+from writ.session.cache import mutate_cache
+
 SKILL_DIR = (Path.home() / ".claude/skills/writ")
-DISPATCH_HOOK = SKILL_DIR / ".claude" / "hooks" / "writ-pre-write-dispatch.sh"
+DISPATCH_HOOK = SKILL_DIR / "hooks" / "scripts" / "writ-pre-write-dispatch.sh"
 SESSION_HELPER = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")
 
 
@@ -53,11 +55,8 @@ def _setup_allow_session(session_id: str) -> None:
         [sys.executable, SESSION_HELPER, "mode", "set", "work", session_id],
         capture_output=True, timeout=5,
     )
-    subprocess.run(
-        [sys.executable, SESSION_HELPER, "update", session_id,
-         "--set-gates-approved", "phase-a", "test-skeletons"],
-        capture_output=True, timeout=5,
-    )
+    with mutate_cache(session_id) as cache:
+        cache["gates_approved"] = ["phase-a", "test-skeletons"]
 
 
 # ---------------------------------------------------------------------------

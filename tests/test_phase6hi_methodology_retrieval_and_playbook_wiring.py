@@ -85,30 +85,29 @@ class TestPhase6hStage4Surfaces:
                 f"Cache missing neighbors for {mid}; Stage 4 cannot expand."
             )
 
-    def test_bundle_expansion_includes_methodology_via_counters(self) -> None:
+    def test_neighbors_include_methodology_via_counters(self) -> None:
         """Starting from an AntiPattern that COUNTERS a Skill, Stage 4
-        get_bundle reaches the Skill at depth 1."""
+        get_neighbors reaches the Skill (a direct neighbor)."""
         cache = self._cache_with_edges([
             ("ANT-PROC-PLAN-001", "SKL-PROC-PLAN-001", "COUNTERS"),
             ("ANT-PROC-PLAN-001", "ENF-PROC-PLAN-001", "COUNTERS"),
         ])
-        bundle = cache.get_bundle("ANT-PROC-PLAN-001", max_depth=1)
-        assert "SKL-PROC-PLAN-001" in bundle
-        assert "ENF-PROC-PLAN-001" in bundle
+        neighbor_ids = [n["rule_id"] for n in cache.get_neighbors("ANT-PROC-PLAN-001")]
+        assert "SKL-PROC-PLAN-001" in neighbor_ids
+        assert "ENF-PROC-PLAN-001" in neighbor_ids
 
-    def test_bundle_expansion_works_for_skill_seed(self) -> None:
+    def test_neighbors_work_for_skill_seed(self) -> None:
         """Stage 4 traversal is symmetric: starting from a Skill
         reaches the AntiPattern via the inverse-direction entry."""
         cache = self._cache_with_edges([
             ("ANT-PROC-PLAN-001", "SKL-PROC-PLAN-001", "COUNTERS"),
             ("PBK-PROC-PLAN-001", "SKL-PROC-PLAN-001", "TEACHES"),
         ])
-        bundle = cache.get_bundle("SKL-PROC-PLAN-001", max_depth=1)
-        assert "SKL-PROC-PLAN-001" in bundle
-        assert "ANT-PROC-PLAN-001" in bundle, (
+        neighbor_ids = [n["rule_id"] for n in cache.get_neighbors("SKL-PROC-PLAN-001")]
+        assert "ANT-PROC-PLAN-001" in neighbor_ids, (
             "Inverse-direction lookup failed; Stage 4 not symmetric."
         )
-        assert "PBK-PROC-PLAN-001" in bundle
+        assert "PBK-PROC-PLAN-001" in neighbor_ids
 
 
 # ============================================================================
@@ -129,7 +128,7 @@ def tmp_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     cache_dir.mkdir()
     monkeypatch.setenv("WRIT_CACHE_DIR", str(cache_dir))
     from writ.server import writ_session
-    monkeypatch.setattr(writ_session, "CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("WRIT_CACHE_DIR", str(cache_dir))
     return p
 
 
@@ -137,6 +136,21 @@ def _read_events(log: Path, event: str) -> list[dict]:
     if not log.exists():
         return []
     return [e.model_dump() for e in parse_log(log) if e.event == event]
+
+
+def _advance_with_token(client: TestClient, sid: str, source: str = "tool"):
+    """Advance the phase, writing the gate token the route now requires + consumes
+    (audit P0 self-approval fix). The token is consumed per advance, so callers that
+    advance repeatedly must call this each time (it re-writes the token)."""
+    import os
+    import tempfile
+    tok = "test-6i-gate-token"
+    with open(os.path.join(tempfile.gettempdir(), f"writ-gate-token-{sid}"), "w") as f:
+        f.write(tok)
+    return client.post(
+        f"/session/{sid}/advance-phase",
+        json={"confirmation_source": source, "token": tok},
+    )
 
 
 class TestPhase6iAdvancePhaseFiresPlaybookStep:
@@ -147,18 +161,14 @@ class TestPhase6iAdvancePhaseFiresPlaybookStep:
     def test_first_advance_fires_playbook_step_complete(
         self, client: TestClient, tmp_log: Path
     ) -> None:
-        resp = client.post(
-            "/session/test-6i-1/advance-phase",
-            json={"confirmation_source": "tool"},
-        )
+        resp = _advance_with_token(client, "test-6i-1")
         assert resp.status_code == 200
 
-        # NOTE: phase_advance uses a separate write path (cwd-walked
-        # project root) and does not honor WRIT_FRICTION_LOG -- so
-        # we can't observe it via the tmp_log fixture. That existing
-        # behavior is not changed by this commit; we assert only on
-        # the new playbook_step_complete event which DOES use the
-        # log_friction_event helper and respects WRIT_FRICTION_LOG.
+        # Phase 1.2: phase_advance now ALSO routes through log_friction_event
+        # (honors WRIT_FRICTION_LOG) instead of the old cwd-walked writer that
+        # leaked into the repo log -- so both events land in tmp_log now.
+        advances = _read_events(tmp_log, "phase_advance")
+        assert len(advances) == 1, f"expected one phase_advance event; got {advances}"
 
         steps = _read_events(tmp_log, "playbook_step_complete")
         assert len(steps) == 1, (
@@ -177,10 +187,7 @@ class TestPhase6iAdvancePhaseFiresPlaybookStep:
         self, client: TestClient, tmp_log: Path
     ) -> None:
         for _ in range(3):
-            client.post(
-                "/session/test-6i-2/advance-phase",
-                json={"confirmation_source": "tool"},
-            )
+            _advance_with_token(client, "test-6i-2")
         steps = _read_events(tmp_log, "playbook_step_complete")
         # Three advances happen on the state machine: planning->testing,
         # testing->implementation, implementation->complete. Only the
@@ -201,10 +208,7 @@ class TestPhase6iAdvancePhaseFiresPlaybookStep:
         to analyze_playbook_compliance, expect a non-empty result row
         for PBK-PROC-SDD-001."""
         for _ in range(3):
-            client.post(
-                "/session/test-6i-3/advance-phase",
-                json={"confirmation_source": "tool"},
-            )
+            _advance_with_token(client, "test-6i-3")
         events = parse_log(tmp_log)
         rows = analyze_playbook_compliance(events, since_days=30)
         sdd_rows = [r for r in rows if r.playbook_id == "PBK-PROC-SDD-001"]
@@ -223,10 +227,7 @@ class TestPhase6iAdvancePhaseFiresPlaybookStep:
     def test_event_carries_session_and_mode(
         self, client: TestClient, tmp_log: Path
     ) -> None:
-        client.post(
-            "/session/test-6i-4/advance-phase",
-            json={"confirmation_source": "tool"},
-        )
+        _advance_with_token(client, "test-6i-4")
         steps = _read_events(tmp_log, "playbook_step_complete")
         assert len(steps) == 1
         # The event carries session_id under the standard 'session' key

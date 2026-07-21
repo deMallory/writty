@@ -14,7 +14,6 @@ from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.retrieval.embeddings import HnswlibStore
 from writ.retrieval.keyword import KeywordIndex
-from writ.retrieval.traversal import GraphTraverser
 
 NEO4J_URI = get_neo4j_uri()
 NEO4J_USER = get_neo4j_user()
@@ -101,8 +100,7 @@ class TestTraversal:
         await db.create_rule(_make_rule("RULE-B-001"))
         await db.create_edge("DEPENDS_ON", "RULE-A-001", "RULE-B-001")
 
-        traverser = GraphTraverser(db)
-        neighbors = await traverser.get_neighbors("RULE-A-001", hops=1)
+        neighbors = await db.traverse_neighbors("RULE-A-001", hops=1)
         neighbor_ids = [n["rule_id"] for n in neighbors]
         assert "RULE-B-001" in neighbor_ids
 
@@ -114,8 +112,7 @@ class TestTraversal:
         await db.create_edge("DEPENDS_ON", "RULE-A-001", "RULE-B-001")
         await db.create_edge("SUPPLEMENTS", "RULE-B-001", "RULE-C-001")
 
-        traverser = GraphTraverser(db)
-        neighbors = await traverser.get_neighbors("RULE-A-001", hops=2)
+        neighbors = await db.traverse_neighbors("RULE-A-001", hops=2)
         neighbor_ids = [n["rule_id"] for n in neighbors]
         assert "RULE-C-001" in neighbor_ids
 
@@ -125,8 +122,7 @@ class TestTraversal:
         await db.create_rule(_make_rule("RULE-B-001"))
         await db.create_edge("CONFLICTS_WITH", "RULE-A-001", "RULE-B-001")
 
-        traverser = GraphTraverser(db)
-        neighbors = await traverser.get_neighbors("RULE-A-001", hops=1)
+        neighbors = await db.traverse_neighbors("RULE-A-001", hops=1)
         assert len(neighbors) > 0
         assert "edge_type" in neighbors[0]
         assert neighbors[0]["edge_type"] == "CONFLICTS_WITH"

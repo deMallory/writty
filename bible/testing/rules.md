@@ -2,6 +2,7 @@
 ## Rule TEST-ASSERT-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -32,6 +33,8 @@ Linter rule (pytest-style assertion check; pylint custom rule).
 ### Rationale
 An assertion-free test silently passes regardless of what the code does. The bug it claims to cover is invisible.
 
+Related rules: TEST-ASSERT-002, TEST-EXIST-001, TEST-MOCK-001.
+
 <!-- RULE END: TEST-ASSERT-001 -->
 ---
 
@@ -39,6 +42,7 @@ An assertion-free test silently passes regardless of what the code does. The bug
 ## Rule TEST-ASSERT-002
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -66,6 +70,8 @@ Code review.
 ### Rationale
 Specific assertions print diffs on failure: actual vs expected. Boolean assertions print only 'False is not True', which says nothing.
 
+Related rules: TEST-ASSERT-001.
+
 <!-- RULE END: TEST-ASSERT-002 -->
 ---
 
@@ -73,6 +79,7 @@ Specific assertions print diffs on failure: actual vs expected. Boolean assertio
 ## Rule TEST-CI-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -100,6 +107,8 @@ CI gate. Code review.
 ### Rationale
 A green-with-skips suite is a yellow signal that gets ignored. Either the test is meaningful (fix it) or it is not (remove it).
 
+Related rules: ENF-TEST-001, TEST-ISOLATE-001.
+
 <!-- RULE END: TEST-CI-001 -->
 ---
 
@@ -107,6 +116,7 @@ A green-with-skips suite is a yellow signal that gets ignored. Either the test i
 ## Rule TEST-COVERAGE-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -134,6 +144,8 @@ Coverage tool (pytest-cov, jest --coverage, istanbul, JaCoCo) with CI gate.
 ### Rationale
 Coverage targets create a baseline that prevents tests from being silently abandoned. 80% branch is enough to catch most regression; chasing 100% wastes effort on trivial code.
 
+Related rules: ENF-POST-004, TEST-EXIST-001.
+
 <!-- RULE END: TEST-COVERAGE-001 -->
 ---
 
@@ -141,6 +153,7 @@ Coverage targets create a baseline that prevents tests from being silently aband
 ## Rule TEST-EDGE-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -171,6 +184,8 @@ Code review. Coverage tools that report branch coverage.
 ### Rationale
 Happy-path-only test suites prove the code works when nothing goes wrong, which is the easiest case. Error paths are where most production bugs live.
 
+Related rules: TEST-EDGE-002, TEST-REGRESSION-001.
+
 <!-- RULE END: TEST-EDGE-001 -->
 ---
 
@@ -178,6 +193,7 @@ Happy-path-only test suites prove the code works when nothing goes wrong, which 
 ## Rule TEST-EDGE-002
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -208,6 +224,8 @@ Code review.
 ### Rationale
 Boundary bugs are the canonical source of off-by-one errors and overflow surprises. Explicit boundary tests are the structural defense.
 
+Related rules: ENF-POST-005, TEST-EDGE-001.
+
 <!-- RULE END: TEST-EDGE-002 -->
 ---
 
@@ -215,6 +233,7 @@ Boundary bugs are the canonical source of off-by-one errors and overflow surpris
 ## Rule TEST-EDGE-003
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -243,6 +262,8 @@ Code review.
 ### Rationale
 Concurrency bugs only surface under contention. A single-threaded test of concurrent code proves nothing about correctness under load.
 
+Related rules: ENF-SYS-005, TEST-EDGE-001.
+
 <!-- RULE END: TEST-EDGE-003 -->
 ---
 
@@ -250,6 +271,7 @@ Concurrency bugs only surface under contention. A single-threaded test of concur
 ## Rule TEST-EXIST-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -282,6 +304,8 @@ Code review. Coverage tools report public-function coverage.
 ### Rationale
 Untested public APIs are unverified APIs: every caller is the first to find the bug. The test is the executable contract.
 
+Related rules: PROC-TEST-001, TEST-ASSERT-001, TEST-EXIST-002.
+
 <!-- RULE END: TEST-EXIST-001 -->
 ---
 
@@ -289,6 +313,7 @@ Untested public APIs are unverified APIs: every caller is the first to find the 
 ## Rule TEST-EXIST-002
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -318,6 +343,8 @@ Code review.
 ### Rationale
 Integration tests catch the bugs that unit tests cannot: middleware ordering, request parsing, response shape, status codes, content negotiation.
 
+Related rules: TEST-EXIST-001, TEST-INT-001, TEST-MOCK-002.
+
 <!-- RULE END: TEST-EXIST-002 -->
 ---
 
@@ -325,6 +352,7 @@ Integration tests catch the bugs that unit tests cannot: middleware ordering, re
 ## Rule TEST-FIXTURE-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -338,10 +366,10 @@ Test fixtures or factories are used for object setup. Constructing the same doma
 ### Violation
 ```python
 def test_a():
-    user = User(name='Alice', email='alice@example.com', age=30, ...)  # 20 fields
+    user = User(name='Alice', email='alice@example.com', age=30)  # +17 more fields
     ...
 def test_b():
-    user = User(name='Bob', email='bob@example.com', age=25, ...)
+    user = User(name='Bob', email='bob@example.com', age=25)  # +17 more fields
 ```
 
 ### Pass
@@ -349,7 +377,7 @@ def test_b():
 @pytest.fixture
 def user_factory():
     def make(**overrides):
-        defaults = {'name': 'Alice', 'email': 'alice@example.com', ...}
+        defaults = {'name': 'Alice', 'email': 'alice@example.com'}  # +N more entries
         return User(**{**defaults, **overrides})
     return make
 
@@ -365,6 +393,8 @@ Code review.
 ### Rationale
 Inline-constructed objects drift across tests; one new required field updates twenty tests. Factories centralize the construction.
 
+Related rules: TEST-FIXTURE-002.
+
 <!-- RULE END: TEST-FIXTURE-001 -->
 ---
 
@@ -372,6 +402,7 @@ Inline-constructed objects drift across tests; one new required field updates tw
 ## Rule TEST-FIXTURE-002
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -407,6 +438,8 @@ Code review.
 ### Rationale
 Bloated setup obscures intent and slows the suite. Minimal fixtures keep the test legible and fast.
 
+Related rules: TEST-FIXTURE-001.
+
 <!-- RULE END: TEST-FIXTURE-002 -->
 ---
 
@@ -414,6 +447,7 @@ Bloated setup obscures intent and slows the suite. Minimal fixtures keep the tes
 ## Rule TEST-ISOLATE-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -447,6 +481,8 @@ Test framework config (pytest's randomize order plugin catches this). Code revie
 ### Rationale
 Order-dependent tests pass in CI and fail in parallel runs (or vice versa). The flake is structural and the fix is per-test isolation.
 
+Related rules: TEST-CI-001, TEST-ISOLATE-003.
+
 <!-- RULE END: TEST-ISOLATE-001 -->
 ---
 
@@ -454,6 +490,7 @@ Order-dependent tests pass in CI and fail in parallel runs (or vice versa). The 
 ## Rule TEST-ISOLATE-002
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -485,6 +522,8 @@ Code review. Network-blocking pytest fixtures (pytest-socket).
 ### Rationale
 Tests that hit real services are slow, flaky, and side-effect-laden. Mocking is the structural defense.
 
+Related rules: TEST-INT-001, TEST-ISOLATE-003, TEST-MOCK-002.
+
 <!-- RULE END: TEST-ISOLATE-002 -->
 ---
 
@@ -492,6 +531,7 @@ Tests that hit real services are slow, flaky, and side-effect-laden. Mocking is 
 ## Rule TEST-ISOLATE-003
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -525,6 +565,8 @@ Test framework config. Pytest fixtures with transactional scope.
 ### Rationale
 Leaked state between tests is the canonical source of order-dependent flakiness. Per-test isolation removes the entire class of bug.
 
+Related rules: TEST-INT-001, TEST-ISOLATE-001, TEST-ISOLATE-002.
+
 <!-- RULE END: TEST-ISOLATE-003 -->
 ---
 
@@ -532,6 +574,7 @@ Leaked state between tests is the canonical source of order-dependent flakiness.
 ## Rule TEST-MOCK-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -564,6 +607,8 @@ Code review.
 ### Rationale
 A mock without behavior assertions only proves 'no exception thrown'. Behavior assertions prove the integration with the mocked collaborator.
 
+Related rules: TEST-ASSERT-001, TEST-ISOLATE-002, TEST-MOCK-002.
+
 <!-- RULE END: TEST-MOCK-001 -->
 ---
 
@@ -571,6 +616,7 @@ A mock without behavior assertions only proves 'no exception thrown'. Behavior a
 ## Rule TEST-MOCK-002
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -600,6 +646,8 @@ Code review. Contract tests verify mock shapes against real responses.
 ### Rationale
 Drift between mock and reality lets tests pass while production breaks. Realistic mocks keep the gap closed.
 
+Related rules: TEST-EXIST-002, TEST-ISOLATE-002, TEST-MOCK-001.
+
 <!-- RULE END: TEST-MOCK-002 -->
 ---
 
@@ -607,6 +655,7 @@ Drift between mock and reality lets tests pass while production breaks. Realisti
 ## Rule TEST-NAME-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -630,7 +679,7 @@ def test_cancel_raises_when_order_already_shipped(): ...
 ```
 
 ### Enforcement
-Code review.
+Code review. Related: TEST-ASSERT-002.
 
 ### Rationale
 Failing test names are read in CI output, in incident timelines, in stack traces. Descriptive names diagnose the failure without opening the test file.
@@ -642,6 +691,7 @@ Failing test names are read in CI output, in incident timelines, in stack traces
 ## Rule TEST-PERF-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Low
 **Scope**: Component
 **Mandatory**: false
@@ -671,6 +721,8 @@ Benchmark framework (pytest-benchmark, criterion, JMH).
 ### Rationale
 Performance regressions slip in silently as features land. Benchmarks turn 'feels slow' into a measurable, gateable signal.
 
+Related rules: PERF-OPT-001.
+
 <!-- RULE END: TEST-PERF-001 -->
 ---
 
@@ -678,6 +730,7 @@ Performance regressions slip in silently as features land. Benchmarks turn 'feel
 ## Rule TEST-REGRESSION-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -707,6 +760,8 @@ Code review. Bug-tracker template requires a 'test added' field.
 ### Rationale
 Bug fixes without regression tests guarantee the bug returns. The test is the structural defense against re-introduction.
 
+Related rules: ENF-PROC-DEBUG-001, ENF-PROC-TDD-001, TEST-EDGE-001.
+
 <!-- RULE END: TEST-REGRESSION-001 -->
 ---
 
@@ -714,6 +769,7 @@ Bug fixes without regression tests guarantee the bug returns. The test is the st
 ## Rule TEST-SNAPSHOT-001
 
 **Domain**: testing
+**Category**: CAT-CODE-TESTING-001
 **Severity**: Low
 **Scope**: Component
 **Mandatory**: false
@@ -740,5 +796,7 @@ Pre-commit hook. PR template requires snapshot diff acknowledgment.
 
 ### Rationale
 Blind snapshot updates erode the value of the test: it becomes a record of what the code does, not a check that it does the right thing.
+
+Related rules: PROC-REVIEW-001, TEST-MOCK-002.
 
 <!-- RULE END: TEST-SNAPSHOT-001 -->

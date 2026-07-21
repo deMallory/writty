@@ -4,6 +4,14 @@ Per TEST-TDD-001: skeletons approved before implementation.
 Covers: POST /pre-write-check endpoint decisions (allow/deny/ask), RAG metadata
 in the allow response, _can_write_check reusable function, fallback path in
 common.sh, and settings.json hook consolidation.
+
+C1 (Wave 1 Cycle 1, plan.md): TestCanWriteFallbackForwardsEnvelope pins the
+daemon-degraded can-write fallback -- bin/lib/common.sh:450-454 hardcodes
+body="{}" and never reads the piped tool envelope from stdin, so the gate
+check runs on an empty file_path and silently allows. It also proves the
+server's {"can_write": bool} response gets normalized to the {"decision": ...}
+shape the fallback's consumer (writ-pre-write-dispatch.sh:112) actually reads.
+RED before the common.sh fix lands.
 """
 
 from __future__ import annotations
@@ -11,6 +19,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shlex
+import subprocess
+import threading
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -22,6 +35,7 @@ try:
 except ImportError:
     pytestmark = pytest.mark.skip(reason="httpx not installed")
 
+from tests.fixtures.net import free_port as _free_port
 from writ.server import app  # type: ignore[import]
 from pathlib import Path
 
@@ -100,7 +114,7 @@ def mock_writ_session_allow():
     mock._write_cache = MagicMock(return_value=None)
     mock.DEFAULT_SESSION_BUDGET = 8000
 
-    def _fake_can_write_check(session_id: str, envelope: dict, skill_dir: str) -> dict:
+    def _fake_can_write_check(session_id: str, envelope: dict, skill_dir: str, cache=None) -> dict:
         return {"can_write": True, "reason": None}
 
     mock._can_write_check = MagicMock(side_effect=_fake_can_write_check)
@@ -115,7 +129,7 @@ def mock_writ_session_deny():
     mock._write_cache = MagicMock(return_value=None)
     mock.DEFAULT_SESSION_BUDGET = 8000
 
-    def _fake_can_write_check(session_id: str, envelope: dict, skill_dir: str) -> dict:
+    def _fake_can_write_check(session_id: str, envelope: dict, skill_dir: str, cache=None) -> dict:
         return {"can_write": False, "reason": "[ENF-GATE-PLAN] Gate not approved"}
 
     mock._can_write_check = MagicMock(side_effect=_fake_can_write_check)
@@ -277,46 +291,46 @@ class TestCanWriteCheckReusable:
         mod = _load_writ_session()
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
-            mod.CACHE_DIR = tmpdir
-            # Create a cache with work mode + gates approved
-            cache = _make_allow_session_cache()
-            path = mod._cache_path(SESSION_ID)
-            import json
-            with open(path, "w") as f:
-                json.dump(cache, f)
-            result = mod._can_write_check(SESSION_ID, {"tool_input": {"file_path": "test.py"}})
-            assert isinstance(result, dict)
+            with patch.dict(os.environ, {"WRIT_CACHE_DIR": tmpdir}):
+                # Create a cache with work mode + gates approved
+                cache = _make_allow_session_cache()
+                path = mod._cache_path(SESSION_ID)
+                import json
+                with open(path, "w") as f:
+                    json.dump(cache, f)
+                result = mod._can_write_check(SESSION_ID, {"tool_input": {"file_path": "test.py"}})
+                assert isinstance(result, dict)
 
     def test_can_write_check_result_has_can_write_field(self) -> None:
         """_can_write_check result contains can_write bool field."""
         mod = _load_writ_session()
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
-            mod.CACHE_DIR = tmpdir
-            cache = _make_allow_session_cache()
-            path = mod._cache_path(SESSION_ID)
-            import json
-            with open(path, "w") as f:
-                json.dump(cache, f)
-            result = mod._can_write_check(SESSION_ID, {"tool_input": {"file_path": "test.py"}})
-            assert "can_write" in result
-            assert isinstance(result["can_write"], bool)
+            with patch.dict(os.environ, {"WRIT_CACHE_DIR": tmpdir}):
+                cache = _make_allow_session_cache()
+                path = mod._cache_path(SESSION_ID)
+                import json
+                with open(path, "w") as f:
+                    json.dump(cache, f)
+                result = mod._can_write_check(SESSION_ID, {"tool_input": {"file_path": "test.py"}})
+                assert "can_write" in result
+                assert isinstance(result["can_write"], bool)
 
     def test_can_write_check_returns_reason_on_deny(self) -> None:
         """_can_write_check result contains a non-empty reason string when can_write is False."""
         mod = _load_writ_session()
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
-            mod.CACHE_DIR = tmpdir
-            # Cache with no mode = deny
-            cache = _make_deny_session_cache(mode=None, gates_approved=[])
-            path = mod._cache_path(SESSION_ID)
-            import json
-            with open(path, "w") as f:
-                json.dump(cache, f)
-            result = mod._can_write_check(SESSION_ID, {"tool_input": {"file_path": "src/main.py"}})
-            assert result["can_write"] is False
-            assert result["reason"] is not None
+            with patch.dict(os.environ, {"WRIT_CACHE_DIR": tmpdir}):
+                # Cache with no mode = deny
+                cache = _make_deny_session_cache(mode=None, gates_approved=[])
+                path = mod._cache_path(SESSION_ID)
+                import json
+                with open(path, "w") as f:
+                    json.dump(cache, f)
+                result = mod._can_write_check(SESSION_ID, {"tool_input": {"file_path": "src/main.py"}})
+                assert result["can_write"] is False
+                assert result["reason"] is not None
             assert len(result["reason"]) > 0
 
     def test_cmd_can_write_calls_can_write_check(self) -> None:
@@ -396,82 +410,201 @@ class TestFallbackPath:
         )
 
 
+class TestGateBypassRegression:
+    """Guards the gate-enforcement bypass found 2026-06-18: the dispatch hook
+    sent an empty `{}` body to /pre-write-check, so the server saw no file_path
+    and always returned "allow" -- silently disabling the Write/Edit gate AND
+    suppressing every real write_attempt event. Two coupled defects, both guarded:
+      1. common.sh read the body from $2 but the hook passed it as the only arg.
+      2. the default `${2:-{}}` appended a stray `}` (malformed JSON -> server
+         reject -> fallback) even once the arg position was right.
+    """
+
+    DISPATCH = f"{SKILL_DIR}/hooks/scripts/writ-pre-write-dispatch.sh"
+
+    def test_dispatch_passes_body_as_second_arg(self) -> None:
+        with open(self.DISPATCH) as f:
+            src = f.read()
+        # SESSION_ID must precede CHECK_BODY so the body lands in the helper's $2.
+        assert '_writ_session pre-write-check "$SESSION_ID" "$CHECK_BODY"' in src, (
+            "dispatch hook must call `_writ_session pre-write-check \"$SESSION_ID\" "
+            "\"$CHECK_BODY\"` -- a single CHECK_BODY arg lands in $1 and the helper "
+            "reads the body from $2, sending an empty {} body (gate bypass)"
+        )
+
+    def test_common_sh_pre_write_check_default_is_quoted(self) -> None:
+        with open(COMMON_SH) as f:
+            src = f.read()
+        # The quoted default; the bare ${2:-{}} appends a stray } when $2 is set.
+        assert 'check_body="${2:-"{}"}"' in src, (
+            "common.sh pre-write-check must use the quoted default "
+            "`${2:-\"{}\"}` -- the bare `${2:-{}}` appends a stray `}` to a set "
+            "body, producing malformed JSON the server rejects"
+        )
+        assert 'check_body="${2:-{}}"' not in src, (
+            "the buggy unquoted `${2:-{}}` default must not reappear"
+        )
+
+
 # ---------------------------------------------------------------------------
-# TestSettingsJsonConsolidation -- settings.json hook changes
+# TestCanWriteFallbackForwardsEnvelope -- C1 (Wave 1 Cycle 1, plan.md)
 # ---------------------------------------------------------------------------
+#
+# bin/lib/common.sh's `_writ_session can-write` arm (lines 450-454) hardcodes
+# `body="{}"` and never reads stdin, so the piped `{"tool_input": {...}}`
+# envelope built by the pre-write-check fallback (common.sh:567-577) is
+# discarded before it ever reaches the daemon. The server's can-write route
+# (server.py:835-848) then sees an empty file_path and returns can_write=True
+# -- a silent full allow on the daemon-degraded path.
+#
+# A second, coupled defect: the server route's response shape is
+# {"can_write": bool, "reason": ...}, but the fallback's consumer
+# (writ-pre-write-dispatch.sh:112) reads `result.get('decision', 'allow')`.
+# So even a corrected envelope forward would still read as "allow" unless the
+# response is normalized to {"decision": "allow"|"deny", ...}.
+#
+# These tests run a real `bash -c 'source common.sh; ...'` subprocess against a
+# stub HTTPServer on a free port (never the real daemon), per plan.md
+# ## Verification: "the C1 test therefore uses a stub HTTPServer ... it does
+# not require (and must not depend on) the daemon being up or down."
 
 
-class TestSettingsJsonConsolidation:
-    """Hook consolidation must be reflected in settings.json."""
+class _CanWriteStubHandler(BaseHTTPRequestHandler):
+    """Stub `/session/<sid>/can-write` route.
 
-    def _load_settings(self) -> dict[str, Any]:
-        home = os.path.expanduser("~")
-        settings_path = os.path.join(home, ".claude", "settings.json")
-        with open(settings_path) as f:
-            return json.load(f)
+    Records every POST body received (proves whether the piped tool envelope
+    was forwarded, or discarded as today's hardcoded body="{}") and returns a
+    canned {"can_write": bool, "reason": ...} response -- the REAL server
+    route's response shape (server.py:835-848), not the {"decision": ...}
+    shape the fallback consumer expects.
+    """
 
-    def _get_pretooluse_write_commands(self) -> list[str]:
-        settings = self._load_settings()
-        hooks = settings.get("hooks", {})
-        pretooluse = hooks.get("PreToolUse", [])
-        commands: list[str] = []
-        for entry in pretooluse:
-            if isinstance(entry, dict):
-                matcher = entry.get("matcher", "")
-                if "Write" in matcher or "Edit" in matcher:
-                    for hook in entry.get("hooks", []):
-                        if isinstance(hook, dict):
-                            commands.append(hook.get("command", ""))
-                        elif isinstance(hook, str):
-                            commands.append(hook)
-            elif isinstance(entry, str):
-                commands.append(entry)
-        return commands
+    canned_response: bytes = b'{"can_write": false, "reason": "gated"}'
+    received_bodies: list[bytes] = []
 
-    def test_check_gate_approval_removed_from_pretooluse(self) -> None:
-        """settings.json PreToolUse Write|Edit must not include check-gate-approval.sh."""
-        commands = self._get_pretooluse_write_commands()
-        assert not any("check-gate-approval" in cmd for cmd in commands), (
-            "check-gate-approval.sh must be removed from PreToolUse Write|Edit"
+    def log_message(self, *args) -> None:  # silence stderr noise
+        pass
+
+    def do_POST(self) -> None:  # noqa: N802 (http.server API)
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length else b"{}"
+        if self.path.endswith("/can-write"):
+            _CanWriteStubHandler.received_bodies.append(raw)
+            self._ok(_CanWriteStubHandler.canned_response)
+        else:
+            self.send_error(404)
+
+    def _ok(self, body: bytes) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+@contextmanager
+def _can_write_stub(response: dict):
+    """Start the stub can-write daemon on a free port; yield (port, get_bodies)."""
+    _CanWriteStubHandler.received_bodies = []
+    _CanWriteStubHandler.canned_response = json.dumps(response).encode()
+    port = _free_port()
+    srv = HTTPServer(("localhost", port), _CanWriteStubHandler)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield port, (lambda: list(_CanWriteStubHandler.received_bodies))
+    finally:
+        srv.shutdown()
+        thread.join(timeout=2)
+
+
+class TestCanWriteFallbackForwardsEnvelope:
+    """C1: the can-write fallback arm of _writ_session must forward the piped
+    tool envelope as the POST body (not today's hardcoded `body="{}"`), and
+    normalize the daemon's `{"can_write": bool}` response into the
+    `{"decision": "allow"|"deny"}` shape the pre-write-check fallback consumer
+    reads. RED before the common.sh fix lands (plan.md ## Analysis, C1).
+    """
+
+    @staticmethod
+    def _run_can_write(
+        *, piped: dict, port: int, sid: str = "cw-fallback-test-sid", skill_dir: str = "/tmp/writ-cw-test-skill"
+    ) -> subprocess.CompletedProcess:
+        # WRIT_HOST / WRIT_PORT must be set BEFORE `source common.sh` -- the
+        # module-level WRIT_SESSION_BASE (common.sh:390-392) is computed once,
+        # at source time, from these env vars.
+        env = os.environ.copy()
+        env["WRIT_HOST"] = "localhost"
+        env["WRIT_PORT"] = str(port)
+        cmd = (
+            f"source {shlex.quote(COMMON_SH)}; "
+            f"printf %s {shlex.quote(json.dumps(piped))} | "
+            f"_writ_session can-write {shlex.quote(sid)} --skill-dir {shlex.quote(skill_dir)}"
+        )
+        return subprocess.run(
+            ["bash", "-c", cmd],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
 
-    def test_enforce_final_gate_removed_from_pretooluse(self) -> None:
-        """settings.json PreToolUse Write|Edit must not include enforce-final-gate.sh."""
-        commands = self._get_pretooluse_write_commands()
-        assert not any("enforce-final-gate" in cmd for cmd in commands), (
-            "enforce-final-gate.sh must be removed from PreToolUse Write|Edit"
+    def test_fallback_posts_tool_input_in_body(self) -> None:
+        """The stub's recorded POST body must carry the piped tool_input.file_path.
+
+        RED today: the can-write arm hardcodes body="{}", so tool_input never
+        crosses to the daemon -- the recorded body is `{}`, not the envelope.
+        """
+        piped = {"tool_input": {"file_path": "src/gated_file.py"}}
+        with _can_write_stub({"can_write": False, "reason": "gated"}) as (port, get_bodies):
+            result = self._run_can_write(piped=piped, port=port)
+            bodies = get_bodies()
+        assert bodies, (
+            f"stub can-write route received no POST at all "
+            f"(stdout={result.stdout!r} stderr={result.stderr!r})"
+        )
+        received = json.loads(bodies[-1])
+        assert isinstance(received, dict)
+        assert received.get("tool_input", {}).get("file_path") == "src/gated_file.py", (
+            f"expected the forwarded body's tool_input.file_path == 'src/gated_file.py', "
+            f"got body={received!r} -- the can-write arm hardcodes body=\"{{}}\" today, "
+            f"discarding the piped envelope entirely"
         )
 
-    def test_writ_pretool_rag_removed_from_pretooluse(self) -> None:
-        """settings.json PreToolUse Write|Edit must not include writ-pretool-rag.sh."""
-        commands = self._get_pretooluse_write_commands()
-        assert not any("writ-pretool-rag.sh" in cmd for cmd in commands), (
-            "writ-pretool-rag.sh must be removed from PreToolUse Write|Edit"
+    def test_fallback_deny_yields_decision_deny(self) -> None:
+        """A can_write:false stub response must surface as {"decision": "deny", ...}.
+
+        RED today: the arm returns the server's raw {"can_write": false, ...}
+        shape untouched; the fallback consumer reads .get('decision', 'allow'),
+        which silently defaults to allow on this shape.
+        """
+        piped = {"tool_input": {"file_path": "src/gated_file.py"}}
+        with _can_write_stub({"can_write": False, "reason": "gated"}) as (port, _get_bodies):
+            result = self._run_can_write(piped=piped, port=port)
+        stdout = result.stdout.strip()
+        assert stdout, (
+            f"_writ_session can-write produced no stdout "
+            f"(returncode={result.returncode} stderr={result.stderr!r})"
+        )
+        parsed = json.loads(stdout)
+        assert parsed.get("decision") == "deny", (
+            f"expected {{'decision': 'deny', ...}}, got {parsed!r} -- the can-write "
+            f"route emits {{'can_write': bool, 'reason': ...}}; without shape "
+            f"normalization the fallback consumer's .get('decision', 'allow') silently "
+            f"allows a gated write"
         )
 
-    def test_writ_pre_write_dispatch_added_to_pretooluse(self) -> None:
-        """settings.json PreToolUse Write|Edit must include writ-pre-write-dispatch.sh."""
-        commands = self._get_pretooluse_write_commands()
-        assert any("writ-pre-write-dispatch" in cmd for cmd in commands), (
-            "writ-pre-write-dispatch.sh must be added to PreToolUse Write|Edit"
+    def test_fallback_allow_yields_decision_allow(self) -> None:
+        """A can_write:true stub response must surface as {"decision": "allow", ...}."""
+        piped = {"tool_input": {"file_path": "src/allowed_file.py"}}
+        with _can_write_stub({"can_write": True, "reason": None}) as (port, _get_bodies):
+            result = self._run_can_write(piped=piped, port=port)
+        stdout = result.stdout.strip()
+        assert stdout, (
+            f"_writ_session can-write produced no stdout "
+            f"(returncode={result.returncode} stderr={result.stderr!r})"
         )
-
-    def test_pre_validate_file_still_in_pretooluse(self) -> None:
-        """settings.json PreToolUse Write|Edit still includes pre-validate-file.sh."""
-        commands = self._get_pretooluse_write_commands()
-        assert any("pre-validate-file" in cmd for cmd in commands), (
-            "pre-validate-file.sh must remain in PreToolUse Write|Edit (not consolidated)"
-        )
-
-    def test_writ_pre_write_dispatch_bash_permission_added(self) -> None:
-        """settings.json Bash permission for writ-pre-write-dispatch.sh is added."""
-        settings = self._load_settings()
-        permissions = settings.get("permissions", {})
-        allowed_tools = permissions.get("allow", [])
-        bash_allows = [
-            t for t in allowed_tools
-            if isinstance(t, str) and "writ-pre-write-dispatch" in t
-        ]
-        assert len(bash_allows) > 0, (
-            "Bash permission for writ-pre-write-dispatch.sh must be added to settings.json"
+        parsed = json.loads(stdout)
+        assert parsed.get("decision") == "allow", (
+            f"expected {{'decision': 'allow', ...}}, got {parsed!r}"
         )

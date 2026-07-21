@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 
 WRIT_ROOT = Path(__file__).resolve().parent.parent
-HOOKS = WRIT_ROOT / ".claude" / "hooks"
+HOOKS = WRIT_ROOT / "hooks" / "scripts"
 
 # The marker every defensive recovery writes to stderr.
 RECOVERY_MARKER = "[writ-hook json.loads recovery]"
@@ -187,23 +187,39 @@ class TestHooksAreDefensive:
 
 
 class TestStderrTeeStillCapturesRecoveries:
-    """Phase 4c D1's stderr-tee idiom must continue to forward the
-    recovery diagnostics to /tmp/writ-hook-debug.log so future
-    root-cause analysis has a trail."""
+    """Phase 4c D1's stderr-tee idiom must continue to forward the recovery
+    diagnostics to /tmp/writ-hook-debug.log so future root-cause analysis has a
+    trail. dbaa200 GATED that tee behind WRIT_DEBUG (the bare
+    `tee -a /tmp/writ-hook-debug.log` literal was replaced by
+        exec 2> >(tee -a "$(_writ_debug_enabled \\
+            && echo "${WRIT_HOOK_LOG:-/tmp/writ-hook-debug.log}" \\
+            || echo /dev/null)" >&2)
+    ) in the production hooks and in the sibling test_phase4c_stderr_capture.py,
+    but this assertion was missed -- it still grepped the removed bare literal
+    and so FAILED at HEAD. This mirrors the sibling's gated-idiom assertion."""
+
+    @staticmethod
+    def _has_gated_tee(content: str) -> bool:
+        """Match the WRIT_DEBUG-gated stderr-tee idiom by its three stable
+        markers instead of the removed bare literal."""
+        return (
+            "_writ_debug_enabled" in content
+            and "tee -a" in content
+            and "/tmp/writ-hook-debug.log" in content
+        )
 
     @pytest.mark.parametrize("hook_name", _AFFECTED_HOOKS)
     def test_hook_has_stderr_tee_or_inherits_from_dispatch(self, hook_name: str) -> None:
-        """Either the hook itself has the tee idiom, or it's invoked
-        from writ-pre-write-dispatch.sh which inherits the tee. We
-        accept either by checking the dispatch hook (Phase 4c) is
-        intact OR the hook has the tee directly."""
+        """Either the hook itself carries the WRIT_DEBUG-gated tee idiom, or it
+        is covered by writ-pre-write-dispatch.sh which carries it. writ-rag-inject.sh
+        has no tee of its own, so it relies on the dispatch hook's gated idiom
+        (which dbaa200 left intact)."""
         dispatch = (HOOKS / "writ-pre-write-dispatch.sh").read_text()
         own = _hook_source(hook_name)
-        has_tee = (
-            "tee -a /tmp/writ-hook-debug.log" in own
-            or "tee -a /tmp/writ-hook-debug.log" in dispatch
-        )
+        has_tee = self._has_gated_tee(own) or self._has_gated_tee(dispatch)
         assert has_tee, (
-            f"{hook_name}: stderr must reach /tmp/writ-hook-debug.log via "
-            "own tee or via writ-pre-write-dispatch.sh"
+            f"{hook_name}: stderr must reach /tmp/writ-hook-debug.log via the "
+            "WRIT_DEBUG-gated tee idiom (_writ_debug_enabled + tee -a + the "
+            "/tmp/writ-hook-debug.log fallback path) in its own source or via "
+            "writ-pre-write-dispatch.sh"
         )

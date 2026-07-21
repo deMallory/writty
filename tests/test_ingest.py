@@ -441,8 +441,13 @@ class TestNeo4jConstraints:
     async def test_constraints_exist(self, db: Neo4jConnection) -> None:
         await db.apply_constraints()
         constraints = await db.list_constraints()
-        names = [c["name"] for c in constraints]
-        assert "rule_id_unique" in names
+        # M.2: identity is the composite (rule_id, project), not single rule_id.
+        rule_uniq = [
+            c for c in constraints
+            if (c.get("labelsOrTypes") or []) == ["Rule"]
+            and set(c.get("properties") or []) == {"rule_id", "project"}
+        ]
+        assert rule_uniq, f"missing composite (rule_id, project) constraint; have {[c['name'] for c in constraints]}"
 
     @pytest.mark.asyncio
     async def test_indexes_exist(self, db: Neo4jConnection) -> None:
@@ -541,3 +546,164 @@ class TestMigrationIntegration:
 
         assert edge_count > 0
         print(f"\nCreated {edge_count} RELATED_TO edges")
+
+
+# ---------------------------------------------------------------------------
+# Phase 0: Category parsing and BELONGS_TO edge extraction (TDD RED skeletons)
+# ---------------------------------------------------------------------------
+
+# Sample RULE START block with a Category field.
+SAMPLE_RULE_WITH_CATEGORY = dedent("""\
+    <!-- RULE START: ARCH-ORG-002 -->
+    ## Rule ARCH-ORG-002: Layer Separation
+
+    **Domain**: Architecture
+    **Severity**: High
+    **Scope**: module
+    **Category**: CODING-RULES/security
+
+    ### Trigger
+    When mixing concerns across architectural layers.
+
+    ### Statement
+    Keep layers separate.
+
+    ### Violation (bad)
+    Mixed layers.
+
+    ### Pass (good)
+    Clean layers.
+
+    ### Enforcement
+    Code review.
+
+    ### Rationale
+    Separation of concerns.
+    <!-- RULE END: ARCH-ORG-002 -->
+""")
+
+# Sample NODE START block with a Category field.
+SAMPLE_NODE_WITH_CATEGORY = dedent("""\
+    <!-- NODE START type=Skill id=SKL-PROC-TDD-001 -->
+    **Category**: PROCESS/tdd
+
+    Skill body text here.
+    <!-- NODE END: SKL-PROC-TDD-001 -->
+""")
+
+
+@pytest.fixture()
+def tmp_rule_with_category(tmp_path: Path) -> Path:
+    f = tmp_path / "rule_with_category.md"
+    f.write_text(SAMPLE_RULE_WITH_CATEGORY)
+    return f
+
+
+@pytest.fixture()
+def tmp_node_with_category(tmp_path: Path) -> Path:
+    f = tmp_path / "node_with_category.md"
+    f.write_text(SAMPLE_NODE_WITH_CATEGORY)
+    return f
+
+
+class TestCategoryParsing:
+    """Phase 0: parse_rules_from_file and parse_nodes_from_file surface the
+    'category' field when a **Category** metadata line is present in a block.
+
+    RED until ingest.py extracts the 'category' key from RULE START /
+    NODE START metadata lines.
+    """
+
+    def test_rule_start_block_parses_category_field(
+        self, tmp_rule_with_category: Path
+    ) -> None:
+        """A RULE START block with **Category**: CODING-RULES/security must
+        set result['category'] == 'CODING-RULES/security'."""
+        rules = parse_rules_from_file(tmp_rule_with_category)
+        assert len(rules) == 1
+        assert rules[0].get("category") == "CODING-RULES/security"
+
+    def test_node_start_block_parses_category_field(
+        self, tmp_node_with_category: Path
+    ) -> None:
+        """A NODE START block with **Category**: PROCESS/tdd must set
+        result['category'] == 'PROCESS/tdd'."""
+        from writ.graph.ingest import parse_nodes_from_file
+
+        nodes = parse_nodes_from_file(tmp_node_with_category)
+        assert len(nodes) == 1
+        assert nodes[0].get("category") == "PROCESS/tdd"
+
+
+class TestExtractBelongsToEdges:
+    """Phase 0: extract_belongs_to_edges derives BELONGS_TO edge dicts from
+    a list of parsed node dicts that carry a 'category' key.
+
+    RED until writ.graph.ingest.extract_belongs_to_edges is implemented.
+    """
+
+    def test_emits_edge_for_node_with_category(self) -> None:
+        """A single Rule node dict with category='CODING-RULES/architecture'
+        produces exactly one BELONGS_TO edge record."""
+        from writ.graph.ingest import extract_belongs_to_edges
+
+        nodes = [
+            {
+                "node_type": "Rule",
+                "rule_id": "ARCH-ORG-001",
+                "category": "CODING-RULES/architecture",
+            }
+        ]
+        edges = extract_belongs_to_edges(nodes)
+        assert edges == [
+            {
+                "source": "ARCH-ORG-001",
+                "target": "CODING-RULES/architecture",
+                "type": "BELONGS_TO",
+            }
+        ]
+
+    def test_skips_node_without_category(self) -> None:
+        """A node dict with no 'category' key must produce an empty edge list."""
+        from writ.graph.ingest import extract_belongs_to_edges
+
+        nodes = [
+            {
+                "node_type": "Rule",
+                "rule_id": "ARCH-ORG-001",
+            }
+        ]
+        edges = extract_belongs_to_edges(nodes)
+        assert edges == []
+
+    def test_multiple_nodes_emit_multiple_edges(self) -> None:
+        """Three nodes, two with categories and one without, produce exactly
+        two BELONGS_TO edge records in input order."""
+        from writ.graph.ingest import extract_belongs_to_edges
+
+        nodes = [
+            {
+                "node_type": "Rule",
+                "rule_id": "ARCH-ORG-001",
+                "category": "CODING-RULES/architecture",
+            },
+            {
+                "node_type": "Skill",
+                "skill_id": "SKL-PROC-001",
+                # no category
+            },
+            {
+                "node_type": "Rule",
+                "rule_id": "ARCH-ORG-002",
+                "category": "CODING-RULES/security",
+            },
+        ]
+        edges = extract_belongs_to_edges(nodes)
+        assert len(edges) == 2
+        sources = [e["source"] for e in edges]
+        assert "ARCH-ORG-001" in sources
+        assert "ARCH-ORG-002" in sources
+        for edge in edges:
+            assert edge["type"] == "BELONGS_TO"
+            assert "target" in edge
+            assert "source" in edge

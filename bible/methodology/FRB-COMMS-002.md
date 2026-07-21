@@ -27,8 +27,10 @@ forbidden_phrases:
   - "All set"
 what_to_say_instead: "State: 'I ran <command>, the output was <excerpt>, based on which the claim holds.' Evidence inline with the claim, not separable from it."
 edges:
+  - { target: ENF-COMMS-001, type: DEMONSTRATES }
+  - { target: ENF-PROC-VERIFY-001, type: DEMONSTRATES }
   - { target: SKL-PROC-VERIFY-001, type: DEMONSTRATES }
-  - { target: ENF-PROC-VERIFY-001, type: GATES }
+category: CAT-DISC-001
 ---
 
 # Forbidden: Unverified success claims

@@ -11,8 +11,10 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import json
+import os
 import tempfile
 from typing import Any
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -122,12 +124,12 @@ class TestLastInjectedRuleIdsDefault:
 
     def setup_method(self) -> None:
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        self._env_patch = mock.patch.dict(os.environ, {"WRIT_CACHE_DIR": self._tmpdir})
+        self._env_patch.start()
 
     def teardown_method(self) -> None:
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -234,6 +236,47 @@ class TestStickyRulesTieBreaking:
         # B should come first (preferred), then A and C in original order
         assert result_ids == ["B", "A", "C"]
 
+    def test_transitive_chain_does_not_promote_low_rule_above_high(self) -> None:
+        """A decaying tail (0.015 adjacent gaps) must NOT chain into one group.
+
+        Regression for the adjacent-pair grouping bug: 30 rules each 0.015 below the
+        previous have every ADJACENT gap within 0.02 but a head-to-tail span of 0.435.
+        The old code merged all 30 into one group, so a low-scored preferred rule
+        reached position 0 ahead of the 0.99 rule.
+        """
+        scores = [round(0.99 - 0.015 * k, 4) for k in range(30)]
+        ids = [f"R{k:02d}" for k in range(30)]
+        rules = _make_scored_rules(list(zip(ids, scores)))
+        top_id, low_id = ids[0], ids[-1]  # 0.99 vs ~0.555
+        result = _apply_sticky_tiebreak(rules, [low_id])
+        result_ids = [r["rule_id"] for r in result]
+        assert result_ids[0] == top_id, "highest-scored rule must stay at position 0"
+        assert result_ids.index(low_id) > result_ids.index(top_id), (
+            "a rule >0.02 below the group max cannot be promoted above a higher-scored rule"
+        )
+
+    def test_rule_beyond_threshold_of_group_max_not_promoted(self) -> None:
+        """Adjacent gaps within 0.02 but distance to the group max exceeds it.
+
+        A=0.90, B=0.885 (0.015 below max, IN group), C=0.87 (0.03 below max, NEW group).
+        Preferring C must not lift it above A or B.
+        """
+        rules = _make_scored_rules([("A", 0.90), ("B", 0.885), ("C", 0.87)])
+        result = _apply_sticky_tiebreak(rules, ["C"])
+        assert [r["rule_id"] for r in result] == ["A", "B", "C"]
+
+    def test_group_max_boundary_three_rules_exactly_0_02(self) -> None:
+        """A third rule exactly 0.02 below the group max is still IN the group."""
+        rules = _make_scored_rules([("A", 0.90), ("B", 0.89), ("C", 0.88)])
+        result = _apply_sticky_tiebreak(rules, ["C", "B", "A"])
+        assert [r["rule_id"] for r in result] == ["C", "B", "A"]
+
+    def test_group_max_boundary_three_rules_0_021(self) -> None:
+        """A third rule 0.021 below the group max starts a NEW group (not reorderable up)."""
+        rules = _make_scored_rules([("A", 0.90), ("B", 0.89), ("C", 0.879)])
+        result = _apply_sticky_tiebreak(rules, ["C", "A", "B"])
+        assert [r["rule_id"] for r in result] == ["A", "B", "C"]
+
 
 # ---------------------------------------------------------------------------
 # TestQueryRequestPreferRuleIds -- Pydantic model field
@@ -263,57 +306,23 @@ class TestQueryRequestPreferRuleIds:
 
 
 # ---------------------------------------------------------------------------
-# TestStickyRulesCompactionClearing -- cmd_detect_compaction + cmd_reset
+# TestStickyRulesCompactionClearing -- cmd_reset_after_compaction
 # ---------------------------------------------------------------------------
 
 
 class TestStickyRulesCompactionClearing:
-    """last_injected_rule_ids is cleared on compaction and on reset."""
+    """last_injected_rule_ids is cleared on PostCompact reset."""
 
     def setup_method(self) -> None:
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        self._env_patch = mock.patch.dict(os.environ, {"WRIT_CACHE_DIR": self._tmpdir})
+        self._env_patch.start()
 
     def teardown_method(self) -> None:
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
-
-    def test_detect_compaction_clears_last_injected_rule_ids_on_compaction(self) -> None:
-        """cmd_detect_compaction with >20% context drop sets last_injected_rule_ids to []."""
-        cache = _make_cache(
-            context_percent=80,
-            last_injected_rule_ids=["ARCH-ORG-001", "PY-IMPORT-001"],
-        )
-        cache_path = self.mod._cache_path(SESSION_ID)
-        with open(cache_path, "w") as f:
-            json.dump(cache, f)
-        import io
-        from contextlib import redirect_stdout
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            self.mod.cmd_detect_compaction(SESSION_ID, 30)
-        updated = self.mod._read_cache(SESSION_ID)
-        assert updated.get("last_injected_rule_ids") == []
-
-    def test_detect_compaction_does_not_clear_last_injected_when_no_compaction(self) -> None:
-        """cmd_detect_compaction with <=20% drop does NOT clear last_injected_rule_ids."""
-        cache = _make_cache(
-            context_percent=50,
-            last_injected_rule_ids=["ARCH-ORG-001"],
-        )
-        cache_path = self.mod._cache_path(SESSION_ID)
-        with open(cache_path, "w") as f:
-            json.dump(cache, f)
-        import io
-        from contextlib import redirect_stdout
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            self.mod.cmd_detect_compaction(SESSION_ID, 40)
-        updated = self.mod._read_cache(SESSION_ID)
-        assert updated.get("last_injected_rule_ids") == ["ARCH-ORG-001"]
 
     def test_cmd_reset_after_compaction_clears_last_injected_rule_ids(self) -> None:
         """cmd_reset_after_compaction sets last_injected_rule_ids to []."""

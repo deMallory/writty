@@ -25,7 +25,7 @@ Query text
   Stage 3: ANN vector (hnswlib)     < 3 ms     top 10 candidates
   Stage 4: Graph traversal          < 3 ms     enriched with neighbors
             (pre-computed adjacency cache)
-  Stage 5: Ranking & return         < 1 ms     two-pass RRF, context budget applied
+  Stage 5: Ranking & return         < 1 ms     two-pass reciprocal-rank fusion, context budget applied
                                       total p95 budget < 10 ms
 ```
 
@@ -152,9 +152,9 @@ Each retriever covers a blind spot the others have:
 - **BM25** catches exact keyword matches (`controller`, `SQL`) but misses paraphrases.
 - **Vector** catches paraphrases via cosine similarity but misses exact-keyword exact-match cases.
 - **Graph traversal** catches rules that share neither keyword nor semantic similarity but are causally related.
-- **Two-pass RRF ranking** fuses signals via reciprocal rank, working even when scores are on different scales.
+- **Two-pass reciprocal-rank fusion ranking** fuses signals via reciprocal rank, working even when scores are on different scales.
 
-(Note: ranking.py's `normalize_ranks` is plain reciprocal rank `1/(rank+1)`, not classical RRF `1/(k+rank)`. There is no `k` constant. Module docstrings call it RRF but it's reciprocal-rank + weighted linear fusion. See doc 03.)
+(Note: ranking.py's `normalize_ranks` is plain reciprocal rank `1/(rank+1)`, not classical RRF `1/(k+rank)`. There is no `k` constant. The module docstrings describe it accurately as reciprocal-rank + weighted linear fusion as of audit #8 (2026-06-11). See doc 03.)
 
 ## 6. Pre-computation philosophy
 
@@ -187,12 +187,12 @@ A 2026-04-21 audit classified the original 35 ENF rules: 15 had viable mechanica
 
 | Phase | Mandatory rules added | Analyzer function |
 |---|---|---|
-| 1A Injection | SEC-INJ-SQL-001, XSS-001, CMD-001, SSRF-001, DESER-001, CSRF-001 | `analyze_security_injection` |
-| 1B Auth+AuthZ+Val | SEC-AUTH-HASH-001, TOKEN-001; SEC-AUTHZ-ENFORCE-001, IDOR-001, DEFAULT-001, MASS-001; SEC-VAL-SERVER-001, FILE-001 | `analyze_security_auth_authz` |
-| 1C Crypto | SEC-CRYPTO-KEY-001, RAND-001 | `analyze_security_crypto_headers` |
-| 1D Data | SEC-DATA-PII-001 | `analyze_security_data_protection` |
-| 3B Performance | PERF-QUERY-001 (N+1) | `analyze_performance_n_plus_one` |
-| 4 Scaling | SCALE-STATELESS-001 | `analyze_scaling_stateless` |
+| 1A Injection | SEC-INJ-SQL-001, XSS-001, CMD-001, SSRF-001, DESER-001, CSRF-001 | `analyze_all_regex_scanners` |
+| 1B Auth+AuthZ+Val | SEC-AUTH-HASH-001, TOKEN-001; SEC-AUTHZ-ENFORCE-001, IDOR-001, DEFAULT-001, MASS-001; SEC-VAL-SERVER-001, FILE-001 | `analyze_all_regex_scanners` |
+| 1C Crypto | SEC-CRYPTO-KEY-001, RAND-001 | `analyze_all_regex_scanners` |
+| 1D Data | SEC-DATA-PII-001 | `analyze_all_regex_scanners` |
+| 3B Performance | PERF-QUERY-001 (N+1) | `analyze_all_regex_scanners` |
+| 4 Scaling | SCALE-STATELESS-001 | `analyze_all_regex_scanners` |
 
 Total mandatory: **30** (11 original ENF-* + 19 new public-rulebook rules).
 
@@ -251,7 +251,7 @@ Many of the original navigation targets (`docs/phase-0-*.md`, `docs/phase-2-self
 | Sub-agent orchestration | Methodology node `PBK-PROC-ORCHESTRATOR-001` | `.claude/agents/writ-*.md`, doc 12 |
 | Authority + frequency model | `HANDBOOK.md` (mandatory-rule section) | doc 11, `writ/frequency.py`, `writ/authoring.py` |
 | Public out-of-the-box rulebook (220 rules across 12 domains) | `out-of-the-box-rules.md` | doc 07 |
-| Monthly review cadence | `CONTRIBUTING.md`, `docs/monthly-reviews/TEMPLATE.md` | `docs/monthly-reviews/2026-05.md` |
+| Monthly review cadence | `docs/monthly-reviews/TEMPLATE.md` | `docs/monthly-reviews/2026-05.md` |
 | Install / settings sync | `docs/install-writ.md`, `README.md` | doc 09, `scripts/bootstrap.sh` |
 
 ## 12. Discrepancies catalog (code wins)

@@ -16,7 +16,7 @@ import uuid
 import pytest
 
 SKILL_DIR = os.path.join(os.path.dirname(__file__), "..")
-VALIDATE_HOOK = os.path.join(SKILL_DIR, ".claude", "hooks", "validate-rules.sh")
+VALIDATE_HOOK = os.path.join(SKILL_DIR, "hooks", "scripts", "validate-rules.sh")
 SESSION_HELPER = os.path.join(SKILL_DIR, "bin", "lib", "writ-session.py")
 
 

@@ -209,3 +209,116 @@ class TestConsumers:
         assert isinstance(get_neo4j_uri(), str)
         assert isinstance(get_neo4j_user(), str)
         assert isinstance(get_neo4j_password(), str)
+
+
+# ---------------------------------------------------------------------------
+# TestMalformedConfigWarns -- Wave 1 Cycle 4 S2 (RED-first)
+# ---------------------------------------------------------------------------
+
+
+class TestMalformedConfigWarns:
+    """S2: a present-but-malformed writ.toml warns visibly and still returns {};
+    an absent file stays silent.
+
+    load_config's blanket `except Exception: return {}` currently swallows a
+    malformed writ.toml with zero signal, so every getter silently falls back to
+    a hardcoded default. RED today: no stderr warning is emitted.
+    """
+
+    def test_malformed_toml_warns_and_returns_empty(self, tmp_path, capsys) -> None:
+        toml_file = tmp_path / "writ.toml"
+        toml_file.write_text("this is not [ valid = toml =\n")
+        result = load_config(str(toml_file))
+        assert result == {}  # fallback preserved
+        err = capsys.readouterr().err
+        assert "writ.toml" in err or str(toml_file) in err, (
+            f"expected a stderr warning naming the file, got: {err!r}"
+        )
+        assert "malformed" in err.lower(), (
+            f"expected the warning to call out the malformed TOML, got: {err!r}"
+        )
+
+    def test_absent_file_is_silent(self, tmp_path, capsys) -> None:
+        result = load_config(str(tmp_path / "no_such.toml"))
+        assert result == {}
+        assert capsys.readouterr().err == "", (
+            "an absent config file is a normal case (fine), not malformed -- "
+            "it must not warn"
+        )
+
+    def test_non_utf8_toml_warns_and_returns_empty(self, tmp_path, capsys) -> None:
+        """A non-UTF8 / binary writ.toml is unparseable, not unreadable.
+
+        tomllib.load() UTF-8-decodes the file's bytes internally, so a binary or
+        wrong-encoding file raises UnicodeDecodeError (a ValueError subclass, NOT
+        an OSError, NOT a TOMLDecodeError). Before the widen, that error escaped
+        load_config unhandled and crashed get_neo4j_* at daemon startup and every
+        DB-touching CLI command. It must be handled like malformed TOML: warn and
+        fall back to {}.
+        """
+        toml_file = tmp_path / "writ.toml"
+        toml_file.write_bytes(b"\xff\xfe\x00\x01 not toml")
+        result = load_config(str(toml_file))
+        assert result == {}  # fallback preserved, no crash
+        err = capsys.readouterr().err
+        assert "writ.toml" in err or str(toml_file) in err, (
+            f"expected a stderr warning naming the file, got: {err!r}"
+        )
+        assert "malformed" in err.lower(), (
+            f"expected the warning to call out the unparseable file, got: {err!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestWarnConfigIgnoredHelper -- Wave 1 Cycle 5 G3 (RED-first)
+# ---------------------------------------------------------------------------
+
+
+class TestWarnConfigIgnoredHelper:
+    """G3: load_config's two failure branches (malformed/unparseable via
+    TOMLDecodeError/UnicodeDecodeError, and unreadable via OSError) share one
+    stderr-warning helper, _warn_config_ignored(config_path, reason), instead of
+    duplicating the print boilerplate (DRY-DUP-003).
+
+    RED today: _warn_config_ignored does not exist on writ.config at all.
+    """
+
+    def test_warn_config_ignored_exists_and_is_callable(self) -> None:
+        from writ.config import _warn_config_ignored
+
+        assert callable(_warn_config_ignored)
+
+    def test_malformed_branch_still_warns_via_shared_helper(self, tmp_path, capsys) -> None:
+        """Pin: post-extraction, the malformed-TOML branch must still warn with
+        the same observable shape as TestMalformedConfigWarns above (naming the
+        file and calling out 'malformed'), just routed through the helper."""
+        toml_file = tmp_path / "writ.toml"
+        toml_file.write_text("this is not [ valid = toml =\n")
+        result = load_config(str(toml_file))
+        assert result == {}
+        err = capsys.readouterr().err
+        assert str(toml_file) in err or "writ.toml" in err, (
+            f"expected a stderr warning naming the file, got: {err!r}"
+        )
+        assert "malformed" in err.lower(), (
+            f"expected the warning to call out the malformed TOML, got: {err!r}"
+        )
+
+    def test_unreadable_branch_still_warns_via_shared_helper(self, tmp_path, capsys) -> None:
+        """Pin: the unreadable-file (OSError, e.g. permission-denied) branch
+        must ALSO warn -- via the SAME shared helper as the malformed branch,
+        not a second, independently-drifting message. No prior test in this
+        file exercises the OSError branch at all."""
+        toml_file = tmp_path / "writ.toml"
+        toml_file.write_text('[neo4j]\nuri = "bolt://x:7687"\n')
+        toml_file.chmod(0o000)
+        try:
+            result = load_config(str(toml_file))
+        finally:
+            toml_file.chmod(0o644)  # restore so tmp_path cleanup can remove it
+        assert result == {}  # fallback preserved
+        err = capsys.readouterr().err
+        assert err != "", "the unreadable-file branch must warn, not silently fall back"
+        assert str(toml_file) in err or "writ.toml" in err, (
+            f"expected a stderr warning naming the file, got: {err!r}"
+        )

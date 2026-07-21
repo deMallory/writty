@@ -9,12 +9,13 @@ import json
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 
 import pytest
 
 SKILL_DIR = os.path.join(os.path.dirname(__file__), "..")
 HELPER = os.path.join(SKILL_DIR, "bin", "lib", "writ-session.py")
-VALIDATE_HOOK = os.path.join(SKILL_DIR, ".claude", "hooks", "validate-rules.sh")
+VALIDATE_HOOK = os.path.join(SKILL_DIR, "hooks", "scripts", "validate-rules.sh")
 
 
 def run_session(cmd: list[str]) -> subprocess.CompletedProcess:
@@ -50,16 +51,17 @@ def setup_session_with_rules(session_id: str, rules: list[dict], tier: int = 2):
 
 class TestViolationPatternMatching:
 
-    def test_extracts_function_call_pattern_from_violation(self, session_id):
+    def test_extracts_function_call_pattern_from_violation(self, session_id, tmp_path: Path):
         """Violation containing 'toArray()' matches file with '$entity->toArray()'."""
         rules = [{"rule_id": "SEC-UNI-003", "violation": "$customer->toArray();",
                    "statement": "explicit field selection"}]
         setup_session_with_rules(session_id, rules)
 
+        php = str(tmp_path / "test_vr.php")
         # Mark file as passing static analysis
-        run_session(["update", session_id, "--add-file-result", "/tmp/test_vr.php", "pass"])
+        run_session(["update", session_id, "--add-file-result", php, "pass"])
 
-        with open("/tmp/test_vr.php", "w") as f:
+        with open(php, "w") as f:
             f.write("<?php\n$data = $entity->toArray();\nreturn $data;\n")
 
         cache = read_cache(session_id)
@@ -74,14 +76,15 @@ class TestViolationPatternMatching:
         cache = read_cache(session_id)
         assert cache["loaded_rules"][0]["violation"] == "$entity->getData();"
 
-    def test_no_match_for_unrelated_code(self, session_id):
+    def test_no_match_for_unrelated_code(self, session_id, tmp_path: Path):
         """Code with no overlap to violation patterns produces no pending violations."""
         rules = [{"rule_id": "SEC-UNI-003", "violation": "$customer->toArray();",
                    "statement": "explicit field selection"}]
         setup_session_with_rules(session_id, rules)
-        run_session(["update", session_id, "--add-file-result", "/tmp/clean_vr.php", "pass"])
+        php = str(tmp_path / "clean_vr.php")
+        run_session(["update", session_id, "--add-file-result", php, "pass"])
 
-        with open("/tmp/clean_vr.php", "w") as f:
+        with open(php, "w") as f:
             f.write("<?php\n$name = $customer->getName();\nreturn $name;\n")
 
         # No pending violations should be added for clean code
@@ -105,21 +108,23 @@ class TestViolationPatternMatching:
         cache = read_cache(session_id)
         assert cache["analysis_results"] == {}
 
-    def test_skips_file_when_analysis_result_fail(self, session_id):
+    def test_skips_file_when_analysis_result_fail(self, session_id, tmp_path: Path):
         """File with analysis_results 'fail' should not be checked."""
         rules = [{"rule_id": "SEC-UNI-003", "violation": "->toArray()"}]
         setup_session_with_rules(session_id, rules)
-        run_session(["update", session_id, "--add-file-result", "/tmp/fail.php", "fail"])
+        php = str(tmp_path / "fail.php")
+        run_session(["update", session_id, "--add-file-result", php, "fail"])
         cache = read_cache(session_id)
-        assert cache["analysis_results"]["/tmp/fail.php"] == "fail"
+        assert cache["analysis_results"][php] == "fail"
 
-    def test_processes_file_when_analysis_result_pass(self, session_id):
+    def test_processes_file_when_analysis_result_pass(self, session_id, tmp_path: Path):
         """File with analysis_results 'pass' should be checked."""
         rules = [{"rule_id": "SEC-UNI-003", "violation": "->toArray()"}]
         setup_session_with_rules(session_id, rules)
-        run_session(["update", session_id, "--add-file-result", "/tmp/pass.php", "pass"])
+        php = str(tmp_path / "pass.php")
+        run_session(["update", session_id, "--add-file-result", php, "pass"])
         cache = read_cache(session_id)
-        assert cache["analysis_results"]["/tmp/pass.php"] == "pass"
+        assert cache["analysis_results"][php] == "pass"
 
 
 # ── C4: Phase-boundary detection ──────────────────────────────────────────────
@@ -158,10 +163,10 @@ class TestPhaseBoundaryDetection:
 
 class TestRoutingHeuristic:
 
-    def test_rule_absent_from_plan_creates_invalidation(self, session_id):
+    def test_rule_absent_from_plan_creates_invalidation(self, session_id, tmp_path: Path):
         """Violated rule not in ## Rules Applied should create invalidation record."""
         run_session(["invalidate-gate", session_id, "phase-a",
-                      "--rule", "SEC-UNI-003", "--file", "/tmp/a.php",
+                      "--rule", "SEC-UNI-003", "--file", str(tmp_path / "a.php"),
                       "--evidence", "toArray() at line 47"])
         cache = read_cache(session_id)
         assert "phase-a" in cache["invalidation_history"]
@@ -175,13 +180,13 @@ class TestRoutingHeuristic:
         cache = read_cache(session_id)
         assert cache["loaded_rules"][0]["rule_id"] == "ARCH-DI-001"
 
-    def test_multiple_violations_tracked_separately(self, session_id):
+    def test_multiple_violations_tracked_separately(self, session_id, tmp_path: Path):
         """Multiple violations for different rules create separate records."""
         run_session(["invalidate-gate", session_id, "phase-a",
-                      "--rule", "SEC-UNI-003", "--file", "/tmp/a.php",
+                      "--rule", "SEC-UNI-003", "--file", str(tmp_path / "a.php"),
                       "--evidence", "violation 1"])
         run_session(["invalidate-gate", session_id, "phase-a",
-                      "--rule", "ARCH-ORG-001", "--file", "/tmp/b.php",
+                      "--rule", "ARCH-ORG-001", "--file", str(tmp_path / "b.php"),
                       "--evidence", "violation 2"])
         cache = read_cache(session_id)
         records = cache["invalidation_history"]["phase-a"]

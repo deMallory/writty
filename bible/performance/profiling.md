@@ -1,7 +1,8 @@
 <!-- RULE START: PERF-BIGO-001 -->
 ## Rule PERF-BIGO-001
 
-**Domain**: Performance
+**Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: High
 **Scope**: Entity
 **Mandatory**: false
@@ -37,7 +38,7 @@ foreach ($orders as $order) {
 ```
 
 ### Enforcement
-Code review.
+Code review. Related: PERF-BATCH-001.
 
 ### Rationale
 A seemingly simple nested loop can bring production systems to a halt. O(n^2) on 10 items is fine; O(n^2) on 10,000 items takes 100 million iterations.
@@ -48,7 +49,8 @@ A seemingly simple nested loop can bring production systems to a halt. O(n^2) on
 <!-- RULE START: PERF-IO-001 -->
 ## Rule PERF-IO-001
 
-**Domain**: Performance
+**Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -90,7 +92,8 @@ Synchronous I/O in a hot path blocks the event loop (async servers) or the reque
 <!-- RULE START: PERF-LAZY-001 -->
 ## Rule PERF-LAZY-001
 
-**Domain**: Performance
+**Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Medium
 **Scope**: Entity
 **Mandatory**: false
@@ -137,7 +140,8 @@ Eager loading of unused resources wastes memory and CPU. A class injected into 1
 <!-- RULE START: PERF-OPT-001 -->
 ## Rule PERF-OPT-001
 
-**Domain**: Performance
+**Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -175,7 +179,8 @@ Premature optimization leads to complex, hard-to-maintain code that bypasses ser
 <!-- RULE START: PERF-QBUDGET-001 -->
 ## Rule PERF-QBUDGET-001
 
-**Domain**: Performance
+**Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false

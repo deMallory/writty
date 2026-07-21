@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -32,17 +33,27 @@ def empty_log(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def synthetic_log(tmp_path: Path) -> Path:
-    """Friction log with one event of each Phase 5 relevant type."""
-    p = tmp_path / "synth.log"
-    lines = [
-        '{"ts":"2026-04-30T12:00:00Z","session":"s1","mode":"work","event":"rag_query","rule_id":"ENF-X-001"}',
-        '{"ts":"2026-04-30T12:00:01Z","session":"s1","mode":"work","event":"gate_denial","rule_id":"ENF-X-001","gate":"phase-a"}',
-        '{"ts":"2026-04-30T12:00:02Z","session":"s1","mode":"work","event":"rag_query","skill_id":"SKL-A"}',
-        '{"ts":"2026-04-30T12:00:03Z","session":"s1","mode":"work","event":"playbook_step_complete","playbook_id":"PBK-A","step_id":"s1","step_index":0,"total_steps":2}',
-        '{"ts":"2026-04-30T12:00:04Z","session":"s1","mode":"work","event":"playbook_step_complete","playbook_id":"PBK-A","step_id":"s2","step_index":1,"total_steps":2}',
-        '{"ts":"2026-04-30T12:00:05Z","session":"s1","mode":"work","event":"quality_judgment","judgment_id":"j1","rubric":"R1","decision":"fail","override":true,"latency_ms":120}',
+    """Friction log with one event of each Phase 5 relevant type.
+
+    Timestamps are recent (relative to now) so events stay inside the analyzers'
+    rolling since_days windows. Absolute past dates previously aged out -- a
+    time-bomb that fired once real time crossed the 30-day boundary.
+    """
+    base = datetime.now(timezone.utc) - timedelta(days=1)
+
+    def ts(offset: int) -> str:
+        return (base + timedelta(seconds=offset)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    events = [
+        {"ts": ts(0), "session": "s1", "mode": "work", "event": "rag_query", "rule_id": "ENF-X-001"},
+        {"ts": ts(1), "session": "s1", "mode": "work", "event": "gate_denial", "rule_id": "ENF-X-001", "gate": "phase-a"},
+        {"ts": ts(2), "session": "s1", "mode": "work", "event": "rag_query", "skill_id": "SKL-A"},
+        {"ts": ts(3), "session": "s1", "mode": "work", "event": "playbook_step_complete", "playbook_id": "PBK-A", "step_id": "s1", "step_index": 0, "total_steps": 2},
+        {"ts": ts(4), "session": "s1", "mode": "work", "event": "playbook_step_complete", "playbook_id": "PBK-A", "step_id": "s2", "step_index": 1, "total_steps": 2},
+        {"ts": ts(5), "session": "s1", "mode": "work", "event": "quality_judgment", "judgment_id": "j1", "rubric": "R1", "decision": "fail", "override": True, "latency_ms": 120},
     ]
-    p.write_text("\n".join(lines) + "\n")
+    p = tmp_path / "synth.log"
+    p.write_text("\n".join(json.dumps(e) for e in events) + "\n")
     return p
 
 

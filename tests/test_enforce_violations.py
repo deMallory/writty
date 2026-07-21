@@ -18,7 +18,7 @@ import pytest
 from pathlib import Path
 
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
-HOOK_PATH = f"{SKILL_DIR}/.claude/hooks/enforce-violations.sh"
+HOOK_PATH = f"{SKILL_DIR}/hooks/scripts/enforce-violations.sh"
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 
 
@@ -97,6 +97,20 @@ class TestEnforceViolationsExitCodes:
         result = _run_hook(cache)
         assert result.returncode == 2, (
             f"Expected exit 2 in Work mode with violations, got {result.returncode}. "
+            f"stderr: {result.stderr}"
+        )
+
+    def test_stop_hook_active_allows_stop_despite_violations(self) -> None:
+        """Loop-breaker (CC Stop-hook contract): when CC re-invokes the Stop hook
+        with stop_hook_active=true (after a prior block), the hook MUST allow the
+        stop (exit 0) even with pending violations -- otherwise it re-blocks every
+        re-fire until CC's block cap (9) then force-overrides the turn. The first
+        Stop already nudged via exit 2; the re-fire must not loop."""
+        violations = [{"rule_id": "ARCH-ORG-001", "file": "foo.py", "line": None, "evidence": "mixed layers"}]
+        cache = _build_cache(mode="work", pending_violations=violations)
+        result = _run_hook(cache, stdin_payload={"stop_hook_active": True})
+        assert result.returncode == 0, (
+            f"Expected exit 0 when stop_hook_active=true (loop-breaker), got {result.returncode}. "
             f"stderr: {result.stderr}"
         )
 

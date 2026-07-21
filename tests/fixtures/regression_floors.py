@@ -241,6 +241,18 @@ the corpus grew. The v1.1.0 work tracks expanding the ambiguous set
 toward ~70 queries (proportional to the 3.8x corpus growth) and
 recovering toward the pre-expansion floor.
 
+Update (2026-07-17, KG R2). The ambiguous set was expanded 19 -> 47
+(+28 adversarially label-verified hard/symptom queries; 28/29 confirmed
+by independent per-query best-fit against the corpus), moving toward the
+~70-query target above, and the full set 165 -> 193. Re-measured on the
+expanded set (production build_pipeline): MRR@5 ~= 0.57 (ambiguous, 47)
+and hit-rate ~= 0.78 (all, 193), both still above the 0.45 / 0.75 floors,
+which are UNCHANGED. A larger, harder set lowers the absolute numbers by
+design while giving future ranking A/Bs real statistical power; both
+tests/test_graph_proximity.py and benchmarks/bench_targets.py
+TestRetrievalPrecision pass on the expanded fixture. Do not raise the
+floors without a fresh measurement.
+
 When raising a floor here, also append a new row to the history
 table above. The history is append-only; do not delete prior rows
 even when superseded.
@@ -266,3 +278,23 @@ HIT_RATE_FLOOR = 0.75
 # top-5 domain hit rate below 90%. Same anti-drift principle as the
 # MRR/hit-rate floors. Re-measure and append-only when changing.
 DOMAIN_HIT_RATE_TOP5_FLOOR = 0.90
+
+# Single-gold nDCG@10 floor over the full ground-truth corpus, established
+# 2026-07-17 (KG step 0b, retrieval-harness-v2). The gold set is single-gold
+# (exactly one expected_rule_id per query), so IDCG = 1 and the metric collapses
+# to nDCG@10 = mean over queries of 1/log2(rank+1) when the gold rule is in the
+# top-10, else 0.0. It is a rank-discounted complement to the top-5 hit-rate /
+# MRR floors: it credits placing the gold rule anywhere in the top-10 but
+# rewards higher ranks, so it catches ranking regressions the coarse hit@5 gate
+# would miss.
+# Measured baseline (2026-07-17, read-only build_pipeline against the live
+# graph, 165 ground-truth queries / 287-rule corpus, ONNX embedding path):
+#   nDCG@10 (all, n=165):  0.7281   (135/165 gold rules in top-10)
+# Floor set at 0.65, ~0.078 below the measured 0.7281 (~11% relative headroom).
+# The margin is deliberately conservative -- same anti-drift intent as the
+# MRR5_FLOOR (which sits well below its measured value): the history above shows
+# corpus growth genuinely dilutes ranking metrics, and CI runners are noisier
+# than the measurement host. This floor is a hard regression gate, not a target;
+# raise it (append-only, with a fresh measurement) when the corpus and query set
+# support it. Re-measure and append a note below when changing.
+NDCG10_FLOOR = 0.65

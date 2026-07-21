@@ -20,6 +20,7 @@ description: |
   Enumerate known constraints (platform, language, deadline, existing code, dependencies). Name unknowns explicitly as questions to resolve before proposing approaches. Constraints determine which approaches are viable.
 parent_playbook_id: PBK-PROC-BRAIN-001
 edges: []
+category: CAT-PROC-001
 ---
 
 # Phase 2: Clarify constraints

@@ -167,7 +167,7 @@ class TestPlaybookModel:
             **base_kwargs(), playbook_id="PBK-PROC-PLAN-001",
             phase_ids=["PHA-PLAN-001", "PHA-PLAN-002"],
             preconditions=["RUL-PRE-001"],
-            dispatched_roles=["ROL-CODE-REVIEWER-001"],
+            dispatched_roles=["ROL-REVIEWER-001"],
         )
         _round_trip(pb)
 
@@ -405,15 +405,15 @@ class TestSubagentRoleModel:
     def test_instantiates_with_required_fields(self) -> None:
         sr = SubagentRole(
             **base_kwargs(),
-            role_id="ROL-CODE-REVIEWER-001",
-            name="writ-code-reviewer",
+            role_id="ROL-REVIEWER-001",
+            name="writ-reviewer",
             prompt_template="Review this diff for ARCH-* and PHP-* rule compliance.",
         )
-        assert sr.name == "writ-code-reviewer"
+        assert sr.name == "writ-reviewer"
 
     def test_optional_fields_default_correctly(self) -> None:
         sr = SubagentRole(
-            **base_kwargs(), role_id="ROL-CODE-REVIEWER-001",
+            **base_kwargs(), role_id="ROL-REVIEWER-001",
             name="x", prompt_template="y",
         )
         assert sr.dispatched_by == []
@@ -427,11 +427,11 @@ class TestSubagentRoleModel:
 
     def test_round_trip_json(self) -> None:
         sr = SubagentRole(
-            **base_kwargs(), role_id="ROL-CODE-REVIEWER-001",
-            name="writ-code-reviewer",
+            **base_kwargs(), role_id="ROL-REVIEWER-001",
+            name="writ-reviewer",
             prompt_template="Review this diff.",
             dispatched_by=["PBK-PROC-SDD-001"],
-            model_preference="haiku",
+            model_preference="sonnet",
         )
         _round_trip(sr)
 

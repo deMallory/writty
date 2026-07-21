@@ -17,8 +17,10 @@ always_on: true
 source_attribution: "writ-native"
 source_commit: null
 edges:
-  - { target: ENF-PROC-VERIFY-001, type: GATES }
-  - { target: FRB-COMMS-002, type: DEMONSTRATES }
+  - { target: ENF-PROC-VERIFY-001, type: TEACHES }
+category: CAT-PROC-001
+floor_modes: [conversation, debug, review, work, investigate]
+trigger_keywords: ["verification", "complete", "test passes", "build succeeds"]
 ---
 
 # Skill: Verify before completion

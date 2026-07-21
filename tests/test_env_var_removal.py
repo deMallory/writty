@@ -3,8 +3,9 @@ must not be referenced by Writ hooks. These env vars don't exist in Claude
 Code v2.1.109 and always return 0. The authoritative compaction mechanism
 is writ-postcompact.sh on the real PostCompact event.
 
-Preserves: cmd_detect_compaction subcommand, /session/.../detect-compaction
-route, and common.sh case. These stay for test coverage and future use.
+POL-5a-cleanup removed the dead cmd_detect_compaction chain entirely
+(subcommand, /session/.../detect-compaction route, and common.sh case);
+removal is guarded by tests/test_pol5a_cleanup.py.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from pathlib import Path
 import pytest
 
 
-HOOKS_DIR = Path(__file__).resolve().parent.parent / ".claude" / "hooks"
+HOOKS_DIR = Path(__file__).resolve().parent.parent / "hooks" / "scripts"
 FABRICATED_ENV_VARS = ("CLAUDE_CONTEXT_PERCENT", "CLAUDE_CONTEXT_TOKENS")
 
 
@@ -33,13 +34,6 @@ class TestFabricatedEnvVarsRemoved:
         for var in FABRICATED_ENV_VARS:
             assert var not in content, (
                 f"{var} should be removed from writ-rag-inject.sh (always returns 0)"
-            )
-
-    def test_writ_context_tracker_has_no_context_env_vars(self) -> None:
-        content = _read_hook("writ-context-tracker.sh")
-        for var in FABRICATED_ENV_VARS:
-            assert var not in content, (
-                f"{var} should be removed from writ-context-tracker.sh"
             )
 
     def test_writ_session_end_has_no_context_env_vars(self) -> None:
@@ -71,37 +65,4 @@ class TestDetectCompactionCallRemoved:
         assert "detect-compaction" not in content, (
             "writ-rag-inject.sh should no longer call detect-compaction; "
             "PostCompact hook handles compaction recovery"
-        )
-
-
-class TestTokenSnapshotLoggingRemoved:
-    """writ-context-tracker.sh should not log token_snapshot events.
-    The values are always 0 so the log entries are noise.
-    """
-
-    def test_writ_context_tracker_no_token_snapshot(self) -> None:
-        content = _read_hook("writ-context-tracker.sh")
-        assert "token_snapshot" not in content, (
-            "token_snapshot logging should be removed (values are always 0)"
-        )
-
-
-class TestPreservedInfrastructure:
-    """The subcommand/route/helper for detect-compaction stay.
-    They're not called by any hook but remain available for future use
-    (if/when Claude Code exposes context state) and for test coverage.
-    """
-
-    def test_detect_compaction_subcommand_still_exists(self) -> None:
-        session_py = Path(__file__).resolve().parent.parent / "bin" / "lib" / "writ-session.py"
-        content = session_py.read_text()
-        assert "cmd_detect_compaction" in content, (
-            "cmd_detect_compaction subcommand must be preserved for test coverage"
-        )
-
-    def test_detect_compaction_route_still_exists(self) -> None:
-        server_py = Path(__file__).resolve().parent.parent / "writ" / "server.py"
-        content = server_py.read_text()
-        assert "detect-compaction" in content or "detect_compaction" in content, (
-            "POST /session/.../detect-compaction route must be preserved"
         )

@@ -16,7 +16,7 @@ from tests.plugin.conftest import REPO_ROOT
 
 ENSURE_SERVER = REPO_ROOT / "scripts" / "ensure-server.sh"
 STOP_SERVER = REPO_ROOT / "scripts" / "stop-server.sh"
-RAG_INJECT = REPO_ROOT / ".claude" / "hooks" / "writ-rag-inject.sh"
+RAG_INJECT = REPO_ROOT / "hooks" / "scripts" / "writ-rag-inject.sh"
 
 
 class TestEnsureServerDualMode:

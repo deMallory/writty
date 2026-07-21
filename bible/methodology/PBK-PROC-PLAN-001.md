@@ -20,9 +20,11 @@ phase_ids: []
 preconditions: [SKL-PROC-BRAIN-001]
 dispatched_roles: []
 edges:
-  - { target: SKL-PROC-PLAN-001, type: TEACHES }
-  - { target: ENF-PROC-PLAN-001, type: GATES }
+  - { target: ENF-PROC-PLAN-001, type: TEACHES }
   - { target: PBK-PROC-TDD-001, type: PRECEDES }
+category: CAT-PROC-001
+floor_modes: [conversation, debug, review, work, investigate]
+trigger_keywords: ["decompose", "bite-sized", "implementation plan", "self-review"]
 ---
 
 # Playbook: Write a plan

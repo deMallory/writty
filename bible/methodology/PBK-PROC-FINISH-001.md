@@ -20,7 +20,10 @@ preconditions: []
 dispatched_roles: []
 edges:
   - { target: SKL-PROC-VERIFY-001, type: PRECEDES }
-  - { target: TEC-PROC-WORKTREE-001, type: DISPATCHES }
+  - { target: TEC-PROC-WORKTREE-001, type: INVOKES }
+category: CAT-PROC-001
+action_triggers: ["finish"]
+trigger_keywords: ["merge", "discard", "worktree", "branch"]
 ---
 
 # Playbook: Finish a development branch
@@ -38,4 +41,4 @@ Tests pass. If not, show failures and STOP — no option presentation.
 
 ## Never offer a 5th option
 
-Custom merge workflows are ANT-PROC-FINISH territory. Present the 4 options exactly.
+Custom merge workflows are ANT-PROC-FINISH-001 territory. Present the 4 options exactly.

@@ -1,0 +1,5 @@
+{
+  "task_id": "clean_listing",
+  "arm": "clean",
+  "prompt_file": "prompt.md"
+}

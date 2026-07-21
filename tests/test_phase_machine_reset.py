@@ -25,9 +25,12 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 import pytest
 from pathlib import Path
+
+from tests._daemon import _port
 
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
@@ -116,12 +119,15 @@ class TestAdvanceFromCompleteRejects:
         # Seed the cache file in the LIVE server's cache dir (not tmp).
         # This is the only path that exercises the real predicate
         # without rebuilding the pipeline.
-        live_cache_dir = os.environ.get("WRIT_CACHE_DIR") or "/tmp"
+        # Resolve the cache dir exactly as the server does (writ-session.py:58),
+        # so the seed lands where the live daemon actually reads it. Hardcoding
+        # "/tmp" missed the server's dir when TMPDIR is set (e.g. /tmp/claude-1001).
+        live_cache_dir = os.environ.get("WRIT_CACHE_DIR", tempfile.gettempdir())
         _seed_cache(live_cache_dir, sid, "complete")
 
         try:
             req = urllib.request.Request(
-                f"http://localhost:8765/session/{sid}/advance-phase",
+                f"http://localhost:{_port()}/session/{sid}/advance-phase",
                 data=json.dumps({"confirmation_source": "tool"}).encode(),
                 headers={"Content-Type": "application/json"},
                 method="POST",

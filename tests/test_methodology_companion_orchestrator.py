@@ -22,13 +22,23 @@ import json
 import os
 import re
 import subprocess
+import sys
+import tempfile
 
 import pytest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from writ.shared.logging import read_streams, resolve_project  # noqa: E402
+
+# Exercises the router's cwd-based project-scope resolution to a tmp subdir;
+# opt out of the autouse WRIT_FRICTION_LOG redirect so the rag_query telemetry
+# routes to the split per-project streams under WRIT_LOG_ROOT (P1 router).
+pytestmark = pytest.mark.no_friction_isolation
+
 
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
-HOOK = f"{SKILL_DIR}/.claude/hooks/writ-rag-inject.sh"
+HOOK = f"{SKILL_DIR}/hooks/scripts/writ-rag-inject.sh"
 
 
 class TestOrchestratorMethodologyCompanionStructural:
@@ -94,27 +104,25 @@ class TestOrchestratorMethodologyCompanionEndToEnd:
         """End-to-end: invoke the hook against the LIVE server with a
         seeded orchestrator cache. The hook delegates session reads to
         the running Writ server via HTTP, so the cache must live in
-        the server's CACHE_DIR (default /tmp). Use a unique session
-        ID and clean up after.
+        the server's CACHE_DIR (default tempfile.gettempdir()). Use a
+        unique session ID and clean up after.
 
-        Pass criterion: project-root friction-log gets at least one
+        Pass criterion: the project's P1 metrics stream gets at least one
         rag_query with query_source=methodology."""
         import uuid
         sid = f"orch-method-e2e-{uuid.uuid4().hex[:8]}"
-        # Seed at the server's cache dir, not the test's tmp_path.
-        server_cache_dir = "/tmp"
+        # Seed at the server's cache dir (writ-session.py:58 resolution), not
+        # the test's tmp_path. Hardcoding "/tmp" missed the dir under TMPDIR.
+        server_cache_dir = os.environ.get("WRIT_CACHE_DIR", tempfile.gettempdir())
         cache_path = os.path.join(server_cache_dir, f"writ-session-{sid}.json")
         self._seed_orchestrator_cache(server_cache_dir, sid)
 
         try:
-            # Project root with a friction-log file that the hook can
-            # write to. Use a marker file so the hook detects this dir
-            # as project root.
+            # Project root the hook runs in; a .git marker makes the router's
+            # project-scope resolution derive a stable identity from this cwd.
             project_root = tmp_path / "proj"
             project_root.mkdir()
             (project_root / ".git").mkdir()  # marker
-            log = project_root / "workflow-friction.log"
-            log.touch()
 
             envelope = json.dumps({
                 "session_id": sid,
@@ -145,17 +153,9 @@ class TestOrchestratorMethodologyCompanionEndToEnd:
             f"stderr={result.stderr[:1000]}"
         )
 
-        # Inspect the friction log for a methodology rag_query.
-        log_text = log.read_text() if log.exists() else ""
-        events: list[dict] = []
-        for line in log_text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+        # Inspect the router's metrics stream (rag_query -> metrics) for the
+        # project scope derived from the hook's cwd, for a methodology rag_query.
+        events = read_streams(resolve_project(str(project_root)), ["metrics"])
 
         methodology = [
             e for e in events

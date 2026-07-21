@@ -18,6 +18,11 @@ contract surface those existing tests didn't directly cover:
         stub Neo4j connection.
 
 No production code changes. Test-only addition.
+
+Change C update: APPLIES_TO and JUSTIFIED_BY removed from
+_PRE_EXISTING_RELATIONSHIP_NAMES (they are retired); total count
+updated from 19 to 17.  test_allowed_edge_types_total_count is RED
+until db.py is updated.
 """
 from __future__ import annotations
 
@@ -50,6 +55,8 @@ _NEW_EDGE_RELATIONSHIP_NAMES = {
 }
 
 
+# Change C: APPLIES_TO and JUSTIFIED_BY retired; removed from this set.
+# Pre-existing allowlist is now 7 types (was 9).
 _PRE_EXISTING_RELATIONSHIP_NAMES = {
     "DEPENDS_ON",
     "PRECEDES",
@@ -57,9 +64,7 @@ _PRE_EXISTING_RELATIONSHIP_NAMES = {
     "SUPPLEMENTS",
     "SUPERSEDES",
     "RELATED_TO",
-    "APPLIES_TO",
     "ABSTRACTS",
-    "JUSTIFIED_BY",
 }
 
 
@@ -88,10 +93,12 @@ class TestPhase6bEdgeContract:
 
     def test_allowed_edge_types_total_count(self) -> None:
         from writ.graph.db import ALLOWED_EDGE_TYPES
-        # 9 pre-existing + 8 Phase-1 new = 17 total. Catches accidental
-        # additions/removals.
+        # Change C: 7 pre-existing (was 9; APPLIES_TO + JUSTIFIED_BY retired)
+        # + 8 Phase-1 new + 1 Phase-0 (BELONGS_TO) + 1 (1.3b INVOKES) = 17.
+        # RED until db.py removes APPLIES_TO and JUSTIFIED_BY.
         assert len(ALLOWED_EDGE_TYPES) == 17, (
-            f"ALLOWED_EDGE_TYPES expected 17 entries; got {len(ALLOWED_EDGE_TYPES)}: "
+            f"ALLOWED_EDGE_TYPES expected 17 entries (Change C: APPLIES_TO + "
+            f"JUSTIFIED_BY retired, count 19 -> 17); got {len(ALLOWED_EDGE_TYPES)}: "
             f"{sorted(ALLOWED_EDGE_TYPES)}"
         )
 

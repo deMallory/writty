@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Writ log rotation/retention sweep
+
+[Timer]
+OnCalendar=daily
+# Catch a missed run after downtime (laptop asleep, machine off).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

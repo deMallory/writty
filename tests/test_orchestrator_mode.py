@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import tempfile
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -116,12 +117,12 @@ class TestReadCacheDefaults:
 
     def setup_method(self):
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        self._env_patch = patch.dict(os.environ, {"WRIT_CACHE_DIR": self._tmpdir})
+        self._env_patch.start()
 
     def teardown_method(self):
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -167,12 +168,12 @@ class TestModeSetOrchestratorFlag:
 
     def setup_method(self):
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        self._env_patch = patch.dict(os.environ, {"WRIT_CACHE_DIR": self._tmpdir})
+        self._env_patch.start()
 
     def teardown_method(self):
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -216,7 +217,7 @@ class TestSubAgentCacheIsolation:
 
     def test_subagent_start_creates_cache_without_is_orchestrator_true(self) -> None:
         """writ-subagent-start.sh creates a fresh cache where is_orchestrator is absent or False."""
-        subagent_start = f"{SKILL_DIR}/.claude/hooks/writ-subagent-start.sh"
+        subagent_start = f"{SKILL_DIR}/hooks/scripts/writ-subagent-start.sh"
         with open(subagent_start) as f:
             source = f.read()
         # The sub-agent cache creation block must not copy is_orchestrator from parent.
@@ -226,7 +227,7 @@ class TestSubAgentCacheIsolation:
 
     def test_subagent_start_cache_init_block_exists(self) -> None:
         """writ-subagent-start.sh contains a cache initialization block."""
-        subagent_start = f"{SKILL_DIR}/.claude/hooks/writ-subagent-start.sh"
+        subagent_start = f"{SKILL_DIR}/hooks/scripts/writ-subagent-start.sh"
         with open(subagent_start) as f:
             source = f.read()
         assert "writ-session" in source, (
@@ -237,9 +238,9 @@ class TestSubAgentCacheIsolation:
         """A new session (fresh cache) always starts with is_orchestrator: False."""
         mod = _load_writ_session()
         with tempfile.TemporaryDirectory() as tmpdir:
-            mod.CACHE_DIR = tmpdir
-            result = mod._read_cache("brand-new-session-id")
-            assert result.get("is_orchestrator") is False
+            with patch.dict(os.environ, {"WRIT_CACHE_DIR": tmpdir}):
+                result = mod._read_cache("brand-new-session-id")
+                assert result.get("is_orchestrator") is False
 
 
 # ---------------------------------------------------------------------------
@@ -252,12 +253,12 @@ class TestOrchestratorSessionFlagRead:
 
     def setup_method(self):
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        self._env_patch = patch.dict(os.environ, {"WRIT_CACHE_DIR": self._tmpdir})
+        self._env_patch.start()
 
     def teardown_method(self):
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        self._env_patch.stop()
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -285,7 +286,7 @@ class TestOrchestratorSessionFlagRead:
 
     def test_writ_posttool_rag_references_is_orchestrator(self) -> None:
         """writ-posttool-rag.sh contains an is_orchestrator check for early exit."""
-        hook = f"{SKILL_DIR}/.claude/hooks/writ-posttool-rag.sh"
+        hook = f"{SKILL_DIR}/hooks/scripts/writ-posttool-rag.sh"
         with open(hook) as f:
             source = f.read()
         assert "is_orchestrator" in source, (
@@ -294,7 +295,7 @@ class TestOrchestratorSessionFlagRead:
 
     def test_writ_rag_inject_references_is_orchestrator(self) -> None:
         """writ-rag-inject.sh contains an is_orchestrator check to skip /query."""
-        hook = f"{SKILL_DIR}/.claude/hooks/writ-rag-inject.sh"
+        hook = f"{SKILL_DIR}/hooks/scripts/writ-rag-inject.sh"
         with open(hook) as f:
             source = f.read()
         assert "is_orchestrator" in source, (

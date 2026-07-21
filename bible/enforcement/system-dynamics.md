@@ -1,7 +1,8 @@
 <!-- RULE START: ENF-SYS-002 -->
 ## Rule ENF-SYS-002
 
-**Domain**: System Dynamics
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -54,7 +55,8 @@ Self-enforced via design review. Code review should flag any re-evaluation of fa
 <!-- RULE START: ENF-SYS-003 -->
 ## Rule ENF-SYS-003
 
-**Domain**: System Dynamics
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -104,7 +106,8 @@ Naive read-then-write patterns are the #1 source of race conditions in queue-dri
 <!-- RULE START: ENF-SYS-005 -->
 ## Rule ENF-SYS-005
 
-**Domain**: System Dynamics
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -160,7 +163,8 @@ Unit tests with mocked repositories prove logic flow, not system behavior. A moc
 <!-- RULE START: ENF-SYS-006 -->
 ## Rule ENF-SYS-006
 
-**Domain**: System Dynamics
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -203,5 +207,7 @@ Self-enforced via design review. Static analysis (grep for status constants assi
 
 ### Rationale
 STATUS_RELEASED in PartialCaptureInventory: constant declared, tests written, but nothing ever SET the status to released. Structurally present, functionally dead. This rule requires verifying not just that states are declared but that they are reachable.
+
+Related rules: CLEAN-DEAD-001, ENF-SYS-003, FW-M2-RT-002.
 
 <!-- RULE END: ENF-SYS-006 -->

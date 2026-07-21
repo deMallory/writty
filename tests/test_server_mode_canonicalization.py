@@ -3,6 +3,13 @@
 The HTTP endpoint must route through _mode_set so mode is canonicalized
 to lowercase and validated against VALID_MODES before being stored in
 the session cache.
+
+W2 (server package split, branch refactor/w2-server-split): the
+`test_server_source_imports_mode_set` source-scan reads via writ_server_source()
+(tests/conftest.py), which is layout-agnostic -- it scans every *.py under
+writ/server/ if that directory exists (post-split: `_mode_set` is expected to
+live in routes/session_state.py, not __init__.py, so find_spec("writ.server").origin
+alone would miss it), else the single writ/server.py file (pre-split).
 """
 
 from __future__ import annotations
@@ -22,6 +29,8 @@ except ImportError:
 
 from writ.server import app  # type: ignore[import]
 from pathlib import Path
+
+from tests.conftest import writ_server_source
 
 SESSION_ID = "test-mode-canon-001"
 SKILL_DIR = str(Path.home() / ".claude/skills/writ")
@@ -242,17 +251,12 @@ class TestModeSetRoutesThroughModeset:
         )
 
     def test_server_source_imports_mode_set(self) -> None:
-        """writ/server.py imports _mode_set from writ-session so routes use it."""
-        import writ.server as server_module
-        import importlib.util
-
-        spec = importlib.util.find_spec("writ.server")
-        assert spec is not None
-        with open(spec.origin) as f:
-            source = f.read()
+        """writ.server (module or, post W2-split, package) references _mode_set
+        so CLI and HTTP paths share identical behavior."""
+        source = writ_server_source()
 
         # The implementation must reference _mode_set (not inline the write logic)
         assert "_mode_set" in source, (
-            "writ/server.py must import and call _mode_set from writ-session "
+            "writ.server must import and call _mode_set from writ-session "
             "so CLI and HTTP paths share identical behavior"
         )

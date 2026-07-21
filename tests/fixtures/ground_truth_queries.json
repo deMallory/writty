@@ -1,5 +1,5 @@
 {
-  "_instructions": "Ground-truth evaluation queries for automated MRR@5 and regression testing. Each entry has a query, expected primary rule_id, and set membership. MRR@5 assertion runs against 'ambiguous' set only. Hit-rate regression runs against all 83. Built from PHASE5_RESULTS.md human evaluation.",
+  "_instructions": "Ground-truth evaluation queries for automated MRR@5 and regression testing. Each entry has a query, expected primary rule_id, and set membership. MRR@5 assertion runs against the 'ambiguous' set (47 queries); hit-rate regression runs against all 193. Built from PHASE5_RESULTS.md human evaluation; ambiguous set expanded 2026-07-17 (KG R2) with 28 validated hard/symptom queries (adversarially label-verified 28/29).",
   "queries": [
     {
       "id": "Q1",
@@ -994,6 +994,174 @@
       "set": "keyword",
       "query": "credential never share chat ticket",
       "expected_rule_id": "PROC-ENV-001"
+    },
+    {
+      "id": "Q168",
+      "set": "ambiguous",
+      "query": "When I type a real customer's email into the 'forgot password' box the site says 'check your inbox', but a made-up email says 'no account exists with that email' -- someone could use this to build a list of every email address we have on file.",
+      "expected_rule_id": "SEC-AUTH-ENUM-001"
+    },
+    {
+      "id": "Q169",
+      "set": "ambiguous",
+      "query": "Our checkout worker got OOM-killed right after it charged the customer's card but before it acknowledged the message, so the broker redelivered the same order to a fresh worker a minute later -- and the customer was charged twice for one order.",
+      "expected_rule_id": "SCALE-QUEUE-002"
+    },
+    {
+      "id": "Q170",
+      "set": "ambiguous",
+      "query": "When a user clicks 'log out,' the app just clears the cookie in their browser. If someone had already grabbed that session value earlier (shared computer, intercepted traffic, whatever), it still gets them into the account for hours afterward -- the log-out button doesn't seem to actually do anything on our end.",
+      "expected_rule_id": "SEC-AUTH-LOGOUT-001"
+    },
+    {
+      "id": "Q171",
+      "set": "ambiguous",
+      "query": "One of our support reps has had the same browser tab logged in for four days straight, and this morning they were able to grant a coworker's account the 'billing admin' role without being asked for a password or MFA code again.",
+      "expected_rule_id": "SEC-AUTHZ-PRIV-001"
+    },
+    {
+      "id": "Q172",
+      "set": "ambiguous",
+      "query": "We added a 'custom email signature' feature where users can type their own formatting markup for the footer of outgoing emails. Someone figured out that pasting a particular syntax into their signature makes the sent email include values from our server's internal configuration.",
+      "expected_rule_id": "SEC-INJ-SSTI-001"
+    },
+    {
+      "id": "Q173",
+      "set": "ambiguous",
+      "query": "Our two-factor code entry is pretty forgiving -- it still accepts a six-digit code someone generated up to five minutes ago, so a code caught in an old screenshot or glimpsed over someone's shoulder a while back can still get an attacker in.",
+      "expected_rule_id": "SEC-AUTH-MFA-001"
+    },
+    {
+      "id": "Q174",
+      "set": "ambiguous",
+      "query": "Our Kubernetes pods keep getting killed and restarted every time the database has a brief few-second blip, even though the application process itself is completely fine and would have recovered on its own if it hadn't been restarted.",
+      "expected_rule_id": "SCALE-HEALTH-002"
+    },
+    {
+      "id": "Q175",
+      "set": "ambiguous",
+      "query": "During the payment-outage postmortem, all the error tracker shows is 'PaymentFailed: order 4471' -- we know the payment provider threw something first, but that detail is completely gone by the time it reaches us.",
+      "expected_rule_id": "ERR-HANDLE-002"
+    },
+    {
+      "id": "Q176",
+      "set": "ambiguous",
+      "query": "Right around midnight when the homepage's cached data expires, we get a two-second spike where database CPU maxes out, as if hundreds of requests all try to rebuild that same homepage data at the exact same instant.",
+      "expected_rule_id": "PERF-CACHE-004"
+    },
+    {
+      "id": "Q177",
+      "set": "ambiguous",
+      "query": "Every user's password gets hashed with bcrypt, which is correct, but to keep things simple the whole application appends one fixed secret string (stored in a single config value) to every password before hashing it, instead of letting the hashing library generate a fresh random value per account.",
+      "expected_rule_id": "SEC-AUTH-HASH-002"
+    },
+    {
+      "id": "Q178",
+      "set": "ambiguous",
+      "query": "We just discovered the script that generates signing keys for a payment-partner integration hasn't been touched in years and still asks the crypto library for whatever its default key size was back then. A security scanner flagged those keys as crackable with modern hardware in a realistic amount of time.",
+      "expected_rule_id": "SEC-CRYPTO-ALGO-002"
+    },
+    {
+      "id": "Q179",
+      "set": "ambiguous",
+      "query": "We don't use any front-end framework on this page -- just plain JavaScript that builds the comment list by gluing each commenter's text into one big string and dropping it straight into the page's container element. Someone posted a comment that now pops an alert box for every other visitor who opens that page.",
+      "expected_rule_id": "SEC-INJ-XSS-003"
+    },
+    {
+      "id": "Q180",
+      "set": "ambiguous",
+      "query": "We keep a plain in-memory dictionary that tracks how many requests are currently in flight for each user, and under heavy concurrent traffic the counts drift and sometimes go negative even though nothing in the code ever deletes an entry.",
+      "expected_rule_id": "ARCH-STATE-001"
+    },
+    {
+      "id": "Q181",
+      "set": "ambiguous",
+      "query": "The nightly analytics dashboard pulls from the same database as checkout, and lately regular customers have started complaining that checkout itself feels sluggish during business hours whenever that dashboard job runs.",
+      "expected_rule_id": "SCALE-DB-002"
+    },
+    {
+      "id": "Q182",
+      "set": "ambiguous",
+      "query": "Our checkout page shows cross-sell suggestions pulled from a separate recommendation service. Nobody ever actually decided what the page should do if that service is slow or unreachable -- right now it's whatever the code happens to do that day.",
+      "expected_rule_id": "ERR-FALLBACK-001"
+    },
+    {
+      "id": "Q183",
+      "set": "ambiguous",
+      "query": "Our checkout tests run instantly on my laptop, but three teammates are now seeing random 30-second hangs and connection-refused failures in CI on the exact same commit, and it always traces back to the same test file.",
+      "expected_rule_id": "TEST-ISOLATE-002"
+    },
+    {
+      "id": "Q184",
+      "set": "ambiguous",
+      "query": "All our payment tests mock the gateway to just return `True`, and they've been green for months -- but the first real transaction in staging blew up because the actual gateway response is a nested object with a status field and a separate charge id, not a plain boolean.",
+      "expected_rule_id": "TEST-MOCK-002"
+    },
+    {
+      "id": "Q185",
+      "set": "ambiguous",
+      "query": "Our email-notification worker looks fine right after a deploy, but three or four days into continuous uptime it's using 8GB of RAM and needs a restart before it eventually falls over.",
+      "expected_rule_id": "PERF-MEM-002"
+    },
+    {
+      "id": "Q186",
+      "set": "ambiguous",
+      "query": "Every time product adds one new required field to the customer record, someone has to go update the same hand-written object-construction code that's been copy-pasted across 40 different test files.",
+      "expected_rule_id": "TEST-FIXTURE-001"
+    },
+    {
+      "id": "Q187",
+      "set": "ambiguous",
+      "query": "One customer used the product-search page's 'match pattern' advanced filter, typing something like 'a+a+a+b', and that single request has been pegged at 100% CPU for the last ten minutes while every other request queues up behind it.",
+      "expected_rule_id": "SEC-VAL-REGEX-001"
+    },
+    {
+      "id": "Q188",
+      "set": "ambiguous",
+      "query": "Our mobile app times out on a delete-item call and automatically retries it, and the retry comes back as a 404 which the app shows the user as a scary error, even though the item was actually removed successfully on the first attempt.",
+      "expected_rule_id": "API-IDEMPOTENT-001"
+    },
+    {
+      "id": "Q189",
+      "set": "ambiguous",
+      "query": "This lookup helper returns the actual record when it finds one, but returns the literal value False when it doesn't -- so every caller downstream has to remember to check `is False` specifically instead of just checking for None or an empty result.",
+      "expected_rule_id": "CLEAN-RETURN-001"
+    },
+    {
+      "id": "Q190",
+      "set": "ambiguous",
+      "query": "Three separate services each hand-roll their own version of what a Customer record looks like, and last sprint two of them silently drifted out of sync after someone added a new field to only one of the three copies.",
+      "expected_rule_id": "DRY-TYPE-001"
+    },
+    {
+      "id": "Q191",
+      "set": "ambiguous",
+      "query": "If I run tests/test_users.py by itself every test passes. Run the whole suite in one go and the third test in that same file blows up with a duplicate-email database error that nobody can reproduce by running the file alone.",
+      "expected_rule_id": "TEST-ISOLATE-003"
+    },
+    {
+      "id": "Q192",
+      "set": "ambiguous",
+      "query": "Our nightly PHP inventory-import job hits a parse error on a bad row, and instead of logging it and retrying, it just echoes the exact same HTML error page our storefront shows customers -- straight into a log file nobody is watching, so failed imports go unnoticed for a week.",
+      "expected_rule_id": "PHP-ERR-002"
+    },
+    {
+      "id": "Q193",
+      "set": "ambiguous",
+      "query": "There's a chunk of code sitting right after a return statement in this function that can never actually execute, plus a couple of imports at the top nobody's referenced in months, but everyone's too nervous to delete them in case something secretly depends on it.",
+      "expected_rule_id": "CLEAN-DEAD-001"
+    },
+    {
+      "id": "Q194",
+      "set": "ambiguous",
+      "query": "The validate_order() function builds a brand-new RegexEmailValidator instance right inside its own body instead of accepting a validator as an argument, so I can't run this function in a test without dragging in the real regex validator, and swapping in a stricter one later means editing this function's internals all over again.",
+      "expected_rule_id": "CLEAN-COUPLING-001"
+    },
+    {
+      "id": "Q195",
+      "set": "ambiguous",
+      "query": "Everyone treats get_account_summary() as safe to call from anywhere for a quick peek at the numbers, but it actually writes a row to the audit log and bumps a last_viewed timestamp on the account object every single time it runs.",
+      "expected_rule_id": "CLEAN-SIDE-001"
     }
   ]
 }

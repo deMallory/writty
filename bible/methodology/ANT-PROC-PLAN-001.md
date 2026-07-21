@@ -18,8 +18,9 @@ source_commit: null
 counter_nodes: [SKL-PROC-PLAN-001, ENF-PROC-PLAN-001]
 named_in: "writ-methodology:writing-plans"
 edges:
-  - { target: SKL-PROC-PLAN-001, type: COUNTERS }
   - { target: ENF-PROC-PLAN-001, type: COUNTERS }
+  - { target: SKL-PROC-PLAN-001, type: COUNTERS }
+category: CAT-DISC-001
 ---
 
 # Anti-pattern: Placeholder content

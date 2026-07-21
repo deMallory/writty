@@ -1,10 +1,15 @@
-"""Phase 1 deliverable 7.3: bundle cohesion + 2-hop bundle traversal tests."""
+"""Phase 1 deliverable 7.3: bundle-cohesion ranking-weight tests.
+
+(The get_bundle depth-N BFS tests were removed in 1.6b -- get_bundle was dead in
+production; AdjacencyCache exposes get_neighbors / get_enrichment as the live
+traversal surface. These tests cover the w_bundle_cohesion ranking weight, which
+is independent of how a bundle_cohesion value is sourced.)
+"""
 from __future__ import annotations
 
 import pytest
 
 from writ.retrieval.ranking import RankingWeights, compute_score
-from writ.retrieval.traversal import AdjacencyCache
 
 
 class TestBundleCohesionScoring:
@@ -49,50 +54,3 @@ class TestBundleCohesionScoring:
         )
         with pytest.raises(ValueError):
             w.validate()
-
-
-class TestAdjacencyBundle:
-    """AdjacencyCache.get_bundle supports multi-hop traversal."""
-
-    def _cache_with_edges(self, edges: list[tuple[str, str, str]]) -> AdjacencyCache:
-        cache = AdjacencyCache()
-        for src, tgt, et in edges:
-            cache._neighbors.setdefault(src, []).append({"rule_id": tgt, "edge_type": et, "direction": "outgoing"})
-            cache._neighbors.setdefault(tgt, []).append({"rule_id": src, "edge_type": et, "direction": "incoming"})
-        return cache
-
-    def test_bundle_depth_1_returns_direct_neighbors(self) -> None:
-        c = self._cache_with_edges([("A", "B", "TEACHES"), ("B", "C", "GATES")])
-        bundle = c.get_bundle("A", max_depth=1)
-        assert bundle == {"A", "B"}
-
-    def test_bundle_depth_2_reaches_further(self) -> None:
-        c = self._cache_with_edges([("A", "B", "TEACHES"), ("B", "C", "GATES")])
-        bundle = c.get_bundle("A", max_depth=2)
-        assert bundle == {"A", "B", "C"}
-
-    def test_bundle_respects_max_depth(self) -> None:
-        c = self._cache_with_edges([
-            ("A", "B", "TEACHES"), ("B", "C", "GATES"), ("C", "D", "COUNTERS"),
-        ])
-        bundle_1 = c.get_bundle("A", max_depth=1)
-        bundle_2 = c.get_bundle("A", max_depth=2)
-        bundle_3 = c.get_bundle("A", max_depth=3)
-        assert bundle_1 == {"A", "B"}
-        assert bundle_2 == {"A", "B", "C"}
-        assert bundle_3 == {"A", "B", "C", "D"}
-
-    def test_bundle_handles_cycles(self) -> None:
-        c = self._cache_with_edges([("A", "B", "TEACHES"), ("B", "A", "COUNTERS")])
-        bundle = c.get_bundle("A", max_depth=5)
-        assert bundle == {"A", "B"}
-
-    def test_bundle_default_depth_is_2(self) -> None:
-        c = self._cache_with_edges([
-            ("A", "B", "TEACHES"), ("B", "C", "GATES"), ("C", "D", "COUNTERS"),
-        ])
-        assert c.get_bundle("A") == {"A", "B", "C"}
-
-    def test_bundle_isolated_node_returns_self(self) -> None:
-        c = AdjacencyCache()
-        assert c.get_bundle("ISOLATED") == {"ISOLATED"}

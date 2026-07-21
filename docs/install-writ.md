@@ -1,130 +1,102 @@
 # Installing Writ
 
-> Writ is distributable as a Claude Code plugin.
-> See the README "Install as a Claude Code plugin" section for the
-> plugin install path. The instructions below cover the standalone-skill
-> install at `~/.claude/skills/writ/`, which remains supported.
+Writ is distributed as a Claude Code plugin. The skill lives at
+`~/.claude/skills/writ/` and Claude Code auto-loads it as the plugin
+`writ@skills-dir`, so its hooks and slash commands work from any project
+directory. Hook registrations come from one place: `hooks/hooks.json`
+(the plugin manifest). There is no `~/.claude/settings.json` hook seeding
+step; editing `hooks/hooks.json` is all that is needed for a hook change.
 
-Writ is a Claude Code skill at `~/.claude/skills/writ/`. After cloning
-the skill repo there, two install touch-points wire it into the Claude
-Code runtime so the hooks and slash commands work from any project
-directory.
+## 1. Bootstrap runtime prerequisites
 
-## 1. Sync hook permissions and registrations
-
-The active settings file Claude Code reads at session start is
-`~/.claude/settings.json`. The skill's canonical hook registrations
-live in `~/.claude/skills/writ/templates/settings.json`. There are two
-ways to install, depending on how much of your existing config you
-want to keep.
-
-**Full wholesale install (matches what `bootstrap.sh` does):**
+One-time setup of the Python venv, Neo4j, the ONNX embedding model, and
+the rule corpus:
 
 ```bash
-bash ~/.claude/skills/writ/scripts/install-harness-config.sh
+bash ~/.claude/skills/writ/scripts/bootstrap-plugin.sh
 ```
 
-This renders both `templates/settings.json` and `templates/CLAUDE.md`
-into `~/.claude/`, backing up any pre-existing files. Use this on
-first install or after a Writ update that adds new hooks.
+(When working inside the repo as a developer, `scripts/bootstrap.sh` is
+the equivalent that uses the repo-local `.venv`.)
 
-**Lighter alternative when only permissions or CLAUDE.md changed:**
+## 2. Patch global config (permissions, statusLine, CLAUDE.md)
+
+A plugin manifest cannot ship the permission allowlist or the main
+statusLine, and the plugin lifecycle does not write `~/.claude/CLAUDE.md`.
+This idempotent, non-destructive patch delivers all three:
 
 ```bash
 bash ~/.claude/skills/writ/scripts/patch-global-config.sh
 ```
 
-This merges the cross-mode allow/deny entries into your existing
-`~/.claude/settings.json` (preserving your ordering and any non-Writ
-entries) and renders `templates/CLAUDE.md` into `~/.claude/CLAUDE.md`.
-Hook registrations are not touched, so this is not a substitute for
-the full install when hooks change. The script is the same one
-plugin-mode users run; standalone users can call it for non-destructive
-permission updates between full installs.
+It merges the Writ allow/deny entries into `~/.claude/settings.json`
+(preserving your ordering and any non-Writ entries), sets the Writ
+statusLine (leaving a foreign statusLine untouched), and renders
+`templates/CLAUDE.md` into `~/.claude/CLAUDE.md` (backing up any
+pre-existing file). It never touches the `hooks` block: the plugin owns
+hooks.
 
-If you'd rather merge `templates/settings.json` by hand, the
-Writ-specific blocks are:
-- All `Bash(bash $HOME/.claude/skills/writ/.claude/hooks/*.sh)` lines
-  in `permissions.allow`
-- The cross-mode Bash allowlist entries (`Bash(python3 *writ-session.py *)`,
-  `Bash(bash *writ/bin/*.sh*)`, `Bash(*writ/bin/writ ...*)`,
-  `Bash(bash *writ/scripts/*.sh*)`)
-- `AskUserQuestion` in `permissions.deny`
-- All entries under `hooks` whose `command` paths point at
-  `$HOME/.claude/skills/writ/.claude/hooks/`
-
-## 2. Install user-level slash commands
+## 3. Install user-level slash commands
 
 Claude Code discovers slash commands from `~/.claude/commands/` (user
-level) and `<project>/.claude/commands/` (project level). The Writ
-skill's own `.claude/commands/` directory is only discovered when the
-active session's cwd is the skill itself, so `/writ-approve` etc. will
-not work from your normal project directories without this step.
+level). The skill's own `.claude/commands/` is only discovered when the
+session cwd is the skill itself, so `/writ-approve` would not work from
+your normal project directories without this step:
 
 ```bash
 bash ~/.claude/skills/writ/scripts/install-user-commands.sh
 ```
 
-This is idempotent. It copies every `.md` file from
-`~/.claude/skills/writ/templates/commands/` to `~/.claude/commands/`.
-Re-run after pulling skill updates that add or change a command.
+Idempotent: it copies every `.md` from `templates/commands/` to
+`~/.claude/commands/`. Re-run after pulling updates that add a command.
 
 After running, restart Claude Code (or open a new session) to pick up
-the new commands.
+the commands.
 
 ## Verify install
 
 ```bash
 test -f ~/.claude/commands/writ-approve.md && echo "/writ-approve installed"
-grep -q writ-memory-policy-guard ~/.claude/settings.json && \
-    echo "memory-policy-guard hook registered"
+curl -sf http://localhost:8765/health >/dev/null && echo "writ server healthy"
 ```
 
-Both should print confirmation lines. If neither does, re-run the
-relevant step above.
+Both should print confirmation lines. If the server line does not, the
+SessionStart hook starts the daemon on the next Claude session; check
+`~/.cache/writ/server.log`.
 
 ## Update path
 
-When the skill is updated (`git pull` or equivalent in
-`~/.claude/skills/writ/`), re-run the install steps:
+After `git pull` in `~/.claude/skills/writ/`, the plugin picks up hook
+changes from `hooks/hooks.json` automatically on the next session. Re-run
+the two idempotent patches when permissions, CLAUDE.md, or commands changed:
 
 ```bash
-bash ~/.claude/skills/writ/scripts/install-harness-config.sh
+bash ~/.claude/skills/writ/scripts/patch-global-config.sh
 bash ~/.claude/skills/writ/scripts/install-user-commands.sh
 ```
 
-`install-harness-config.sh` is destructive (renders the templates wholesale,
-backing up any pre-existing files). `install-user-commands.sh` is idempotent.
-If the update only touched permissions or `templates/CLAUDE.md` (no new
-hooks), `scripts/patch-global-config.sh` is a non-destructive alternative
-that preserves your existing `~/.claude/settings.json` ordering and
-non-Writ entries.
-
-## 3. Restart the writ daemon (when server.py changes)
+## Restart the writ daemon (when server.py changes)
 
 When `writ/server.py` changes (new endpoints, modified routes), the
 running uvicorn process keeps serving the old module until restarted.
-PSR-005 caught a `/dashboard` 404 traced to exactly this: the route
-was wired in code but the daemon predated the change.
+PSR-005 caught a `/dashboard` 404 traced to exactly this: the route was
+wired in code but the daemon predated the change.
 
 ```bash
-pkill -f "writ.*serve" || true
-nohup writ serve > /tmp/writ-server.log 2>&1 &
+bash ~/.claude/skills/writ/scripts/stop-server.sh
+bash ~/.claude/skills/writ/scripts/ensure-server.sh
 ```
 
 Verify with `curl -sf http://localhost:8765/health`. Restart is only
-required when `server.py` (or any FastAPI route module it imports)
-changes; routine ingest, query, or hook updates do not need it.
+required when `server.py` (or a FastAPI route module it imports) changes;
+routine ingest, query, or hook updates do not need it.
 
 ## Known limitations
 
-- `install-harness-config.sh` (and the older `cp` approach) replaces
-  your active `~/.claude/settings.json` wholesale. Custom permissions
-  or hooks outside the Writ template are lost. Use
-  `patch-global-config.sh` for non-destructive permission updates, or
-  merge by hand if you have non-Writ hook registrations.
+- `patch-global-config.sh` merges into `~/.claude/settings.json`
+  non-destructively, but if you keep a foreign statusLine it is left
+  as-is (Writ's statusLine is not installed in that case).
 - The user-commands installer overwrites identically-named files in
-  `~/.claude/commands/`. If you have a non-Writ `writ-approve.md`
-  there for some reason, it gets replaced.
-- Restarting Claude Code is required after install changes for the
+  `~/.claude/commands/`. A non-Writ `writ-approve.md` there gets replaced.
+- Restarting Claude Code is required after config changes for the
   settings/commands to take effect in a running session.

@@ -298,3 +298,124 @@ class TestCorruptedSidecar:
         store = _make_store(cache_dir=str(tmp_path))
         with pytest.raises(Exception):
             store.load_index(corpus_hash="abc")
+
+
+# ---------------------------------------------------------------------------
+# TestBinFingerprintIntegrity (#84 -- torn-pair cache integrity fix)
+# ---------------------------------------------------------------------------
+
+
+class TestBinFingerprintIntegrity:
+    """load_index verifies the on-disk .bin's sha256 against the sidecar's
+    recorded bin_sha256, so a torn pair (sidecar from one build, .bin from
+    another) or an unverifiable old-format sidecar is a detected cache-miss,
+    never a silent wrong-vector load.
+
+    Per TEST-REGRESSION-001: test_load_rejects_torn_bin_from_different_build
+    reproduces bug #84 directly and must fail against today's code (which
+    loads whatever .bin is on disk once corpus_hash matches).
+
+    Per ENF-SYS-005: a true inter-process race that tears the .bin/.json
+    pair cannot be forced deterministically in a unit test, so this
+    simulates the torn pair directly (overwrite the .bin bytes after save)
+    rather than claiming to reproduce the race itself. The guarantee under
+    test is detect-and-raise, not prevention of the underlying race.
+    """
+
+    def test_load_rejects_torn_bin_from_different_build(self, tmp_path: Path) -> None:
+        """A sidecar for build A (corpus_hash="hash-A") paired with build B's
+        .bin (same dims and rule_count, different vectors) must raise, not
+        silently serve B's vectors under A's corpus_hash.
+
+        Uses a valid-but-wrong .bin (a real save_index output from a second
+        store), not garbage bytes: garbage would make hnswlib itself throw
+        on load, which would pass for the wrong reason. A valid .bin from a
+        different build is the actual torn-pair failure mode -- today's
+        code accepts it silently because only corpus_hash is checked.
+        """
+        dir_a = tmp_path / "store_a"
+        dir_b = tmp_path / "store_b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        store_a = _make_store(cache_dir=str(dir_a))
+        _build_tiny_index(store_a, n=5)
+        store_a.save_index(corpus_hash="hash-A")
+
+        store_b = _make_store(cache_dir=str(dir_b))
+        rng = np.random.RandomState(99)
+        rule_ids_b = [f"OTHER-RULE-{i:03d}" for i in range(5)]
+        vectors_b = [rng.randn(store_b._dimensions).astype(np.float32).tolist() for _ in range(5)]
+        store_b.build_index(rule_ids_b, vectors_b)
+        store_b.save_index(corpus_hash="hash-B")
+
+        # Torn pair: leave A's sidecar (corpus_hash="hash-A") untouched, but
+        # overwrite A's .bin with B's -- a valid, differently-built index
+        # with the same dims/rule_count so it loads without an hnswlib error.
+        bin_a = dir_a / "writ_hnsw.bin"
+        bin_b = dir_b / "writ_hnsw.bin"
+        bin_a.write_bytes(bin_b.read_bytes())
+
+        fresh = _make_store(cache_dir=str(dir_a))
+        with pytest.raises(ValueError):
+            fresh.load_index(corpus_hash="hash-A")
+
+    def test_load_rejects_old_format_sidecar_without_fingerprint(self, tmp_path: Path) -> None:
+        """A sidecar with no bin_sha256 field (or bin_sha256=="") cannot be
+        verified against its .bin and must raise so the caller rebuilds,
+        rather than silently accepting an unverifiable .bin (old-format
+        back-compat: fail-loud once, not a silent wrong load forever).
+        """
+        store = _make_store(cache_dir=str(tmp_path))
+        _build_tiny_index(store)
+        store.save_index(corpus_hash="hash-old")
+
+        sidecar_path = tmp_path / "writ_hnsw.json"
+        data = json.loads(sidecar_path.read_text())
+        data.pop("bin_sha256", None)
+        sidecar_path.write_text(json.dumps(data))
+
+        fresh = _make_store(cache_dir=str(tmp_path))
+        with pytest.raises(ValueError):
+            fresh.load_index(corpus_hash="hash-old")
+
+    def test_roundtrip_with_fingerprint_still_loads(self, tmp_path: Path) -> None:
+        """Once bin_sha256 is recorded on save, a load with a matching
+        corpus_hash still succeeds and returns the same results as before
+        save -- the fingerprint check does not break the happy path.
+        """
+        store = _make_store(cache_dir=str(tmp_path))
+        rule_ids, vectors = _build_tiny_index(store)
+        corpus_hash = _corpus_hash_for(rule_ids, vectors)
+        store.save_index(corpus_hash=corpus_hash)
+
+        loaded = _make_store(cache_dir=str(tmp_path))
+        loaded.load_index(corpus_hash=corpus_hash)
+
+        assert loaded._id_to_rule == store._id_to_rule
+        query = np.array(vectors[0], dtype=np.float32).tolist()
+        assert loaded.search(query, k=1)[0].rule_id == store.search(query, k=1)[0].rule_id
+
+    def test_save_cleans_tempfiles_and_leaves_no_pair_on_rename_failure(self, tmp_path: Path, monkeypatch) -> None:
+        """If a rename fails mid-save (the crash-between-writes scenario #84 is
+        about), save_index raises, cleans up its tempfiles, and does not leave a
+        half-written cache pair. Payload-before-pointer: the .bin is renamed
+        first, so a failure there must leave neither final file nor any .tmp.
+        """
+        store = _make_store(cache_dir=str(tmp_path))
+        _build_tiny_index(store)
+
+        real_rename = os.rename
+
+        def boom(src: Any, dst: Any) -> None:
+            if str(dst).endswith("writ_hnsw.bin"):
+                raise OSError("simulated .bin rename failure")
+            return real_rename(src, dst)
+
+        monkeypatch.setattr(os, "rename", boom)
+        with pytest.raises(OSError):
+            store.save_index(corpus_hash="hash-fail")
+
+        assert not list(tmp_path.glob("*.tmp")), "tempfiles leaked on rename failure"
+        assert not (tmp_path / "writ_hnsw.bin").exists()
+        assert not (tmp_path / "writ_hnsw.json").exists()
