@@ -225,6 +225,42 @@ class Neo4jConnection:
             result = await session.run(query)
             return [record.data() async for record in result]
 
+    async def get_all_nodes(self) -> list[dict]:
+        """Fetch every node in the graph, any label.
+
+        Returns list of {"eid": elementId, "labels": [...], "props": {...}}.
+        Uses Neo4j's own element id rather than a per-type business key
+        (rule_id, abstraction_id, ...) so this needs no knowledge of the
+        twelve different NodeType label/id-field conventions.
+        """
+        query = "MATCH (n) RETURN elementId(n) AS eid, labels(n) AS labels, properties(n) AS props"
+        async with self._driver.session(database=self._database) as session:
+            result = await session.run(query)
+            return [record.data() async for record in result]
+
+    async def get_all_relationships(self) -> list[dict]:
+        """Fetch every relationship in the graph, any type.
+
+        Returns list of {"from_eid": ..., "to_eid": ..., "rel_type": ..., "props": {...}}.
+        """
+        query = """
+            MATCH (a)-[r]->(b)
+            RETURN elementId(a) AS from_eid, elementId(b) AS to_eid,
+                   type(r) AS rel_type, properties(r) AS props
+        """
+        async with self._driver.session(database=self._database) as session:
+            result = await session.run(query)
+            return [record.data() async for record in result]
+
+    async def execute(self, statement: str) -> None:
+        """Run a single raw Cypher statement with no return value expected.
+
+        For the graph-dump import path (writ/graph/dump.py), which replays
+        a pre-rendered script of literal CREATE/MATCH statements.
+        """
+        async with self._driver.session(database=self._database) as session:
+            await session.run(statement)
+
     async def create_abstraction(self, data: dict) -> str:
         """Create or update an Abstraction node. Idempotent via MERGE."""
         query = """

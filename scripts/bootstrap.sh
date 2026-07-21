@@ -169,8 +169,8 @@ if [ $waited -ge $NEO4J_WAIT_SECONDS ]; then
 fi
 
 # ── 8. Ingest rules ────────────────────────────────────────────────────────
-step "Ingesting rule corpus from bible/"
-if writ import-markdown 2>&1 | tail -5; then
+step "Ingesting rule corpus from writ-corpus.cypher"
+if writ import-cypher 2>&1 | tail -5; then
     ok "rules ingested"
 else
     warn "ingestion reported errors; daemon will serve whatever made it into Neo4j"
