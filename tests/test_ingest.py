@@ -459,7 +459,37 @@ class TestNeo4jConstraints:
 
 
 class TestMigrationIntegration:
-    """Full migration against live Neo4j."""
+    """Full migration against live Neo4j.
+
+    bible/ is no longer committed to the repo (writ-corpus.cypher is the
+    shipped source; see writ/graph/dump.py). These tests exercise the
+    markdown import/export path itself, which stays fully supported for
+    hand-editing -- materialize bible/ from the dump here so that coverage
+    doesn't just silently skip in a fresh checkout with no bible/ on disk.
+    """
+
+    @pytest_asyncio.fixture(scope="class", autouse=True)
+    async def materialize_bible_if_missing(self):
+        from writ.export import export_rules_to_markdown
+        from writ.graph.dump import import_cypher_dump
+
+        bible_dir = Path("bible/")
+        dump_file = Path("writ-corpus.cypher")
+        created = False
+        if not bible_dir.exists() and dump_file.exists():
+            conn = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
+            await import_cypher_dump(conn, dump_file.read_text())
+            await export_rules_to_markdown(conn, bible_dir)
+            await conn.clear_all()
+            await conn.close()
+            created = True
+
+        yield
+
+        if created:
+            import shutil
+
+            shutil.rmtree(bible_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
     async def test_migrate_real_bible(self, db: Neo4jConnection) -> None:

@@ -175,6 +175,19 @@ class NodeStoreMixin:
         rows = await self._run(query)
         return [record.data() for record in rows]
 
+    async def get_all_nodes_for_dump(self) -> list[dict]:
+        """Fetch every node's full properties keyed by its portable business id.
+
+        Each dict carries: id, label, props. Unlike `get_all_nodes`, this always
+        includes the coalesced business id (never Neo4j's internal element id),
+        so a dump taken here stays valid when replayed into a different Neo4j
+        instance -- for the Cypher dump/restore path (writ/graph/dump.py).
+        """
+        nid = _GRAPH_ID_COALESCE.format(v="n")
+        query = f"MATCH (n) RETURN {nid} AS id, labels(n)[0] AS label, properties(n) AS props"
+        rows = await self._run(query)
+        return [record.data() for record in rows]
+
     async def get_category_routes_by_node(self) -> dict[str, list[str]]:
         """Map every node's primary id to its Category's routes via BELONGS_TO.
 

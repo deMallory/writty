@@ -1,0 +1,243 @@
+{
+  "_instructions": "DRAFT candidate hard/ambiguous gold-set queries for expanding tests/fixtures/ground_truth_queries.json (KG step R2). NOT the metric of record. Every expected_rule_id was verified to be a real Rule in the live graph. A human MUST validate each label before promoting any entry into ground_truth_queries.json (set='ambiguous'), because a wrong gold label silently corrupts nDCG@10/MRR@5. Drafted by a fan-out of writ-explorer agents + an adversarial label-verification lens (40 drafted -> 29 accepted; rejected 4 too-keyword-obvious, 6 duplicate-rule, 1 low-confidence). _confidence and _rationale are the drafters' self-assessment, not ground truth.",
+  "_adjudicate_before_use": [
+    "CLEAN-SIDE-001 vs CLEAN-FUNC-001: near-identical violation examples (get_-named function with side effects). Confirm which rule the get_account_summary query should map to.",
+    "CLEAN-COUPLING-001 vs SOLID-DIP-002: distinction hinges on function-level vs class-level dependency construction. Confirm the validate_order/RegexEmailValidator query's label.",
+    "SCALE-QUEUE-002 vs FW-M2-RT-005: the existing corpus already maps similar framework-agnostic queue queries to the Magento rule (a pre-existing inconsistency). Decide the canonical target."
+  ],
+  "_next_step": "After you validate/correct labels + delete any you reject, promote the kept entries into ground_truth_queries.json (renumber ids, set='ambiguous', keep only query/expected_rule_id/set/id), then re-run scripts/sweep_fusion.py: with ~48 ambiguous queries the Bruch-convex fusion signal (currently +10% but p=0.219 on 19q) can be confirmed or rejected with power.",
+  "queries": [
+    {
+      "id": "C1",
+      "set": "ambiguous",
+      "query": "When I type a real customer's email into the 'forgot password' box the site says 'check your inbox', but a made-up email says 'no account exists with that email' -- someone could use this to build a list of every email address we have on file.",
+      "expected_rule_id": "SEC-AUTH-ENUM-001",
+      "_confidence": 0.93,
+      "_rationale": "Reset-flow response bodies differ for valid vs invalid accounts; verified rules.md:46-83 (identical-responses statement). Pure symptom framing, never names 'enumeration'. Chosen over the login-form duplicate for higher confidence."
+    },
+    {
+      "id": "C2",
+      "set": "ambiguous",
+      "query": "Our checkout worker got OOM-killed right after it charged the customer's card but before it acknowledged the message, so the broker redelivered the same order to a fresh worker a minute later -- and the customer was charged twice for one order.",
+      "expected_rule_id": "SCALE-QUEUE-002",
+      "_confidence": 0.92,
+      "_rationale": "Non-idempotent queue consumer double-charges on redelivery; scaling/rules.md:280-320. Chosen as the good-ambiguous SCALE-QUEUE-002 (the 'three receipt emails' variant was too-obvious). Distinguished from config-completeness FW-M2-RT-005 (dropped messages, opposite failure) and SCALE-QUEUE-001."
+    },
+    {
+      "id": "C3",
+      "set": "ambiguous",
+      "query": "When a user clicks 'log out,' the app just clears the cookie in their browser. If someone had already grabbed that session value earlier (shared computer, intercepted traffic, whatever), it still gets them into the account for hours afterward -- the log-out button doesn't seem to actually do anything on our end.",
+      "expected_rule_id": "SEC-AUTH-LOGOUT-001",
+      "_confidence": 0.9,
+      "_rationale": "Client-only cookie clear with no server-side invalidation; rules.md:168-209. Distinguished from cookie-flag rule TOKEN-002 (transport config, not lifecycle)."
+    },
+    {
+      "id": "C4",
+      "set": "ambiguous",
+      "query": "One of our support reps has had the same browser tab logged in for four days straight, and this morning they were able to grant a coworker's account the 'billing admin' role without being asked for a password or MFA code again.",
+      "expected_rule_id": "SEC-AUTHZ-PRIV-001",
+      "_confidence": 0.9,
+      "_rationale": "Long-lived session sufficient for a privilege-escalation action with no re-auth; rules.md:661-703. Chosen over the 'promote to admin' duplicate; the actor clearly HAS access, so staleness (not absence) of auth is the defect."
+    },
+    {
+      "id": "C5",
+      "set": "ambiguous",
+      "query": "We added a 'custom email signature' feature where users can type their own formatting markup for the footer of outgoing emails. Someone figured out that pasting a particular syntax into their signature makes the sent email include values from our server's internal configuration.",
+      "expected_rule_id": "SEC-INJ-SSTI-001",
+      "_confidence": 0.9,
+      "_rationale": "User markup becomes template body leaking server config; rules.md:2385-2422 (near-verbatim violation). Well-disguised: never mentions templates or rendering. Distinguished from CMD/DESER/HEADER injection."
+    },
+    {
+      "id": "C6",
+      "set": "ambiguous",
+      "query": "Our two-factor code entry is pretty forgiving -- it still accepts a six-digit code someone generated up to five minutes ago, so a code caught in an old screenshot or glimpsed over someone's shoulder a while back can still get an attacker in.",
+      "expected_rule_id": "SEC-AUTH-MFA-001",
+      "_confidence": 0.88,
+      "_rationale": "TOTP acceptance window far wider than one adjacent period; rules.md:213-251. Never questions code origin, ruling out TOKEN-001 (CSPRNG generation)."
+    },
+    {
+      "id": "C7",
+      "set": "ambiguous",
+      "query": "Our Kubernetes pods keep getting killed and restarted every time the database has a brief few-second blip, even though the application process itself is completely fine and would have recovered on its own if it hadn't been restarted.",
+      "expected_rule_id": "SCALE-HEALTH-002",
+      "_confidence": 0.88,
+      "_rationale": "Liveness/readiness conflation causing spurious restarts on a transient dependency blip; rules.md:159-197 (rationale is verbatim this). Never says probe/liveness/readiness."
+    },
+    {
+      "id": "C8",
+      "set": "ambiguous",
+      "query": "During the payment-outage postmortem, all the error tracker shows is 'PaymentFailed: order 4471' -- we know the payment provider threw something first, but that detail is completely gone by the time it reaches us.",
+      "expected_rule_id": "ERR-HANDLE-002",
+      "_confidence": 0.88,
+      "_rationale": "Re-raise drops the original cause (no `from e`); rules.md:1518-1557. Chosen over the near-duplicate payment-wrapper variant (higher confidence, cleaner incident framing). Distinguished from swallowed-catch CLEAN-ERR-001 (exception IS re-raised)."
+    },
+    {
+      "id": "C9",
+      "set": "ambiguous",
+      "query": "Right around midnight when the homepage's cached data expires, we get a two-second spike where database CPU maxes out, as if hundreds of requests all try to rebuild that same homepage data at the exact same instant.",
+      "expected_rule_id": "PERF-CACHE-004",
+      "_confidence": 0.88,
+      "_rationale": "Cache stampede at expiry; performance/rules.md:237-276. TTL already exists (data 'expires'), so distinguished from require-a-TTL rule CACHE-002. Never names 'stampede'."
+    },
+    {
+      "id": "C10",
+      "set": "ambiguous",
+      "query": "Every user's password gets hashed with bcrypt, which is correct, but to keep things simple the whole application appends one fixed secret string (stored in a single config value) to every password before hashing it, instead of letting the hashing library generate a fresh random value per account.",
+      "expected_rule_id": "SEC-AUTH-HASH-002",
+      "_confidence": 0.85,
+      "_rationale": "Fixed global salt vs per-user gensalt; rules.md:130-164. Query explicitly rules out algorithm choice (bcrypt is fine), disambiguating from HASH-001 and CRYPTO-RAND-001."
+    },
+    {
+      "id": "C11",
+      "set": "ambiguous",
+      "query": "We just discovered the script that generates signing keys for a payment-partner integration hasn't been touched in years and still asks the crypto library for whatever its default key size was back then. A security scanner flagged those keys as crackable with modern hardware in a realistic amount of time.",
+      "expected_rule_id": "SEC-CRYPTO-ALGO-002",
+      "_confidence": 0.85,
+      "_rationale": "Asymmetric key generation using weak library-default size; rules.md:877-911. Distinguished from TLS/cert transport rules; 'default key size' points at generation not handshake."
+    },
+    {
+      "id": "C12",
+      "set": "ambiguous",
+      "query": "We don't use any front-end framework on this page -- just plain JavaScript that builds the comment list by gluing each commenter's text into one big string and dropping it straight into the page's container element. Someone posted a comment that now pops an alert box for every other visitor who opens that page.",
+      "expected_rule_id": "SEC-INJ-XSS-003",
+      "_confidence": 0.85,
+      "_rationale": "Vanilla-DOM string-concat XSS; rules.md:2511-2546. 'No framework' framing deliberately excludes framework-escaping rules XSS-001/002 whose triggers cannot be met here."
+    },
+    {
+      "id": "C13",
+      "set": "ambiguous",
+      "query": "We keep a plain in-memory dictionary that tracks how many requests are currently in flight for each user, and under heavy concurrent traffic the counts drift and sometimes go negative even though nothing in the code ever deletes an entry.",
+      "expected_rule_id": "ARCH-STATE-001",
+      "_confidence": 0.85,
+      "_rationale": "Unsynchronized shared mutable state under concurrency; rules.md:535-580. Never says lock/race/thread. Explicitly not a growth/leak (no deletes) so PERF-MEM-002 excluded."
+    },
+    {
+      "id": "C14",
+      "set": "ambiguous",
+      "query": "The nightly analytics dashboard pulls from the same database as checkout, and lately regular customers have started complaining that checkout itself feels sluggish during business hours whenever that dashboard job runs.",
+      "expected_rule_id": "SCALE-DB-002",
+      "_confidence": 0.85,
+      "_rationale": "Read-heavy analytics contending with write path on one instance; scaling/rules.md:79-114. Never names replica/routing. Chosen over the near-identical 'marketing dashboard' variant (less lexical overlap with the rule)."
+    },
+    {
+      "id": "C15",
+      "set": "ambiguous",
+      "query": "Our checkout page shows cross-sell suggestions pulled from a separate recommendation service. Nobody ever actually decided what the page should do if that service is slow or unreachable -- right now it's whatever the code happens to do that day.",
+      "expected_rule_id": "ERR-FALLBACK-001",
+      "_confidence": 0.85,
+      "_rationale": "Undefined fallback for an optional/personalization dependency; rules.md:1358-1396 (trigger lists 'personalization'). Chosen over the pricing-cache variant which had heavier lexical overlap with the rule's own 'fallback' vocabulary. Distinguished from ERR-CIRCUIT-001/ERR-RETRY-001."
+    },
+    {
+      "id": "C16",
+      "set": "ambiguous",
+      "query": "Our checkout tests run instantly on my laptop, but three teammates are now seeing random 30-second hangs and connection-refused failures in CI on the exact same commit, and it always traces back to the same test file.",
+      "expected_rule_id": "TEST-ISOLATE-002",
+      "_confidence": 0.85,
+      "_rationale": "Tests making real network calls, flaky/slow only where egress is restricted; testing/rules.md:489-527. Distinguished from shared-state ISOLATE-001, quarantine-policy CI-001, and app-code ARCH-ENV-001."
+    },
+    {
+      "id": "C17",
+      "set": "ambiguous",
+      "query": "All our payment tests mock the gateway to just return `True`, and they've been green for months -- but the first real transaction in staging blew up because the actual gateway response is a nested object with a status field and a separate charge id, not a plain boolean.",
+      "expected_rule_id": "TEST-MOCK-002",
+      "_confidence": 0.85,
+      "_rationale": "Mock return shape does not match the real service response; rules.md:615-654. Chosen over the near-identical 'wasn't structured the way our code expected' variant. Distinguished from call-verification MOCK-001. Retains some literal 'mock'/'return True' overlap."
+    },
+    {
+      "id": "C18",
+      "set": "ambiguous",
+      "query": "Our email-notification worker looks fine right after a deploy, but three or four days into continuous uptime it's using 8GB of RAM and needs a restart before it eventually falls over.",
+      "expected_rule_id": "PERF-MEM-002",
+      "_confidence": 0.85,
+      "_rationale": "Unbounded retention in a long-running process -> delayed crash; rules.md:358-396. Distinguished from one-shot streaming rule MEM-001 (multi-day accumulation, not a single large query)."
+    },
+    {
+      "id": "C19",
+      "set": "ambiguous",
+      "query": "We wired a new GraphQL mutation straight into the existing OrderService class, and now every mobile-app checkout call throws a fatal error -- because that service's constructor pulls in the session-based message manager to display a 'success!' banner, and there's no session or page to show it on.",
+      "expected_rule_id": "ENF-PRE-004",
+      "_confidence": 0.85,
+      "_rationale": "UI-context dependency (message manager) injected into a class reachable via GraphQL; enforcement/reasoning-discipline.md:496-536 (own violation is this exact OrderService case). No FW-M2-* rule covers DI-into-headless-reachable-classes, so the framework-agnostic ENF-PRE-004 is the single best fit."
+    },
+    {
+      "id": "C20",
+      "set": "ambiguous",
+      "query": "Every time product adds one new required field to the customer record, someone has to go update the same hand-written object-construction code that's been copy-pasted across 40 different test files.",
+      "expected_rule_id": "TEST-FIXTURE-001",
+      "_confidence": 0.82,
+      "_rationale": "Inline-constructed test objects drift; one new field updates many tests -> factories; rules.md:352-398 (rationale near-verbatim). Sharper than general DRY-DUP-001 (business logic, not test setup)."
+    },
+    {
+      "id": "C21",
+      "set": "ambiguous",
+      "query": "One customer used the product-search page's 'match pattern' advanced filter, typing something like 'a+a+a+b', and that single request has been pegged at 100% CPU for the last ten minutes while every other request queues up behind it.",
+      "expected_rule_id": "SEC-VAL-REGEX-001",
+      "_confidence": 0.82,
+      "_rationale": "User-supplied regex catastrophic backtracking (ReDoS); security/rules.md:3019-3059 (only user-regex rule in the corpus). Requires recognizing 'a+a+a+b' as a ReDoS trigger; some 'advanced filter' overlap with trigger text."
+    },
+    {
+      "id": "C22",
+      "set": "ambiguous",
+      "query": "Our mobile app times out on a delete-item call and automatically retries it, and the retry comes back as a 404 which the app shows the user as a scary error, even though the item was actually removed successfully on the first attempt.",
+      "expected_rule_id": "API-IDEMPOTENT-001",
+      "_confidence": 0.8,
+      "_rationale": "DELETE-on-already-deleted returns 404 (non-idempotent); api-design/rules.md:152-193. Client-symptom framing; distinguished from POST-key ARCH-IDEMPOTENT-001 and retry-policy ERR-RETRY rules."
+    },
+    {
+      "id": "C23",
+      "set": "ambiguous",
+      "query": "This lookup helper returns the actual record when it finds one, but returns the literal value False when it doesn't -- so every caller downstream has to remember to check `is False` specifically instead of just checking for None or an empty result.",
+      "expected_rule_id": "CLEAN-RETURN-001",
+      "_confidence": 0.8,
+      "_rationale": "Type-varying sentinel return value; rules.md:847-887 (own violation is find_user returning False). Stays at symptom level, never says 'sentinel'/'return type'."
+    },
+    {
+      "id": "C24",
+      "set": "ambiguous",
+      "query": "Three separate services each hand-roll their own version of what a Customer record looks like, and last sprint two of them silently drifted out of sync after someone added a new field to only one of the three copies.",
+      "expected_rule_id": "DRY-TYPE-001",
+      "_confidence": 0.8,
+      "_rationale": "Independently redeclared type shapes drifting across services; rules.md:1283-1318. Distinguished from ARCH-DTO-001 (dicts crossing a boundary) and DRY-DUP-001 (logic duplication)."
+    },
+    {
+      "id": "C25",
+      "set": "ambiguous",
+      "query": "If I run tests/test_users.py by itself every test passes. Run the whole suite in one go and the third test in that same file blows up with a duplicate-email database error that nobody can reproduce by running the file alone.",
+      "expected_rule_id": "TEST-ISOLATE-003",
+      "_confidence": 0.78,
+      "_rationale": "Leaked persisted DB row causing a constraint failure only under full-suite runs; rules.md:530-568 (near-verbatim violation). Sharper than ISOLATE-001 (in-process dict, not a DB row)."
+    },
+    {
+      "id": "C26",
+      "set": "ambiguous",
+      "query": "Our nightly PHP inventory-import job hits a parse error on a bad row, and instead of logging it and retrying, it just echoes the exact same HTML error page our storefront shows customers -- straight into a log file nobody is watching, so failed imports go unnoticed for a week.",
+      "expected_rule_id": "PHP-ERR-002",
+      "_confidence": 0.75,
+      "_rationale": "Background job returns a user-facing error format with no retry/escalation; php/error-handling.md:55-97 (trigger names 'background job/consumer'). Some 'storefront' overlap with trigger vocabulary keeps this on the easier end. Distinguished from generic CLEAN-ERR-001 and PHP-TRY-001."
+    },
+    {
+      "id": "C27",
+      "set": "ambiguous",
+      "query": "There's a chunk of code sitting right after a return statement in this function that can never actually execute, plus a couple of imports at the top nobody's referenced in months, but everyone's too nervous to delete them in case something secretly depends on it.",
+      "expected_rule_id": "CLEAN-DEAD-001",
+      "_confidence": 0.7,
+      "_rationale": "Unreachable branch + unused imports; code-quality/rules.md:235-274. Avoids buzzwords ('dead code'/'unused'); no competitive alternative for this dual symptom."
+    },
+    {
+      "id": "C28",
+      "set": "ambiguous",
+      "query": "The validate_order() function builds a brand-new RegexEmailValidator instance right inside its own body instead of accepting a validator as an argument, so I can't run this function in a test without dragging in the real regex validator, and swapping in a stricter one later means editing this function's internals all over again.",
+      "expected_rule_id": "CLEAN-COUPLING-001",
+      "_confidence": 0.65,
+      "_rationale": "Dependency constructed inside the unit rather than injected; rules.md:160-196. NOTE for reviewer: distinction from SOLID-DIP-001/002 rests on this being a bare function not a class, and the dep being business-level not infra; the label would flip to DIP-002 if reworded as a class constructor. Fragile-but-defensible."
+    },
+    {
+      "id": "C29",
+      "set": "ambiguous",
+      "query": "Everyone treats get_account_summary() as safe to call from anywhere for a quick peek at the numbers, but it actually writes a row to the audit log and bumps a last_viewed timestamp on the account object every single time it runs.",
+      "expected_rule_id": "CLEAN-SIDE-001",
+      "_confidence": 0.6,
+      "_rationale": "get_-named function performs I/O + mutation, foregrounding naming-implies-safety; rules.md:891-927. NOTE for reviewer: CLEAN-FUNC-001 (CQS, :433-474) has a near-identical violation example; label defensible because the query centers the naming assumption (SIDE-001's unique trigger), but flag as a genuine two-rule collision."
+    }
+  ]
+}

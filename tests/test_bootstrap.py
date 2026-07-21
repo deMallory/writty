@@ -141,8 +141,9 @@ class TestBootstrapSections:
         assert "7687" in content, "bootstrap.sh must wait for Neo4j bolt port"
 
     def test_bootstrap_ingests_rules(self, content: str) -> None:
-        assert "import-markdown" in content, (
-            "bootstrap.sh must run `writ import-markdown`"
+        assert "import-cypher" in content, (
+            "bootstrap.sh must run `writ import-cypher` (bible/ is no longer "
+            "shipped/tracked; writ-corpus.cypher is the seeded source)"
         )
 
     def test_bootstrap_starts_daemon(self, content: str) -> None:
@@ -290,4 +291,29 @@ class TestReadme:
         lowered = content.lower()
         assert "troubleshooting" in lowered or "common errors" in lowered, (
             "README.md must have a troubleshooting section"
+        )
+
+    def test_readme_states_prototype_status_near_top(self, content: str) -> None:
+        intro = content.split("\n## ", 1)[0]
+        assert "early prototype" in intro.lower(), (
+            "README.md must state, before the first section heading, that this "
+            "snapshot is an early prototype"
+        )
+
+    def test_readme_status_section_signals_prototype_not_final_release(
+        self, content: str
+    ) -> None:
+        marker = "## Status"
+        start = content.index(marker) + len(marker)
+        end = content.index("\n## ", start)
+        status_section = content[start:end]
+        assert not status_section.strip().lower().startswith("**released as"), (
+            "## Status must not open by announcing a finished release"
+        )
+        assert (
+            "prototype" in status_section.lower()
+            or "proof-of-concept" in status_section.lower()
+        ), (
+            "## Status must frame this snapshot as a prototype checkpoint, "
+            "not a finished product"
         )

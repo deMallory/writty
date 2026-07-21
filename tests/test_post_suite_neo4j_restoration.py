@@ -28,7 +28,7 @@ from tests._writ_cmd import WRIT_CMD_PREFIX
 from pathlib import Path
 
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 
 
 def _count(label: str) -> int:
@@ -63,16 +63,16 @@ class TestSessionFinishRestoresMethodology:
     Equivalent to what pytest_sessionfinish should do."""
 
     def test_migrate_restores_skill_nodes(self) -> None:
-        # Run the same migration the conftest hook should be running.
+        # Run the same restoration the conftest hook should be running.
         result = subprocess.run(
-            [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
-            cwd=SKILL_DIR,
+            [*WRIT_CMD_PREFIX, "import-cypher", "writ-corpus.cypher"],
+            cwd=REPO_ROOT,
             capture_output=True,
             text=True,
             timeout=60,
         )
         assert result.returncode == 0, (
-            f"writ import-markdown failed: stderr={result.stderr[:500]}"
+            f"writ import-cypher failed: stderr={result.stderr[:500]}"
         )
 
         # After migration, methodology labels MUST be populated.
@@ -90,8 +90,9 @@ class TestSessionFinishRestoresMethodology:
         (i.e. when bible/ rules were already loaded). That gate left
         methodology nodes missing whenever any test re-ingested only
         the core corpus. Pin the fix: the source must NOT contain
-        the `if count == 0` early-return pattern."""
-        with open(f"{SKILL_DIR}/tests/conftest.py") as f:
+        the `if count == 0` early-return pattern, and must restore from
+        the shipped writ-corpus.cypher dump, not bible/."""
+        with open(f"{REPO_ROOT}/tests/conftest.py") as f:
             body = f.read()
 
         # Heuristic: the count-zero gate around re-migration is gone.
@@ -100,4 +101,8 @@ class TestSessionFinishRestoresMethodology:
         assert "if count == 0:" not in body or "subprocess" in body, (
             "tests/conftest.py still contains the `if count == 0` "
             "early-return that skips methodology restoration"
+        )
+        assert "writ-corpus.cypher" in body and "import-cypher" in body, (
+            "tests/conftest.py must restore from writ-corpus.cypher via "
+            "import-cypher, not the (no longer shipped) bible/ tree"
         )

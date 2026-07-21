@@ -1,5 +1,7 @@
 # Writ
 
+> **Status: early prototype.** This repo is a snapshot of Writ's original proof-of-concept, not the polished version. Everything below is real and measured on this snapshot, but the implementation has known rough edges and gaps. A more complete, hardened rebuild is in active development and will land here in stages. Expect breaking changes between snapshots.
+
 A Claude Code harness that gives every coding session two helpers: a fast librarian that picks the rules that fit the current task, and a process keeper that blocks risky writes until you have approved a plan and tests.
 
 At the live 276-rule production corpus (post Phase 1-5 public-rulebook expansion), the librarian returns ranked results in **0.590 ms at the 95th percentile**. At the 10,000-rule synthetic scale, it still holds at 0.557 ms while reducing context tokens by **726 times** versus loading the whole rulebook every turn.
@@ -34,7 +36,7 @@ claude plugin marketplace add infinri/Writ
 claude plugin install writ@writ
 ```
 
-**One-time bootstrap.** Creates the venv at `${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv`, brings up Neo4j, ingests the rule bible, and starts the FastAPI daemon:
+**One-time bootstrap.** Creates the venv at `${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv`, brings up Neo4j, seeds the rule corpus from `writ-corpus.cypher`, and starts the FastAPI daemon:
 
 ```shell
 bash $(claude plugin path writ)/scripts/bootstrap-plugin.sh
@@ -113,6 +115,8 @@ writ query "controller contains SQL query"
 ```
 
 Open Claude Code in any project. Type a prompt. You should see a `[Writ: ...]` status line and a `--- WRIT RULES ---` block with the rules that apply to what you are doing.
+
+**Editing rules directly.** The corpus ships as `writ-corpus.cypher`, a single portable dump (see `writ export-cypher` / `writ import-cypher` below), not as a tracked `bible/` directory of markdown files. To hand-edit a rule instead of going through `writ add`/`writ edit`: `writ export` materializes `bible/` locally from the live graph, edit the markdown, `writ import-markdown` pushes it back into Neo4j, then `writ export-cypher writ-corpus.cypher` refreshes the shipped dump before committing.
 
 ## What you experience
 
@@ -220,8 +224,10 @@ Same problem space, different optimization frontiers.
 | `writ serve [--host --port]` | Start the FastAPI service via uvicorn (default `localhost:8765`). |
 | `writ status` | Health check via the HTTP service. |
 | `writ query <text> [--domain --budget]` | Run a retrieval query. |
-| `writ import-markdown [path]` | Ingest rules from `bible/` Markdown into Neo4j. Auto-exports back on success. |
+| `writ import-markdown [path]` | Ingest rules from `bible/` Markdown into Neo4j. Auto-exports back on success. `bible/` is not shipped/tracked; regenerate it locally via `writ export` first if you want to hand-edit. |
 | `writ export [output]` | Regenerate Markdown from graph (overwrites output dir). |
+| `writ export-cypher [output]` | Dump the whole graph as a portable Cypher replay script. Default `writ-corpus.cypher` -- the shipped, tracked source of the corpus. |
+| `writ import-cypher [input]` | Rebuild the graph from a Cypher dump (wipes first, then replays). Default `writ-corpus.cypher`. This is what install/bootstrap and CI use to seed the corpus. |
 | `writ add` | Interactive add-a-new-rule wizard. Schema validates, redundancy checks, suggests edges, writes. |
 | `writ edit <rule_id>` | Edit existing rule with current values as defaults. |
 | `writ validate [--review-confidence --benchmark]` | Run integrity checks (conflicts, orphans, stale, redundant, frequency). |
@@ -284,7 +290,7 @@ Environment variables read by hooks: `WRIT_HOST` (default `localhost`), `WRIT_PO
 
 ## Testing
 
-90 test files, 1,192 test functions. The end-of-suite hook in `tests/conftest.py` shells out to `writ import-markdown bible/` to restore the production graph after tests run.
+90 test files, 1,192 test functions. The end-of-suite hook in `tests/conftest.py` shells out to `writ import-cypher writ-corpus.cypher` to restore the production graph after tests run.
 
 ```bash
 make test          # pytest tests/ -x -q
@@ -302,7 +308,9 @@ The benchmark suite has four files:
 
 ## Status
 
-**Released as v1.2.0 on 2026-05-15.** Builds on v1.1.0 (2026-05-15) and the v1.0.0 / v1.0.1 history. v1.2.0 adds proactive context-window management (a watcher hook that emits a soft directive at 50% of the configured window and hard-blocks PreToolUse calls at 75% so the agent runs `/compact` before declaring work complete under context pressure), collapses hook-hot-path Python spawns to bring per-write latency floors into a recorded regression-floor test, repairs case-drift in the friction log's `mode` field so the dashboard groups modes cleanly, and replaces a cosmetic "0 potential issues found but unconfirmed" PostToolUse banner that had been firing on every clean Write/Edit in v1.1.0. Benchmark baselines (retrieval p95, MRR@5, hit rate, cold-start) are unchanged from v1.1.0; the v1.2.0 work targets workflow latency and observability, not retrieval quality. See `CHANGELOG.md` for the full v1.2.0 entry.
+**Prototype checkpoint, not a finished product.** What's tagged here as v1.2.0 (2026-05-15) is a proof-of-concept snapshot: the retrieval pipeline and enforcement gates work end to end, and every number in this README is real and measured against this snapshot, but it has known rough edges and is not feature-complete. A more thorough, hardened rebuild is under active development and will be published here in stages.
+
+Builds on v1.1.0 (2026-05-15) and the v1.0.0 / v1.0.1 history. v1.2.0 adds proactive context-window management (a watcher hook that emits a soft directive at 50% of the configured window and hard-blocks PreToolUse calls at 75% so the agent runs `/compact` before declaring work complete under context pressure), collapses hook-hot-path Python spawns to bring per-write latency floors into a recorded regression-floor test, repairs case-drift in the friction log's `mode` field so the dashboard groups modes cleanly, and replaces a cosmetic "0 potential issues found but unconfirmed" PostToolUse banner that had been firing on every clean Write/Edit in v1.1.0. Benchmark baselines (retrieval p95, MRR@5, hit rate, cold-start) are unchanged from v1.1.0; the v1.2.0 work targets workflow latency and observability, not retrieval quality. See `CHANGELOG.md` for the full v1.2.0 entry.
 
 **Public out-of-the-box rulebook seeded.** 198 new universal rules across Security, Clean Code, DRY, SOLID, Architecture, Testing, Error Handling, Performance, Scaling, API Design, Process, and Documentation, plus 19 new mandatory rules each backed by a cross-language regex analyzer in `bin/run-analysis.sh`. See `out-of-the-box-rules.md` for the canonical rule list.
 

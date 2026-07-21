@@ -13,7 +13,7 @@ import pytest_asyncio
 
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
-from writ.graph.ingest import discover_rule_files, parse_rules_from_file
+from writ.graph.dump import import_cypher_dump
 from writ.graph.schema import Rule
 from writ.retrieval.pipeline import build_pipeline
 from writ.retrieval.traversal import AdjacencyCache
@@ -31,20 +31,9 @@ async def db():
     conn = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
     await conn.clear_all()
 
-    bible_dir = Path("bible/")
-    if bible_dir.exists():
-        rule_ids = set()
-        all_rules: list[dict] = []
-        for f in discover_rule_files(bible_dir):
-            for rule_data in parse_rules_from_file(f):
-                clean = {k: v for k, v in rule_data.items() if not k.startswith("_")}
-                await conn.create_rule(clean)
-                rule_ids.add(clean["rule_id"])
-                all_rules.append(rule_data)
-        for rule_data in all_rules:
-            for ref_id in rule_data.get("_cross_references", []):
-                if ref_id in rule_ids:
-                    await conn.create_edge("RELATED_TO", rule_data["rule_id"], ref_id)
+    dump_file = Path("writ-corpus.cypher")
+    if dump_file.exists():
+        await import_cypher_dump(conn, dump_file.read_text())
 
     yield conn
     await conn.clear_all()

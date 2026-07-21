@@ -84,6 +84,10 @@ ALLOW=(
     "Bash(bash *writ/scripts/ensure-server.sh*)"
     "Bash(bash *writ/scripts/install-user-commands.sh*)"
     "Bash(bash *writ/scripts/stop-server.sh*)"
+    "Edit(/home/lucio.saldivar/.claude/skills/writ/**)"
+    "Edit(/home/lucio.saldivar/analysis/Writ/**)"
+    "Bash(*/.claude/skills/writ/*)"
+    "Bash(*/analysis/Writ/*)"
 )
 
 DENY=(

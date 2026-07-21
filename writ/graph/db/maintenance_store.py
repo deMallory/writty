@@ -13,6 +13,15 @@ class MaintenanceStoreMixin:
         async with self._driver.session(database=self._database) as session:
             await session.run("MATCH (n) DETACH DELETE n")
 
+    async def execute(self, statement: str) -> None:
+        """Run a single raw Cypher statement with no return value expected.
+
+        For the graph-dump import path (writ/graph/dump.py), which replays a
+        pre-rendered script of literal CREATE/MATCH statements.
+        """
+        async with self._driver.session(database=self._database) as session:
+            await session.run(statement)
+
     async def clear_project(self, project: str = "writ") -> int:
         """Delete all nodes (and their edges) for one project. M.1: the scoped
         analog of clear_all -- the safe default once the graph holds >1 project.

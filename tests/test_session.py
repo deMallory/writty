@@ -123,18 +123,15 @@ class TestLoadedRuleIdsExclusion:
 
         from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
         from writ.graph.db import Neo4jConnection
-        from writ.graph.ingest import discover_rule_files, parse_rules_from_file, validate_parsed_rule
+        from writ.graph.dump import import_cypher_dump
         from writ.retrieval.pipeline import build_pipeline
 
         db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         count = await db.count_rules()
         if count == 0:
-            bible = Path("bible/")
-            for f in discover_rule_files(bible):
-                for rd in parse_rules_from_file(f):
-                    validate_parsed_rule(rd)
-                    clean = {k: v for k, v in rd.items() if not k.startswith("_")}
-                    await db.create_rule(clean)
+            dump_file = Path("writ-corpus.cypher")
+            if dump_file.exists():
+                await import_cypher_dump(db, dump_file.read_text())
         try:
             p = await build_pipeline(db)
             yield p
@@ -274,19 +271,16 @@ class TestMultiQuerySession:
 
         from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
         from writ.graph.db import Neo4jConnection
-        from writ.graph.ingest import discover_rule_files, parse_rules_from_file, validate_parsed_rule
+        from writ.graph.dump import import_cypher_dump
         from writ.retrieval.pipeline import build_pipeline
 
         db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
         # Ensure rules are migrated (previous tests may have cleared DB).
         count = await db.count_rules()
         if count == 0:
-            bible = Path("bible/")
-            for f in discover_rule_files(bible):
-                for rd in parse_rules_from_file(f):
-                    validate_parsed_rule(rd)
-                    clean = {k: v for k, v in rd.items() if not k.startswith("_")}
-                    await db.create_rule(clean)
+            dump_file = Path("writ-corpus.cypher")
+            if dump_file.exists():
+                await import_cypher_dump(db, dump_file.read_text())
         try:
             p = await build_pipeline(db)
             yield p

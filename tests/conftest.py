@@ -80,10 +80,11 @@ def pytest_sessionfinish(session, exitstatus):
     (Skill / Playbook / etc.) missing post-suite -- the symptom was
     `/always-on?mode=work` returning empty after `pytest -q`.
 
-    New approach: shell out to `writ import-markdown bible/` unconditionally.
-    The command is MERGE-only (idempotent), runs in <2s, and is the
-    canonical import path used in production. Single source of
-    truth -- the inline duplicate is gone.
+    New approach: shell out to `writ import-cypher writ-corpus.cypher`
+    unconditionally. `bible/` is no longer shipped/tracked (writ-corpus.cypher
+    is); the command replays the shipped dump and is the canonical import
+    path used in production. Single source of truth -- the inline duplicate
+    is gone.
     """
     import os
     import subprocess
@@ -93,13 +94,13 @@ def pytest_sessionfinish(session, exitstatus):
     from tests._writ_cmd import WRIT_CMD_PREFIX
 
     skill_dir = Path(__file__).resolve().parent.parent
-    bible = skill_dir / "bible"
-    if not bible.exists():
+    dump_file = skill_dir / "writ-corpus.cypher"
+    if not dump_file.exists():
         return  # not a writ checkout; nothing to restore.
 
     try:
         subprocess.run(
-            [*WRIT_CMD_PREFIX, "import-markdown", "bible/", "--no-export"],
+            [*WRIT_CMD_PREFIX, "import-cypher", "writ-corpus.cypher"],
             cwd=str(skill_dir),
             capture_output=True,
             timeout=60,

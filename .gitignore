@@ -53,6 +53,10 @@ bible/.export_timestamp
 # Enterprise-logging runtime tree (default log root: <skill>/var/logs)
 var/
 
+# Rule corpus as markdown: regenerate locally via `writ export` for hand
+# editing. The shipped/tracked source is writ-corpus.cypher (writ export-cypher).
+/bible/
+
 # Per-Work-cycle workflow artifacts (overwritten each cycle)
 plan.md
 capabilities.md

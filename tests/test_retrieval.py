@@ -15,7 +15,7 @@ import pytest_asyncio
 
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
-from writ.graph.ingest import discover_rule_files, parse_rules_from_file
+from writ.graph.dump import import_cypher_dump
 from writ.retrieval.pipeline import build_pipeline
 from writ.retrieval.ranking import (
     RankingWeights,
@@ -35,11 +35,11 @@ NEO4J_PASSWORD = get_neo4j_password()
 async def pipeline_db():
     """Shared db connection with migrated rules for pipeline tests.
 
-    Setup wipes Neo4j and reloads from `bible/`. Teardown wipes again
-    AND re-runs the methodology migration so subsequent tests in the
-    full-suite run see a populated graph (otherwise tests that depend
-    on Skill/Playbook/etc. nodes would silently misbehave -- the
-    isolation issue that bit Phase 6j integration verification).
+    Setup wipes Neo4j and reloads from `writ-corpus.cypher`. Teardown wipes
+    again AND re-runs the import so subsequent tests in the full-suite run
+    see a populated graph (otherwise tests that depend on Skill/Playbook/etc.
+    nodes would silently misbehave -- the isolation issue that bit Phase 6j
+    integration verification).
     """
     import subprocess
     import sys
@@ -51,45 +51,34 @@ async def pipeline_db():
     await db.clear_all()
 
     # Migrate real rules.
-    bible_dir = Path("bible/")
-    if bible_dir.exists():
-        rule_ids_in_graph = set()
-        all_rules: list[dict] = []
-        for f in discover_rule_files(bible_dir):
-            for rule_data in parse_rules_from_file(f):
-                clean = {k: v for k, v in rule_data.items() if not k.startswith("_")}
-                await db.create_rule(clean)
-                rule_ids_in_graph.add(clean["rule_id"])
-                all_rules.append(rule_data)
-
-        # Create skeleton edges.
-        for rule_data in all_rules:
-            for ref_id in rule_data.get("_cross_references", []):
-                if ref_id in rule_ids_in_graph:
-                    await db.create_edge("RELATED_TO", rule_data["rule_id"], ref_id)
+    repo_root = Path(__file__).resolve().parent.parent
+    dump_file = repo_root / "writ-corpus.cypher"
+    if dump_file.exists():
+        await import_cypher_dump(db, dump_file.read_text())
 
     yield db
 
     await db.clear_all()
     await db.close()
 
-    # Restore production-like state for downstream tests via the
-    # migration script. INC-1: downstream graph tests now depend on the
-    # `corpus_ready` fixture, which self-heals a partial graph -- so a
-    # teardown hiccup here can no longer mask a regression. Use the repo
-    # root derived from this file (not a hardcoded home path) so the
-    # restore runs in any checkout location.
+    # Restore production-like state for downstream tests via the shipped
+    # dump. INC-1: downstream graph tests now depend on the `corpus_ready`
+    # fixture, which self-heals a partial graph -- so a teardown hiccup here
+    # can no longer mask a regression. Best-effort -- if it's missing or
+    # fails, downstream tests will hit empty Neo4j; we surface that via
+    # stderr but do not raise. Uses `repo_root` (derived from this file, not
+    # a hardcoded home path) so the restore runs in any checkout location.
     try:
         subprocess.run(
-            [*WRIT_CMD_PREFIX, "import-markdown", "bible/"],
-            cwd=str(Path(__file__).resolve().parent.parent),
+            [*WRIT_CMD_PREFIX, "import-cypher", "writ-corpus.cypher"],
+            cwd=str(repo_root),
             capture_output=True,
             timeout=60,
             check=False,
         )
     except (subprocess.SubprocessError, OSError) as e:
         sys.stderr.write(
-            f"[test_retrieval teardown] writ import-markdown restore failed: {e}\n"
+            f"[test_retrieval teardown] writ import-cypher restore failed: {e}\n"
         )
 
 

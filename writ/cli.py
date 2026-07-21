@@ -865,6 +865,43 @@ def _compress_dep_error_message(context: str, exc: Exception, prefix: str = "ERR
     )
 
 
+@app.command(name="export-cypher")
+def export_cypher(
+    output: Path = typer.Argument(
+        Path("writ-corpus.cypher"), help="Output file for the Cypher dump script."
+    ),
+) -> None:
+    """Dump the whole graph as a portable Cypher replay script."""
+    from writ.graph.dump import render_cypher_dump
+
+    async def _run() -> None:
+        async with _writ_db() as db:
+            nodes = await db.get_all_nodes_for_dump()
+            edges = await db.get_all_edges_cross_type()
+            script = render_cypher_dump(nodes, edges)
+            output.write_text(script)
+            typer.echo(f"Exported {len(nodes)} nodes and {len(edges)} edges to {output}")
+
+    asyncio.run(_run())
+
+
+@app.command(name="import-cypher")
+def import_cypher(
+    input_file: Path = typer.Argument(
+        Path("writ-corpus.cypher"), help="Cypher dump script to replay."
+    ),
+) -> None:
+    """Rebuild the graph from a Cypher dump script produced by export-cypher."""
+    from writ.graph.dump import import_cypher_dump
+
+    async def _run() -> None:
+        async with _writ_db() as db:
+            result = await import_cypher_dump(db, input_file.read_text())
+            typer.echo(f"Ran {result['statements_run']} statements from {input_file}")
+
+    asyncio.run(_run())
+
+
 @app.command()
 def compress() -> None:
     """Cluster rules into abstraction nodes for compressed retrieval."""
