@@ -203,6 +203,36 @@ def _count_neo4j_rules() -> int:
     return asyncio.run(_run())
 
 
+def _list_neo4j_constraint_names() -> list[str]:
+    """Return every constraint name currently applied (async bridged)."""
+    from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
+    from writ.graph.db import Neo4jConnection
+
+    async def _run() -> list[str]:
+        db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
+        try:
+            return [c["name"] for c in await db.list_constraints()]
+        finally:
+            await db.close()
+
+    return asyncio.run(_run())
+
+
+def _apply_neo4j_constraints() -> None:
+    """Fix callable: create every missing uniqueness constraint/index (idempotent)."""
+    from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
+    from writ.graph.db import Neo4jConnection
+
+    async def _run() -> None:
+        db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
+        try:
+            await db.apply_constraints()
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
 def _venv_import_ok() -> bool:
     """True iff the .venv interpreter imports onnxruntime + tokenizers cleanly."""
     try:
@@ -619,6 +649,44 @@ def check_neo4j_connectivity(opts: DoctorOptions) -> CheckResult:
     )
 
 
+_MIN_EXPECTED_CONSTRAINTS = 17
+
+
+def check_uniqueness_constraints(opts: DoctorOptions) -> CheckResult:
+    """Detects the missing-constraint state that lets MERGE silently create
+    duplicate nodes for anything keyed on (id, project) -- found live: 287
+    legacy Rule nodes with no `project` property meant every re-import
+    created fresh duplicates instead of updating in place."""
+    name = "uniqueness-constraints"
+
+    try:
+        names = _list_neo4j_constraint_names()
+    except Exception as exc:
+        return _fail(
+            name=name,
+            detail=f"Could not list Neo4j constraints ({exc}).",
+            fixable=True,
+            fix=_apply_neo4j_constraints,
+        )
+
+    if len(names) < _MIN_EXPECTED_CONSTRAINTS:
+        return _fail(
+            name=name,
+            detail=(
+                f"Only {len(names)} constraint(s) applied (expected >= "
+                f"{_MIN_EXPECTED_CONSTRAINTS}); MERGE on unconstrained keys can "
+                "silently create duplicate nodes. Fix with `apply_constraints()`."
+            ),
+            fixable=True,
+            fix=_apply_neo4j_constraints,
+        )
+
+    return _ok(
+        name=name,
+        detail=f"{len(names)} constraint(s) applied.",
+    )
+
+
 def check_embedding_stack(opts: DoctorOptions) -> CheckResult:
     name = "embedding-stack"
     import_ok = _venv_import_ok()
@@ -849,6 +917,7 @@ _CHECKS: list[tuple[str, Callable[[DoctorOptions], CheckResult]]] = [
     ("daemon-liveness", check_daemon_liveness),
     ("stale-orphan-port-conflict", check_stale_orphan_port_conflict),
     ("neo4j-connectivity", check_neo4j_connectivity),
+    ("uniqueness-constraints", check_uniqueness_constraints),
     ("embedding-stack", check_embedding_stack),
     ("corpus-drift", check_corpus_drift),
     ("bitbucket-creds", check_bitbucket_creds),

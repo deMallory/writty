@@ -438,6 +438,48 @@ class TestNeo4jConnectivity:
         )
 
 
+class TestUniquenessConstraints:
+    """check_uniqueness_constraints: ok / fail (missing) / fail (error); fixable."""
+
+    def test_full_constraint_set_returns_ok(self, default_opts, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "writ.session.doctor._list_neo4j_constraint_names",
+            lambda: [f"c{i}" for i in range(17)],
+        )
+        from writ.session.doctor import STATUS_OK, check_uniqueness_constraints
+        r = check_uniqueness_constraints(default_opts)
+        assert r.status == STATUS_OK
+        assert r.name == "uniqueness-constraints"
+
+    def test_no_constraints_returns_fail(self, default_opts, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "writ.session.doctor._list_neo4j_constraint_names", lambda: []
+        )
+        from writ.session.doctor import STATUS_FAIL, check_uniqueness_constraints
+        r = check_uniqueness_constraints(default_opts)
+        assert r.status == STATUS_FAIL
+
+    def test_query_error_returns_fail_not_crash(self, default_opts, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "writ.session.doctor._list_neo4j_constraint_names",
+            lambda: (_ for _ in ()).throw(Exception("connection refused")),
+        )
+        from writ.session.doctor import STATUS_FAIL, check_uniqueness_constraints
+        r = check_uniqueness_constraints(default_opts)
+        assert r.status == STATUS_FAIL
+
+    def test_missing_constraints_is_fixable_with_apply_constraints(
+        self, default_opts, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(
+            "writ.session.doctor._list_neo4j_constraint_names", lambda: []
+        )
+        from writ.session.doctor import _apply_neo4j_constraints, check_uniqueness_constraints
+        r = check_uniqueness_constraints(default_opts)
+        assert r.fixable is True
+        assert r.fix is _apply_neo4j_constraints
+
+
 # ---------------------------------------------------------------------------
 # Check 4: embedding-stack
 # ---------------------------------------------------------------------------
@@ -1172,7 +1214,7 @@ class TestRunAllChecks:
     """run_all_checks: exception isolation, ordering, result count."""
 
     def _patch_all_ok(self, monkeypatch) -> None:
-        """Patch every seam so all 10 checks return ok with no side effects."""
+        """Patch every seam so all 11 checks return ok with no side effects."""
         monkeypatch.setattr(
             "writ.session.doctor._http_get_health",
             lambda: {"status": "healthy", "index_state": "warm", "rule_count": 5},
@@ -1182,6 +1224,10 @@ class TestRunAllChecks:
         monkeypatch.setattr("writ.session.doctor._ps_writ_serve_orphans", lambda: [])
         monkeypatch.setattr("writ.session.doctor._tcp_can_connect", lambda host, port: True)
         monkeypatch.setattr("writ.session.doctor._count_neo4j_rules", lambda: 10)
+        monkeypatch.setattr(
+            "writ.session.doctor._list_neo4j_constraint_names",
+            lambda: [f"c{i}" for i in range(17)],
+        )
         monkeypatch.setattr("writ.session.doctor._venv_import_ok", lambda: True)
         monkeypatch.setattr(
             "writ.session.doctor._onnx_model_files_present", lambda: (True, True)
@@ -1198,12 +1244,12 @@ class TestRunAllChecks:
             lambda session_id: {"mode": "work"},
         )
 
-    def test_returns_exactly_ten_results(self, default_opts, monkeypatch) -> None:
+    def test_returns_exactly_eleven_results(self, default_opts, monkeypatch) -> None:
         self._patch_all_ok(monkeypatch)
         from writ.session.doctor import run_all_checks
         results = run_all_checks(default_opts)
-        assert len(results) == 10, (
-            f"run_all_checks must return exactly 10 CheckResults; got {len(results)}"
+        assert len(results) == 11, (
+            f"run_all_checks must return exactly 11 CheckResults; got {len(results)}"
         )
 
     def test_result_names_match_contract(self, default_opts, monkeypatch) -> None:
@@ -1214,6 +1260,7 @@ class TestRunAllChecks:
             "daemon-liveness",
             "stale-orphan-port-conflict",
             "neo4j-connectivity",
+            "uniqueness-constraints",
             "embedding-stack",
             "corpus-drift",
             "bitbucket-creds",
@@ -1231,7 +1278,7 @@ class TestRunAllChecks:
     def test_exception_in_one_check_does_not_stop_others(
         self, default_opts, monkeypatch
     ) -> None:
-        # daemon-liveness raises; all remaining 9 checks must still run
+        # daemon-liveness raises; all remaining 10 checks must still run
         self._patch_all_ok(monkeypatch)
         monkeypatch.setattr(
             "writ.session.doctor._http_get_health",
@@ -1239,7 +1286,7 @@ class TestRunAllChecks:
         )
         from writ.session.doctor import STATUS_FAIL, run_all_checks
         results = run_all_checks(default_opts)
-        assert len(results) == 10, "all 10 results must be returned despite one exception"
+        assert len(results) == 11, "all 11 results must be returned despite one exception"
         daemon_result = next(r for r in results if r.name == "daemon-liveness")
         assert daemon_result.status == STATUS_FAIL
         assert "daemon exploded" in daemon_result.detail, (
