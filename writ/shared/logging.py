@@ -76,8 +76,6 @@ STREAM_MAP: dict[str, str] = {
     "recall_failed": "friction",
     "git_hooks_auto_install_failed": "friction",
     "debug_to_work_handoff": "friction",
-    "write_failure": "friction",
-    "pre_write_decision": "friction",
     # metrics
     "hook_execution": "metrics",
     "rag_query": "metrics",
@@ -343,27 +341,67 @@ def _fallback(line: str, event: str) -> None:
     )
 
 
-def read_streams(project: str, streams) -> list[dict]:
-    """Union + JSON-parse the named stream files for a project.
+def _generation_lines(path: Path) -> list[str]:
+    """Read one generation's raw lines, transparently decompressing `.gz`.
 
-    Skips malformed lines and missing files (which contribute zero rows); a project
-    with no logs yields an empty list. Used by the analyzers/metrics readers to merge
-    audit + friction + metrics without knowing the on-disk layout (SOLID-DIP-002).
+    Fail-soft on the whole file for the same reason the per-line parse is fail-soft:
+    every caller is a read-only analyzer that today cannot fail, so a truncated or
+    corrupt archive must cost its own rows and nothing else. `OSError` covers an
+    unreadable file, `EOFError`/`gzip.BadGzipFile` a corrupt or non-gzip archive
+    (BadGzipFile subclasses OSError, so it is already caught; EOFError is not).
+    """
+    import gzip
+
+    try:
+        if path.suffix == ".gz":
+            with gzip.open(path, "rt", encoding="utf-8") as fh:
+                return fh.read().splitlines()
+        return path.read_text(encoding="utf-8").splitlines()
+    except (OSError, EOFError, UnicodeDecodeError):
+        return []
+
+
+def _stream_generations(project: str, stream: str) -> list[Path]:
+    """Every readable generation of one stream, oldest first.
+
+    Rotation moves history into `archive/<stream>-<date>.jsonl.gz` and leaves a fresh
+    live file behind, so a reader that opens only `stream_path` reports an empty
+    corpus the day after a sweep. Archives sort by their ISO date token, which is
+    lexicographically ordered, and the live file is always the newest generation, so
+    it goes last. Callers depend on this: `render_audit_json` reads `events[0]` and
+    `events[-1]` as the first and last timestamps.
+
+    The glob is anchored to `<stream>-` so one stream never picks up another's
+    archives (`audit-*.jsonl.gz` cannot match `metrics-2026-07-21.jsonl.gz`).
+    """
+    generations: list[Path] = []
+    arc = archive_dir(project)
+    if arc.is_dir():
+        generations.extend(sorted(arc.glob(f"{stream}-*.jsonl.gz")))
+    live = stream_path(project, stream)
+    if live.is_file():
+        generations.append(live)
+    return generations
+
+
+def read_streams(project: str, streams) -> list[dict]:
+    """Union + JSON-parse every generation of the named streams for a project.
+
+    Covers both the live stream file and its rotated `archive/*.jsonl.gz`
+    generations, so rotation never removes history from the analyzers' view. Skips
+    malformed lines, unreadable files, and corrupt archives (each contributes zero
+    rows); a project with no logs yields an empty list. Used by the analyzers/metrics
+    readers to merge audit + friction + metrics without knowing the on-disk layout
+    (SOLID-DIP-002).
     """
     events: list[dict] = []
     for stream in streams:
-        path = stream_path(project, stream)
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        for raw in text.splitlines():
-            if not raw.strip():
-                continue
-            try:
-                events.append(json.loads(raw))
-            except (json.JSONDecodeError, ValueError):
-                continue
+        for path in _stream_generations(project, stream):
+            for raw in _generation_lines(path):
+                if not raw.strip():
+                    continue
+                try:
+                    events.append(json.loads(raw))
+                except (json.JSONDecodeError, ValueError):
+                    continue
     return events

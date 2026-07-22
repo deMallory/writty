@@ -37,9 +37,10 @@ async def _writ_db():
 
 @app.command(name="analyze-friction")
 def analyze_friction(
-    log: Path = typer.Option(
-        Path("workflow-friction.log"),
-        help="Path to the friction log. Defaults to ./workflow-friction.log.",
+    log: Path | None = typer.Option(
+        None,
+        help="Path to a single friction log. Default: the project's split "
+             "audit+friction+metrics streams, including rotated archives.",
     ),
     since: int = typer.Option(0, help="Only include events from the last N days (0 = all)."),
     top: int = typer.Option(10, help="Cap top-N rankings."),
@@ -59,12 +60,17 @@ def analyze_friction(
     are mutually exclusive with each other and with the default summary.
     """
     from writ.analysis.friction import (
-        load_events, summarize, format_report, rotate_if_needed,
+        load_events, resolve_log_path, summarize, format_report, rotate_if_needed,
     )
 
     if rotate:
-        rotated = rotate_if_needed(log)
-        typer.echo(f"{'rotated' if rotated else 'no rotation needed'}: {log}")
+        # --rotate acts on ONE file, so it keeps the legacy single-log resolution
+        # (explicit --log, then WRIT_FRICTION_LOG, then ./workflow-friction.log)
+        # rather than the split streams the analysis paths now read. The stream
+        # tree has its own sweep: `writ logs rotate`.
+        target = resolve_log_path(log)
+        rotated = rotate_if_needed(target)
+        typer.echo(f"{'rotated' if rotated else 'no rotation needed'}: {target}")
         return
 
     # Phase 5: mutual exclusion of analyzer flags.
@@ -98,7 +104,7 @@ def analyze_friction(
     typer.echo(format_report(summary))
 
 
-def _run_phase5_report(flag: str, log: Path, since: int, top: int, json_output: bool) -> None:
+def _run_phase5_report(flag: str, log: Path | None, since: int, top: int, json_output: bool) -> None:
     """Phase 5: run the single analyzer selected by `flag` and emit its focused report.
 
     D-CLI-REGISTRY: per-flag (analyzer, default_since_days, headers, row->cells) live in one
@@ -166,7 +172,7 @@ def _run_phase5_report(flag: str, log: Path, since: int, top: int, json_output: 
             typer.echo(" | ".join(str(c) for c in row))
 
 
-def _render_phase4_summary(log: Path, rule: str | None, json_output: bool) -> None:
+def _render_phase4_summary(log: Path | None, rule: str | None, json_output: bool) -> None:
     """Phase 4 path: Pydantic-validated events with --json / --rule filters."""
     from writ.analysis.friction import parse_log, aggregate_by_rule, aggregate_by_event
     events = parse_log(log)
@@ -190,9 +196,10 @@ def _render_phase4_summary(log: Path, rule: str | None, json_output: bool) -> No
 @app.command(name="audit-session")
 def audit_session(
     session_id: str = typer.Argument(..., help="The session id to audit."),
-    log: Path = typer.Option(
-        Path("workflow-friction.log"),
-        help="Path to the friction log. Defaults to ./workflow-friction.log.",
+    log: Path | None = typer.Option(
+        None,
+        help="Path to a single friction log. Default: the project's split "
+             "audit+friction+metrics streams, including rotated archives.",
     ),
     json_output: bool = typer.Option(False, "--json", help="Emit structured JSON instead of text."),
 ) -> None:

@@ -81,8 +81,15 @@ class TestDeadHookRemoved:
             "the dead track-failed-writes registration must be gone from hooks.json"
         )
 
-    def test_friction_counter_kept_as_dormant_infra(self) -> None:
-        # The generic write_failure -> write_failures counter stays; it is harmless
-        # dormant infra ready for a future observable producer.
+    def test_friction_counter_removed_with_its_producer(self) -> None:
+        # REVERSED (audit C1, 2026-07-22). This previously kept the
+        # write_failure -> write_failures counter as "harmless dormant infra
+        # ready for a future observable producer". It is not harmless: the
+        # producer was removed because PostToolUseFailure Write|Edit never
+        # fires on this harness, so the counter cannot ever be non-zero and
+        # every friction report states a confident, wrong zero. write_attempt
+        # already carries result + gate_status, which is the real signal.
         src = FRICTION_PY.read_text()
-        assert "write_failure" in src and "write_failures" in src
+        assert "write_failures" not in src, (
+            "the write_failures counter must be gone; it can only ever report 0"
+        )

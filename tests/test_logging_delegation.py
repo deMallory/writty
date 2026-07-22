@@ -293,6 +293,125 @@ def test_load_events_honors_writ_friction_log_over_split_streams(tmp_path, monke
     assert events[0]["event"] == "mode_change"
 
 
+# --- CLI default log resolution (audit item E) -------------------------------
+# RED until `analyze-friction` and `audit-session` default --log to None. Today
+# both declare typer.Option(Path("workflow-friction.log")), so `path` is never
+# None and the stream branch in _read_raw_rows is unreachable from the CLI:
+# `writ analyze-friction --json` reports the legacy file, frozen 2026-07-01.
+
+
+def _invoke_cli(args: list[str]):
+    """Run a writ.cli command in-process via Typer's CliRunner."""
+    from typer.testing import CliRunner
+
+    from writ.cli import app
+
+    return CliRunner().invoke(app, args)
+
+
+def test_analyze_friction_without_log_flag_reads_split_streams(tmp_path, monkeypatch):
+    from writ.shared.logging import emit
+
+    monkeypatch.chdir(tmp_path)
+    emit(None, "gate_denial", "sid-cli-1", "work", rule_id="ENF-1")
+
+    result = _invoke_cli(["analyze-friction", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["by_event"].get("gate_denial") == 1
+
+
+def test_analyze_friction_does_not_read_cwd_workflow_friction_log(tmp_path, monkeypatch):
+    """The legacy filename in cwd must no longer be the implicit default."""
+    monkeypatch.chdir(tmp_path)
+    legacy = tmp_path / "workflow-friction.log"
+    legacy.write_text(json.dumps(
+        {"ts": "2026-01-01T00:00:00Z", "session": "s", "mode": "work", "event": "stale_marker"}
+    ) + "\n")
+
+    result = _invoke_cli(["analyze-friction", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert "stale_marker" not in payload["by_event"]
+
+
+def test_analyze_friction_still_honors_explicit_log_flag(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    explicit = tmp_path / "explicit.log"
+    explicit.write_text(json.dumps(
+        {"ts": "2026-01-01T00:00:00Z", "session": "s", "mode": "work", "event": "phase_advance"}
+    ) + "\n")
+
+    result = _invoke_cli(["analyze-friction", "--json", "--log", str(explicit)])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["by_event"].get("phase_advance") == 1
+
+
+def test_audit_session_without_log_flag_reads_split_streams(tmp_path, monkeypatch):
+    from writ.shared.logging import emit
+
+    monkeypatch.chdir(tmp_path)
+    emit(None, "phase_advance", "sid-cli-2", "work",
+         from_phase="planning", to_phase="testing", confirmation_source="explicit")
+
+    result = _invoke_cli(["audit-session", "sid-cli-2", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["event_count"] == 1
+    assert payload["event_counts"].get("phase_advance") == 1
+
+
+def test_audit_session_still_honors_explicit_log_flag(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    explicit = tmp_path / "explicit-audit.log"
+    explicit.write_text(json.dumps(
+        {"ts": "2026-01-01T00:00:00Z", "session": "sid-cli-3", "mode": "work",
+         "event": "gate_denial"}
+    ) + "\n")
+
+    result = _invoke_cli(["audit-session", "sid-cli-3", "--json", "--log", str(explicit)])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["event_counts"].get("gate_denial") == 1
+
+
+def test_cli_default_resolution_still_honors_writ_friction_log_env(tmp_path, monkeypatch):
+    """Precedence is unchanged: explicit --log, then WRIT_FRICTION_LOG, then streams."""
+    monkeypatch.chdir(tmp_path)
+    env_log = tmp_path / "env.log"
+    env_log.write_text(json.dumps(
+        {"ts": "2026-01-01T00:00:00Z", "session": "s", "mode": "work", "event": "read_blocked"}
+    ) + "\n")
+    monkeypatch.setenv("WRIT_FRICTION_LOG", str(env_log))
+
+    result = _invoke_cli(["analyze-friction", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["by_event"].get("read_blocked") == 1
+
+
+def test_analyze_friction_sees_archived_generations_after_rotation(tmp_path, monkeypatch):
+    """End-to-end of D1a + E: rotation must not empty out the CLI's view."""
+    import gzip
+
+    from writ.shared.logging import archive_dir
+
+    monkeypatch.chdir(tmp_path)
+    arc = archive_dir("delegation-proj")
+    arc.mkdir(parents=True, exist_ok=True)
+    with gzip.open(arc / "audit-2026-07-21.jsonl.gz", "wt", encoding="utf-8") as fh:
+        fh.write(json.dumps(
+            {"ts": "2026-07-21T01:00:00Z", "session": "s", "mode": "work",
+             "event": "gate_denial"}
+        ) + "\n")
+
+    result = _invoke_cli(["analyze-friction", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["by_event"].get("gate_denial") == 1
+
+
 def test_parse_log_unions_split_streams_into_typed_friction_events(tmp_path, monkeypatch):
     from writ.shared.logging import emit
     from writ.analysis.friction import parse_log
