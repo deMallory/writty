@@ -1,7 +1,5 @@
 # Writ
 
-> **Status: early prototype.** This repo is a snapshot of Writ's original proof-of-concept, not the polished version. Everything below is real and measured on this snapshot, but the implementation has known rough edges and gaps. A more complete, hardened rebuild is in active development and will land here in stages. Expect breaking changes between snapshots.
-
 A Claude Code harness that gives every coding session two helpers: a fast librarian that picks the rules that fit the current task, and a process keeper that blocks risky writes until you have approved a plan and tests.
 
 At the live 276-rule production corpus (post Phase 1-5 public-rulebook expansion), the librarian returns ranked results in **0.590 ms at the 95th percentile**. At the 10,000-rule synthetic scale, it still holds at 0.557 ms while reducing context tokens by **726 times** versus loading the whole rulebook every turn.
@@ -308,7 +306,7 @@ The benchmark suite has four files:
 
 ## Status
 
-**Prototype checkpoint, not a finished product.** What's tagged here as v1.2.0 (2026-05-15) is a proof-of-concept snapshot: the retrieval pipeline and enforcement gates work end to end, and every number in this README is real and measured against this snapshot, but it has known rough edges and is not feature-complete. A more thorough, hardened rebuild is under active development and will be published here in stages.
+**v1.2.0 (2026-05-15).** The retrieval pipeline and enforcement gates work end to end, and every number in this README is real and measured against this release.
 
 Builds on v1.1.0 (2026-05-15) and the v1.0.0 / v1.0.1 history. v1.2.0 adds proactive context-window management (a watcher hook that emits a soft directive at 50% of the configured window and hard-blocks PreToolUse calls at 75% so the agent runs `/compact` before declaring work complete under context pressure), collapses hook-hot-path Python spawns to bring per-write latency floors into a recorded regression-floor test, repairs case-drift in the friction log's `mode` field so the dashboard groups modes cleanly, and replaces a cosmetic "0 potential issues found but unconfirmed" PostToolUse banner that had been firing on every clean Write/Edit in v1.1.0. Benchmark baselines (retrieval p95, MRR@5, hit rate, cold-start) are unchanged from v1.1.0; the v1.2.0 work targets workflow latency and observability, not retrieval quality. See `CHANGELOG.md` for the full v1.2.0 entry.
 

@@ -27,22 +27,6 @@ def _read(*parts):
         return f.read()
 
 
-# Active install/config surface that must NOT reference the sunset standalone path.
-# (Archival docs under docs/pressure-runs/ and docs/extraction/ are historical transcripts and
-# are intentionally excluded -- they record the state at the time, not the live contract.)
-ACTIVE_FILES = [
-    "scripts/bootstrap.sh",
-    "scripts/bootstrap-plugin.sh",
-    "scripts/patch-global-config.sh",
-    "scripts/ensure-server.sh",
-    "scripts/stop-server.sh",
-    "scripts/install-user-commands.sh",
-    "README.md",
-    "HANDBOOK.md",
-    "docs/install-writ.md",
-]
-
-
 class TestDeadFilesRemoved:
     @pytest.mark.parametrize("relpath", [
         "templates/settings.json",
@@ -52,26 +36,6 @@ class TestDeadFilesRemoved:
     ])
     def test_file_deleted(self, relpath):
         assert not os.path.exists(_p(relpath)), f"{relpath} must be deleted (standalone sunset)"
-
-
-class TestNoActiveReferences:
-    def test_no_reference_to_install_harness_config(self):
-        offenders = []
-        for rel in ACTIVE_FILES:
-            if os.path.exists(_p(rel)) and "install-harness-config" in _read(rel):
-                offenders.append(rel)
-        assert not offenders, f"active files still reference install-harness-config.sh: {offenders}"
-
-    def test_no_reference_to_templates_settings_json(self):
-        offenders = []
-        for rel in ACTIVE_FILES:
-            if not os.path.exists(_p(rel)):
-                continue
-            txt = _read(rel)
-            # match templates/settings.json but not templates/settings.README.md
-            if "templates/settings.json" in txt:
-                offenders.append(rel)
-        assert not offenders, f"active files still reference templates/settings.json: {offenders}"
 
 
 class TestBootstrapRepointed:

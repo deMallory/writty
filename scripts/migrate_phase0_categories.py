@@ -120,6 +120,7 @@ DOMAIN_TO_CATEGORY: dict[str, str] = {
     "ai enforcement": "CAT-CODE-AIENF-001",
     "system dynamics": "CAT-CODE-AIENF-001",
     "operations": "CAT-CODE-AIENF-001",
+    "enforcement": "CAT-CODE-AIENF-001",
     "frameworks / magento 2": "CAT-CODE-FW-MAGENTO-001",
     "php / coding standards": "CAT-CODE-LANG-PHP-001",
     "php / error handling": "CAT-CODE-LANG-PHP-001",
