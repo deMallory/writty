@@ -191,6 +191,29 @@ Fix is two lines: default both to `None`. `read_streams` and `resolve_project` a
 
 ---
 
+## E1. The mode-wipe bug, narrowed by the new instrumentation (2026-07-23)
+
+The `mode=None` wipe reproduced live on a session resumed a day later. What the new `errors` stream
+bought us is a set of eliminations, which is exactly what it was built for:
+
+- The session cache went from 17818 bytes to 1020 (a fresh `_default_cache()`, 39 keys, `mode=None`,
+  `files_written=[]`, `project_root=''`), rewritten during the resume turn.
+- **No `exception` row was written.** So `_read_cache` did NOT take its corrupt-file branch. The
+  "corrupt cache silently becomes a blank session" hypothesis is now ruled out, not just doubted.
+- **No `mode_change` event was written** either, though the three earlier transitions for this
+  session are all present. So the wipe did not go through the mode-set path.
+
+Therefore: some writer persisted a default cache over a live one, without reading a corrupt file and
+without a mode transition. That points at a read-then-write path that got a default (missing file, or
+a different session id resolved mid-turn) and wrote it back.
+
+Ruled out separately: the P2 sweep. `SCRATCH_GLOBS` only covers
+`writ-{precompact,postcompact,feedback,coverage}-*.log`, never `writ-session-*.json`.
+
+Two sessions were writing caches minutes apart (`9af27889...` at 16:01, this one at 16:06), so the
+next step is to instrument the cache WRITE path (`_write_cache` / `mutate_cache`) with a
+default-shaped-write warning, rather than to keep instrumenting reads.
+
 ## F. Not yet covered anywhere
 
 Beyond fixing the above, these produce no events today and are worth adding:
@@ -249,8 +272,31 @@ Verification: 415 tests pass across every file touching the changed code
 
    DEFERRED: `pipeline.py:806,831` (HNSW cache miss / save failure). They already call `_logger`, so
    they are the least silent of the set, and reaching them needs a full `build_pipeline` run.
-5. NEXT. Instrument the 18 uninstrumented hooks: `hook_timer_end` on every exit, decision events on
-   both gate branches (A). Bash-only, so it gets its own cycle.
+5. DONE 2026-07-23. All 18 hooks instrumented. `hook_instrument <name>` (`bin/lib/common.sh`)
+   installs ONE `trap ... EXIT` per hook rather than editing each of the **96 `exit` statements**
+   across those files. The trap covers what a per-`exit` edit cannot: `set -e` aborts and
+   command-not-found crashes, the class that made the sub-agent start-hook failure invisible.
+   Verified against all five exit shapes (`exit 0` / `exit 2` / `set -e` / crash / fallthrough), each
+   preserving the real exit code, which matters because Claude Code reads exit 2 as deny.
+   `hook_timer_end` gained an optional 5th `exit_code` arg (optional, so pre-existing 4-arg callers
+   are untouched).
+
+   `log_gate_decision` emits `gate_decision` to the **audit** stream on BOTH branches for the 6 gates
+   and 5 validators. Deny-only logging would have preserved the original blind spot, since a gate
+   ALLOW is already silent by design. reason/target carry tool input, so they are passed through the
+   environment into `json.dumps` rather than interpolated into a JSON string.
+
+   **MEASURED COST: +28ms per instrumented hook run** (6ms bare, 34ms with `hook_instrument`), which
+   is the `friction-append` python spawn. Against the existing instrumented-hook medians (70-268ms)
+   that is roughly 10-40%. `writ-read-rag.sh` is per-prompt and is the one to watch. A/B'd
+   `test_hook_perf_floors` three times to confirm no regression to hooks NOT in the 18: before
+   240/239/239ms, after 238/241/237ms (noise). That test's pre-existing failure (p95 239ms vs a
+   220ms floor) reproduces with these changes stashed and is unrelated.
+
+   Two hooks did not source `common.sh` and now do so defensively (`|| true` plus a `type` guard), so
+   a missing `common.sh` degrades to an uninstrumented but working hook. `session-start-bootstrap.sh`
+   is instrumented after its `CLAUDE_PLUGIN_ROOT` check, not before: the early exit means "not under
+   the plugin loader, nothing to bootstrap", a genuine no-op.
 6. DONE 2026-07-22. `pre_compaction`/`post_compaction` mapped to friction explicitly,
    `subagent_rules_injected` to metrics, dead `instructions_loaded` dropped. `logroot_smoke_test`
    turned out to be a one-off manual smoke test with no emitter in the tree, so there was nothing to

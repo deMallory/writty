@@ -10,5 +10,6 @@
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 source "$WRIT_DIR/bin/lib/common.sh" 2>/dev/null || { cat >/dev/null 2>&1; exit 0; }
+hook_instrument "writ-blackbox-capture"
 blackbox_log in writ-blackbox-capture "" || true
 exit 0

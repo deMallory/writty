@@ -31,6 +31,7 @@ set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 source "$WRIT_DIR/bin/lib/common.sh"
+hook_instrument "writ-bash-write-gate"
 
 load_hook_env
 SESSION_ID="$HOOK_SESSION_ID"
@@ -247,9 +248,11 @@ if not r.get('can_write', True):
     reason = r.get('reason') or 'Write blocked by a Writ gate.'
     print(f\"[Bash write to {os.path.basename(os.environ['WRIT_TGT'])}] {reason}\")" 2>/dev/null) || true
     if [ -n "$DENY_REASON" ]; then
+        log_gate_decision "bash-write" "deny" "$DENY_REASON" "$path"
         emit_deny "$DENY_REASON"
         exit 0
     fi
+    log_gate_decision "bash-write" "allow" "no gate objection" "$path"
 done <<< "$TARGETS"
 
 exit 0

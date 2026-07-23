@@ -65,6 +65,8 @@ STREAM_MAP: dict[str, str] = {
     "memory_policy_deny": "audit",
     "committed_file_not_in_plan": "audit",
     "read_blocked": "audit",
+    # Every gate's allow/deny, emitted on BOTH branches by log_gate_decision.
+    "gate_decision": "audit",
     "exitplanmode_allow": "audit",
     "exitplanmode_denial": "audit",
     "debug_gate_root_cause_populated": "audit",

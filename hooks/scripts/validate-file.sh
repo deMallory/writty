@@ -11,6 +11,7 @@
 
 SKILL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$SKILL_DIR/bin/lib/common.sh"
+hook_instrument "validate-file"
 
 # Parse the Claude Code hook stdin envelope (one python3 spawn)
 load_hook_env
@@ -58,7 +59,9 @@ if [ $EXIT_CODE -ne 0 ]; then
     --log "$LOG_FILE" \
     --rule "ENF-POST-007" \
     --label "static-analysis errors in $FILE"
+  log_gate_decision "static-analysis" "deny" "static-analysis errors in $FILE" "$FILE"
   exit 1
 fi
 
+log_gate_decision "static-analysis" "allow" "no static-analysis errors" "${FILE:-}"
 exit 0

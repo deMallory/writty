@@ -351,9 +351,13 @@ hook_timer_start() {
 # Logs hook_execution event with duration. Call before exit.
 # Bypasses log_friction_event to avoid shell quoting issues with JSON.
 # Usage: hook_timer_end "$HOOK_START_NS" "hook_name" "$SESSION_ID" "$MODE"
+# `exit_code` (5th arg) is OPTIONAL so the pre-existing 4-arg callers keep working;
+# when given it is emitted, which is what makes "which hooks are quietly failing"
+# answerable. hook_name is hook-controlled (never tool input), so interpolating it
+# into the JSON is safe here.
 hook_timer_end() {
-  local start_ns="$1" hook_name="$2" session_id="$3" mode="$4"
-  local now_ns dur_ms
+  local start_ns="$1" hook_name="$2" session_id="$3" mode="$4" exit_code="${5:-}"
+  local now_ns dur_ms extra
   now_ns=$(date +%s%N 2>/dev/null || echo 0)
   if [ "${start_ns:-0}" -gt 0 ] 2>/dev/null && [ "$now_ns" -gt 0 ] 2>/dev/null; then
     dur_ms=$(( (now_ns - start_ns) / 1000000 ))
@@ -361,8 +365,74 @@ hook_timer_end() {
     dur_ms=0
   fi
   [ "$dur_ms" -lt 0 ] 2>/dev/null && dur_ms=0
+  extra="{\"hook_name\":\"$hook_name\",\"duration_ms\":$dur_ms"
+  case "$exit_code" in
+    ''|*[!0-9]*) : ;;                                  # absent or non-numeric: omit
+    *) extra="$extra,\"exit_code\":$exit_code" ;;
+  esac
+  extra="$extra}"
   python3 "$_FRICTION_APPEND" "$session_id" "$mode" "hook_execution" \
-    "{\"hook_name\":\"$hook_name\",\"duration_ms\":$dur_ms}" 2>/dev/null || true
+    "$extra" 2>/dev/null || true
+}
+
+# ── Hook instrumentation (one trap, every exit path) ────────────────────────
+# Installs an EXIT trap that records the run REGARDLESS of how the hook leaves:
+# an early `exit 0`, a gate's `exit 2`, a `set -e` abort, or a command-not-found
+# crash. Editing each `exit` instead would be 96 edits across the 18 hooks and
+# would still miss the abort/crash paths -- the ones that vanish silently today.
+#
+# Behavior-neutral by construction: `$?` is captured FIRST and re-exited with, so
+# a gate's exit code (Claude Code reads 2 as deny) is preserved exactly, and every
+# write is stderr-redirected + `|| true` so a logging fault can never change a
+# hook's outcome.
+#
+# SESSION_ID / CURRENT_MODE are read INSIDE the trap (late binding): most hooks
+# resolve them after this call, so reading them at install time would record empty
+# values.
+# Usage: hook_instrument "writ-bash-write-gate"   (call right after sourcing common.sh)
+hook_instrument() {
+  _WRIT_HOOK_NAME="${1:-$(basename "${BASH_SOURCE[1]:-$0}" .sh)}"
+  _WRIT_HOOK_START_NS=$(hook_timer_start)
+  trap '_writ_hook_exit_trap' EXIT
+}
+
+_writ_hook_exit_trap() {
+  local rc=$?
+  hook_timer_end "${_WRIT_HOOK_START_NS:-0}" "${_WRIT_HOOK_NAME:-unknown}" \
+    "${SESSION_ID:-${HOOK_SESSION_ID:-}}" "${CURRENT_MODE:-${MODE:-}}" "$rc" || true
+  exit "$rc"
+}
+
+# Records a gate's allow/deny decision. Emitted on BOTH branches on purpose: a
+# gate ALLOW is already silent by design (only a deny sends JSON back to Claude
+# Code), so deny-only logging leaves "was this gate even active" unanswerable.
+# `gate_decision` is mapped to the audit stream (governance decision, 365-day
+# retention), not metrics.
+#
+# reason/target carry tool input, so they are passed through the environment into
+# python and serialized with json.dumps rather than interpolated into a JSON
+# string -- quotes, backslashes, and newlines in a file path or denial reason
+# cannot forge a second record (SEC-INJ-LOG-001).
+# Usage: log_gate_decision "phase-a" "deny" "no plan approved" "src/foo.py"
+log_gate_decision() {
+  WRIT_GD_GATE="${1:-}" \
+  WRIT_GD_DECISION="${2:-}" \
+  WRIT_GD_REASON="${3:-}" \
+  WRIT_GD_TARGET="${4:-}" \
+  WRIT_GD_SESSION="${SESSION_ID:-${HOOK_SESSION_ID:-}}" \
+  WRIT_GD_MODE="${CURRENT_MODE:-${MODE:-}}" \
+  python3 -c '
+import json, os
+print(json.dumps({
+    "session": os.environ.get("WRIT_GD_SESSION", ""),
+    "mode": os.environ.get("WRIT_GD_MODE") or None,
+    "event": "gate_decision",
+    "gate": os.environ.get("WRIT_GD_GATE", ""),
+    "decision": os.environ.get("WRIT_GD_DECISION", ""),
+    "reason": os.environ.get("WRIT_GD_REASON", ""),
+    "target": os.environ.get("WRIT_GD_TARGET", ""),
+}))
+' 2>/dev/null | python3 "$_FRICTION_APPEND" --stdin-json 2>/dev/null || true
 }
 
 # ── Writ session daemon helper ───────────────────────────────────────────────

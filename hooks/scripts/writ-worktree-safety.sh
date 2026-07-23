@@ -7,6 +7,7 @@ set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 source "$WRIT_DIR/bin/lib/common.sh"
+hook_instrument "writ-worktree-safety"
 
 load_hook_env
 SESSION_ID="$HOOK_SESSION_ID"
@@ -53,7 +54,12 @@ if not matched:
 PY
 )
 
+# else, not fallthrough: emit_deny only PRINTS the deny JSON (it does not exit),
+# so a bare trailing allow-record would fire on the deny path too.
 if [ -n "$DENY" ]; then
+    log_gate_decision "worktree-safety" "deny" "$DENY" "${CMD:-}"
     emit_deny "$DENY"
+else
+    log_gate_decision "worktree-safety" "allow" "worktree target is gitignored" "${CMD:-}"
 fi
 exit 0

@@ -12,6 +12,11 @@ set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 SESSION_HELPER="$SKILL_DIR/bin/lib/writ-session.py"
+# This gate did not previously source common.sh; it is sourced here solely for
+# hook_instrument / log_gate_decision. Guarded so a missing common.sh degrades to
+# an uninstrumented (but still working) gate rather than breaking the run.
+source "$SKILL_DIR/bin/lib/common.sh" 2>/dev/null || true
+type hook_instrument >/dev/null 2>&1 && hook_instrument "writ-debug-code-gate"
 
 STDIN_DATA=$(cat)
 
@@ -46,5 +51,24 @@ print(json.dumps({
     }
 }))
 " 2>/dev/null || true
+
+# Decision record on BOTH branches. The `decision` field is read back out of the
+# same DECISION_JSON the block above acted on, so the record can never disagree
+# with what the gate actually did.
+GATE_DECISION=$(printf '%s' "$DECISION_JSON" | python3 -c "
+import sys, json
+try:
+    print('deny' if json.load(sys.stdin).get('decision') == 'deny' else 'allow')
+except Exception:
+    print('allow')
+" 2>/dev/null || echo "allow")
+GATE_REASON=$(printf '%s' "$DECISION_JSON" | python3 -c "
+import sys, json
+try:
+    print(json.load(sys.stdin).get('reason') or '')
+except Exception:
+    print('')
+" 2>/dev/null || echo "")
+log_gate_decision "debug-code-read" "$GATE_DECISION" "$GATE_REASON" "${SID}"
 
 exit 0
