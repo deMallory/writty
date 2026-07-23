@@ -191,7 +191,33 @@ Fix is two lines: default both to `None`. `read_streams` and `resolve_project` a
 
 ---
 
-## E1. The mode-wipe bug, narrowed by the new instrumentation (2026-07-23)
+## E1. The mode-wipe bug: ROOT-CAUSED AND FIXED (2026-07-23)
+
+**Cause: session caches lived in `/tmp`, and `/usr/lib/tmpfiles.d/tmp.conf` declares `D /tmp`. The
+capital D means systemd EMPTIES the directory at boot.** The machine rebooted 2026-07-23 11:56:54;
+every cache from the prior day was destroyed, so resuming a conversation across a reboot silently
+lost mode, gates, and `loaded_rule_ids`. Counted proof: 341 `writ-session-*.json` files existed, every
+one postdating the boot, **zero** predating it.
+
+It was never a writer bug. The elimination below was what forced the search outside the writer, which
+is exactly what the new `errors` stream was built to do.
+
+**Fix.** `_cache_dir()` now defaults to `<skill>/var/session` (os.path, NOT pathlib -- this module is
+on the per-hook hot path and pathlib costs ~5.6ms per spawn), the same `__file__`-derived durability
+the log-root ADR established. Two places had to change: the code fallback AND
+`install-server-service.sh`, which pinned `Environment=WRIT_CACHE_DIR=/tmp` into the unit. Fixing only
+one would have left the daemon on `/tmp` while hooks moved -- a split brain worse than the original
+bug. The live unit was edited and the daemon restarted, verified: daemon carries no pin, `/health` OK,
+and this session's cache now lives under `var/session/`.
+
+`_ensure_cache_dir()` was added on the write paths (`_write_cache` and the `mutate_cache` lock open):
+`/tmp` always existed, so nothing ever created this directory, and on a fresh install the first write
+would have failed straight back into a blank session.
+
+Scoped out: `gate_token_path` also hardcodes `/tmp`, deliberately, so the bash writer and python
+reader agree byte-for-byte. A token is single-use, so a reboot costs one re-approval, not a session.
+
+### The original narrowing (kept for the record)
 
 The `mode=None` wipe reproduced live on a session resumed a day later. What the new `errors` stream
 bought us is a set of eliminations, which is exactly what it was built for:
