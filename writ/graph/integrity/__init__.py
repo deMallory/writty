@@ -14,6 +14,10 @@ from typing import TYPE_CHECKING
 from writ.graph.integrity._common import (
     EXPECTED_FLOORS,
     KNOWN_ACTIONS,
+    # Declared public in _common.__all__ and used by parity_checks, but never
+    # re-exported here, so `writ.graph.integrity.PARITY_EXEMPT_PROVENANCE` -- the
+    # path the design docs and the sequencing guard reference -- did not resolve.
+    PARITY_EXEMPT_PROVENANCE,
     _ALWAYS_ON_CAP,
     _DEPRECATED_PASS_API,
     _FENCE_RE,

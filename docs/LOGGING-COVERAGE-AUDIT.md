@@ -286,6 +286,22 @@ Verification: 415 tests pass across every file touching the changed code
    ALLOW is already silent by design. reason/target carry tool input, so they are passed through the
    environment into `json.dumps` rather than interpolated into a JSON string.
 
+   **PERF FOLLOW-UP (same day).** Two self-inflicted costs found and fixed:
+   - `import traceback` had been added at module scope in `writ/shared/logging.py` for
+     `emit_exception`. That module is imported by `friction-append.py` on EVERY instrumented hook
+     spawn, so a ~2ms import was charged to every hook run for a path almost never taken. Moved
+     inside the function: friction-append spawn 30ms -> 26ms.
+   - The 11 deciding hooks paid TWO python spawns (decision + timer). `log_gate_decision` now
+     appends raw field values to a buffer using ASCII unit/record separators and the exit trap emits
+     everything in ONE spawn. Measured on a gate hook doing both: **60ms -> 37ms (-38%)**. Python
+     still does all JSON encoding, so a newline or quote in a denial reason cannot forge a record
+     (verified: hostile multi-line reason produced exactly one audit line).
+
+   Also folded a duplicate stdin parse in `writ-pre-write-dispatch.sh` (not one of the 18): it
+   re-parsed the same payload in a second spawn for fields the first parse already had. 5 -> 4
+   python spawns. Its perf-floor test still fails (p95 ~243ms vs a 220ms floor) but that failure
+   predates this work; the hook makes 12 subprocess calls and the floor was never met.
+
    **MEASURED COST: +28ms per instrumented hook run** (6ms bare, 34ms with `hook_instrument`), which
    is the `friction-append` python spawn. Against the existing instrumented-hook medians (70-268ms)
    that is roughly 10-40%. `writ-read-rag.sh` is per-prompt and is the one to watch. A/B'd

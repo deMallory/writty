@@ -142,15 +142,53 @@ def _advance_with_token(client: TestClient, sid: str, source: str = "tool"):
     """Advance the phase, writing the gate token the route now requires + consumes
     (audit P0 self-approval fix). The token is consumed per advance, so callers that
     advance repeatedly must call this each time (it re-writes the token)."""
-    import os
+    # Write via the PRODUCTION resolver, not tempfile.gettempdir(): gate_token_path
+    # hardcodes /tmp on purpose so the bash writer and the python reader can never
+    # disagree, and pytest sets $TMPDIR -- so gettempdir() put the token where the
+    # route never looks. The advance was then refused as self-approval, the route
+    # still returned HTTP 200 with advanced=False, and the status-only assertion
+    # below used to pass while no event was ever emitted.
+    from writ.session.gate_token import gate_token_path
+
+    # Seed a work-mode session with a pending gate AND a project root holding a
+    # gate-valid plan.md. Without the session, the route answers "No pending gate to
+    # advance"; without the project root and plan, the phase-a gate refuses with
+    # "project-root detection failed". Neither path emits an event, so the event
+    # assertions below would fail for a reason that has nothing to do with wiring.
     import tempfile
-    tok = "test-6i-gate-token"
-    with open(os.path.join(tempfile.gettempdir(), f"writ-gate-token-{sid}"), "w") as f:
-        f.write(tok)
-    return client.post(
-        f"/session/{sid}/advance-phase",
-        json={"confirmation_source": source, "token": tok},
+
+    from writ.server import writ_session
+
+    root = tempfile.mkdtemp(prefix=f"writ-6i-{sid}-")
+    (Path(root) / "plan.md").write_text(
+        "# Plan\n\n"
+        "## Files\n\n- `src/foo.py` (modify) -- wire the thing\n\n"
+        "## Analysis\n\nSeed plan for the advance-phase wiring test.\n\n"
+        "## Rules Applied\n\nNo matching rules\n\n"
+        "## Capabilities\n\n- [ ] the advance emits its events\n"
     )
+    with writ_session.mutate_cache(sid) as c:
+        if not c.get("mode"):
+            c["mode"] = "work"
+            c["current_phase"] = "planning"
+            c["gates_approved"] = []
+
+    tok = "test-6i-gate-token"
+    with open(gate_token_path(sid), "w") as f:
+        f.write(tok)
+    # project_root travels in the REQUEST body (gate.py reads req.project_root),
+    # not the session cache, and the phase-a gate fails closed without it.
+    resp = client.post(
+        f"/session/{sid}/advance-phase",
+        json={"confirmation_source": source, "token": tok, "project_root": root},
+    )
+    # A refusal is HTTP 200 with advanced=False, so assert the advance actually
+    # happened; otherwise every downstream event assertion fails misleadingly.
+    assert resp.status_code == 200, resp.text
+    assert resp.json().get("advanced") is not False, (
+        f"advance was refused, not performed: {resp.json()}"
+    )
+    return resp
 
 
 class TestPhase6iAdvancePhaseFiresPlaybookStep:
@@ -186,13 +224,14 @@ class TestPhase6iAdvancePhaseFiresPlaybookStep:
     def test_step_index_increments_across_advances(
         self, client: TestClient, tmp_log: Path
     ) -> None:
-        for _ in range(3):
+        for _ in range(2):
             _advance_with_token(client, "test-6i-2")
         steps = _read_events(tmp_log, "playbook_step_complete")
-        # Three advances happen on the state machine: planning->testing,
-        # testing->implementation, implementation->complete. Only the
-        # first two emit playbook_step_complete -- "complete" is the
-        # terminal state, not a step.
+        # TWO advances, not three: work mode defines two gates (phase-a and
+        # test-skeletons), so planning->testing and testing->implementation are the
+        # only gated transitions. A third call is refused with "No pending gate to
+        # advance" -- the loop used to run 3 times and silently absorb that refusal,
+        # because the helper only checked the HTTP status and a refusal is still 200.
         assert len(steps) == 2
         indices = [s["step_index"] for s in steps]
         step_ids = [s["step_id"] for s in steps]
@@ -207,19 +246,19 @@ class TestPhase6iAdvancePhaseFiresPlaybookStep:
         """End-to-end: emit events via /advance-phase, feed them
         to analyze_playbook_compliance, expect a non-empty result row
         for PBK-PROC-SDD-001."""
-        for _ in range(3):
+        for _ in range(2):  # two gates in work mode; see the note above
             _advance_with_token(client, "test-6i-3")
         events = parse_log(tmp_log)
         rows = analyze_playbook_compliance(events, since_days=30)
         sdd_rows = [r for r in rows if r.playbook_id == "PBK-PROC-SDD-001"]
         assert sdd_rows, (
             f"--playbook-compliance analyzer found no rows for "
-            f"PBK-PROC-SDD-001 after 3 advances. All rows: "
+            f"PBK-PROC-SDD-001 after 2 advances. All rows: "
             f"{[(r.playbook_id, r.runs) for r in rows]}"
         )
         row = sdd_rows[0]
         assert row.runs >= 1
-        # The 3 advances should be a contiguous step sequence (1, 2, 3),
+        # The 2 advances should be a contiguous step sequence (1, 2),
         # which the analyzer scores by step_index ordering. Whether
         # this counts as "compliant" depends on the analyzer's
         # definition; either way runs > 0 is the minimum we assert.

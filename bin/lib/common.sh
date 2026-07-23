@@ -393,13 +393,64 @@ hook_timer_end() {
 hook_instrument() {
   _WRIT_HOOK_NAME="${1:-$(basename "${BASH_SOURCE[1]:-$0}" .sh)}"
   _WRIT_HOOK_START_NS=$(hook_timer_start)
+  # Event buffer: log_gate_decision appends here instead of spawning its own
+  # python, so a hook that both decides and times out pays ONE spawn at exit
+  # rather than two. Measured: a friction-append spawn is ~26ms, and 11 of the
+  # instrumented hooks emit both events. mktemp failure leaves the buffer empty,
+  # which falls back to the direct per-event spawn.
+  _WRIT_EVENT_BUF="$(mktemp 2>/dev/null || echo "")"
   trap '_writ_hook_exit_trap' EXIT
 }
 
 _writ_hook_exit_trap() {
   local rc=$?
-  hook_timer_end "${_WRIT_HOOK_START_NS:-0}" "${_WRIT_HOOK_NAME:-unknown}" \
-    "${SESSION_ID:-${HOOK_SESSION_ID:-}}" "${CURRENT_MODE:-${MODE:-}}" "$rc" || true
+  local start_ns="${_WRIT_HOOK_START_NS:-0}" now_ns dur_ms
+  now_ns=$(date +%s%N 2>/dev/null || echo 0)
+  if [ "${start_ns:-0}" -gt 0 ] 2>/dev/null && [ "$now_ns" -gt 0 ] 2>/dev/null; then
+    dur_ms=$(( (now_ns - start_ns) / 1000000 ))
+  else
+    dur_ms=0
+  fi
+  [ "$dur_ms" -lt 0 ] 2>/dev/null && dur_ms=0
+
+  # One spawn for every event this hook produced: the buffered gate decisions
+  # (if any) plus this hook_execution row. The buffer holds RAW field values
+  # separated by ASCII unit/record separators, so python does all JSON encoding
+  # and no bash-side quoting can corrupt a record (SEC-INJ-LOG-001).
+  WRIT_EV_BUF="${_WRIT_EVENT_BUF:-}" \
+  WRIT_EV_HOOK="${_WRIT_HOOK_NAME:-unknown}" \
+  WRIT_EV_DUR="$dur_ms" \
+  WRIT_EV_RC="$rc" \
+  WRIT_EV_SESSION="${SESSION_ID:-${HOOK_SESSION_ID:-}}" \
+  WRIT_EV_MODE="${CURRENT_MODE:-${MODE:-}}" \
+  WRIT_EV_SKILL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" \
+  python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["WRIT_EV_SKILL"])
+from writ.shared.logging import emit
+
+session = os.environ.get("WRIT_EV_SESSION", "")
+mode = os.environ.get("WRIT_EV_MODE") or None
+
+buf = os.environ.get("WRIT_EV_BUF", "")
+if buf and os.path.exists(buf):
+    try:
+        raw = open(buf).read()
+    except OSError:
+        raw = ""
+    for rec in raw.split("\x1e"):
+        parts = rec.split("\x1f")
+        if len(parts) < 5 or parts[0] != "gate_decision":
+            continue
+        emit(None, "gate_decision", session, mode, gate=parts[1],
+             decision=parts[2], reason=parts[3], target=parts[4])
+
+emit(None, "hook_execution", session, mode,
+     hook_name=os.environ.get("WRIT_EV_HOOK", "unknown"),
+     duration_ms=int(os.environ.get("WRIT_EV_DUR") or 0),
+     exit_code=int(os.environ.get("WRIT_EV_RC") or 0))
+' 2>/dev/null || true
+  [ -n "${_WRIT_EVENT_BUF:-}" ] && rm -f "$_WRIT_EVENT_BUF" 2>/dev/null || true
   exit "$rc"
 }
 
@@ -415,6 +466,18 @@ _writ_hook_exit_trap() {
 # cannot forge a second record (SEC-INJ-LOG-001).
 # Usage: log_gate_decision "phase-a" "deny" "no plan approved" "src/foo.py"
 log_gate_decision() {
+  # Fast path: append RAW field values to the event buffer and let the exit trap
+  # emit everything in ONE python spawn. printf writes the values verbatim with
+  # ASCII unit (\x1f) / record (\x1e) separators -- control characters that cannot
+  # occur in a bash variable -- so python does all JSON encoding and no bash-side
+  # quoting can corrupt or forge a record.
+  if [ -n "${_WRIT_EVENT_BUF:-}" ] && [ -f "${_WRIT_EVENT_BUF}" ]; then
+    printf 'gate_decision\037%s\037%s\037%s\037%s\036' \
+      "${1:-}" "${2:-}" "${3:-}" "${4:-}" >> "$_WRIT_EVENT_BUF" 2>/dev/null || true
+    return 0
+  fi
+  # Fallback for a hook that calls this without hook_instrument (no buffer):
+  # emit directly so the decision is still recorded.
   WRIT_GD_GATE="${1:-}" \
   WRIT_GD_DECISION="${2:-}" \
   WRIT_GD_REASON="${3:-}" \

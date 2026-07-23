@@ -93,13 +93,16 @@ class TestPhase6bEdgeContract:
 
     def test_allowed_edge_types_total_count(self) -> None:
         from writ.graph.db import ALLOWED_EDGE_TYPES
-        # Change C: 7 pre-existing (was 9; APPLIES_TO + JUSTIFIED_BY retired)
-        # + 8 Phase-1 new + 1 Phase-0 (BELONGS_TO) + 1 (1.3b INVOKES) = 17.
-        # RED until db.py removes APPLIES_TO and JUSTIFIED_BY.
-        assert len(ALLOWED_EDGE_TYPES) == 17, (
-            f"ALLOWED_EDGE_TYPES expected 17 entries (Change C: APPLIES_TO + "
-            f"JUSTIFIED_BY retired, count 19 -> 17); got {len(ALLOWED_EDGE_TYPES)}: "
-            f"{sorted(ALLOWED_EDGE_TYPES)}"
+        # 17 as of Change C (APPLIES_TO + JUSTIFIED_BY retired), plus 7 added by
+        # later programs that this stale constant never tracked: decision-memory
+        # (HAS_DECISION, HAS_CHANGE, HAS_COMMIT, MOTIVATED_BY) and the methodology
+        # corpus (TEACHES, DISPATCHES, PRESSURE_TESTS). The count is deliberately
+        # exact so ADDING an edge type stays a conscious act that updates this
+        # number; it had drifted to a permanent RED instead.
+        assert len(ALLOWED_EDGE_TYPES) == 24, (
+            f"ALLOWED_EDGE_TYPES expected 24 entries; got "
+            f"{len(ALLOWED_EDGE_TYPES)}: {sorted(ALLOWED_EDGE_TYPES)}. Adding or "
+            f"removing an edge type must update this count deliberately."
         )
 
     @pytest.mark.parametrize(

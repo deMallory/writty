@@ -58,12 +58,25 @@ body = json.dumps({
     'skill_dir': skill_dir,
     'file_path': file_path,
 })
+# Write-context (file path + content) for the always-on applicability filter is
+# derived HERE rather than in a second python3 spawn further down: that spawn
+# re-parsed this exact same STDIN_DATA for these exact fields, paying a full
+# interpreter start (~26ms) on the hottest gate path to recompute what this parse
+# already had in hand. Emitted on ONE line so the existing line-split contract
+# below still holds.
+write_ctx = ' '.join(p for p in [
+    file_path,
+    ti.get('content') or ti.get('new_source') or '',
+    ti.get('new_string') or '',
+] if p).replace('\n', ' ').replace('\r', ' ')
 print(sid)
+print(write_ctx)
 print(body)
 " "$STDIN_DATA" "$SKILL_DIR" 2>/dev/null)
 
 SESSION_ID=$(echo "$PARSED_INPUT" | head -1)
-CHECK_BODY=$(echo "$PARSED_INPUT" | tail -n +2)
+WRITE_CTX=$(echo "$PARSED_INPUT" | sed -n 2p)
+CHECK_BODY=$(echo "$PARSED_INPUT" | tail -n +3)
 
 if [ -z "$SESSION_ID" ]; then
     SESSION_ID=$(detect_session_id "")
@@ -204,22 +217,7 @@ else
     # WRIT_ALWAYS_ON_FILTER=0.
     case "${WRIT_ALWAYS_ON_FILTER:-1}" in 1|on|true|yes) _AO_FILTER=1 ;; *) _AO_FILTER="" ;; esac
     if [ -n "$_AO_FILTER" ]; then
-        WRITE_CTX=$(printf '%s' "$STDIN_DATA" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print(''); raise SystemExit
-ti = d.get('tool_input') or {}
-if isinstance(ti, str):
-    try:
-        ti = json.loads(ti)
-    except Exception:
-        ti = {}
-parts = [ti.get('file_path') or ti.get('path') or ti.get('notebook_path') or '',
-         ti.get('content') or ti.get('new_source') or '', ti.get('new_string') or '']
-print(' '.join(p for p in parts if p))
-" 2>/dev/null)
+        # WRITE_CTX already computed by the single consolidated parse above.
         AO_WRITE_JSON=$(curl -s -G --connect-timeout 0.3 --max-time 1 \
             --data-urlencode "mode=${MODE:-universal}" \
             --data-urlencode "at=write" \

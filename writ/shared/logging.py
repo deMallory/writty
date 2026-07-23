@@ -29,7 +29,6 @@ import json
 import os
 import re
 import sys
-import traceback
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -372,6 +371,12 @@ def emit_exception(
     except Exception:
         exc_type, message = "UnknownError", ""
     try:
+        # Imported HERE, not at module scope: `traceback` costs ~2ms to import and
+        # this module is imported by friction-append.py on EVERY instrumented hook
+        # spawn, while an exception is logged only rarely. At module scope it was a
+        # measured ~2ms tax on every hook run for a path almost never taken.
+        import traceback
+
         tb = "".join(
             traceback.format_exception(type(exc), exc, exc.__traceback__)
         )
