@@ -552,8 +552,17 @@ _writ_session() {
                 "${WRIT_SESSION_BASE}/session/${session_id}/mode" 2>/dev/null) || true
             if [ -n "$mode_result" ]; then
                 # jq-first parse (B2: ~1-2ms vs ~10ms python cold-start per call).
-                parsed_field "$mode_result" "mode"
-                return $?
+                local _mode_val
+                _mode_val=$(parsed_field "$mode_result" "mode")
+                # An EMPTY mode means the daemon answered but does not know this
+                # session -- typically because its cache dir differs from ours (the
+                # server-desync state, or a stale daemon on this port). Returning ""
+                # here silently disables every mode-gated hook; fall through to the
+                # local subprocess, which reads the cache we actually write.
+                if [ -n "$_mode_val" ]; then
+                    printf '%s\n' "$_mode_val"
+                    return 0
+                fi
             fi
             # Fallback to subprocess
             python3 "$helper" mode get "$session_id"
