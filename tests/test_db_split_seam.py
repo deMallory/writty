@@ -28,7 +28,13 @@ EXPECTED_METHODS = [
     "create_filechange", "create_methodology_node", "create_project", "create_record_edge",
     "create_rule", "delete_abstractions", "delete_rule", "evaluate_and_flip_graduation",
     "get_abstraction", "get_all_abstractions", "get_all_edges_cross_type",
-    "get_all_nodes", "get_all_nodes_by_type", "get_all_rules", "get_graph_nodes_and_edges",
+    # Added after the split by later programs and never folded into this frozen
+    # list, so it sat permanently RED: `execute` and `get_all_nodes_for_dump` from
+    # the Cypher graph-dump feature, `get_category_routes_by_node` from Phase-0
+    # category routing. The list stays exhaustive on purpose -- an unexpected EXTRA
+    # method must fail here too -- so adding one is a deliberate act that edits this.
+    "execute", "get_all_nodes", "get_all_nodes_by_type", "get_all_nodes_for_dump",
+    "get_all_rules", "get_category_routes_by_node", "get_graph_nodes_and_edges",
     "get_latest_filechange_per_path", "get_node_with_neighbors", "get_nodes_by_category",
     "get_open_decisions_for_path", "get_projects", "get_recent_decisions", "get_rule",
     "get_rule_abstraction", "get_rule_statements", "get_rules_by_authority",

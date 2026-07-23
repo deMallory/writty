@@ -325,7 +325,10 @@ detect_language() {
 }
 
 # ── Friction event logging ──────────────────────────────────────────────────
-# Appends a JSON event to workflow-friction.log. Fire-and-forget.
+# Appends a JSON event to the typed stream its event name maps to. Fire-and-forget.
+# (Historically this wrote the single per-project friction log; since the P1 router
+# it routes through friction-append.py -> writ.shared.logging.emit, which classifies
+# by event via STREAM_MAP.)
 # Usage: log_friction_event "$SESSION_ID" "$MODE" "event_name" '{"key":"val"}'
 # Extra fields arg is optional JSON object to merge.
 # Single env-aware writer (Phase 1.2): all friction writes route through

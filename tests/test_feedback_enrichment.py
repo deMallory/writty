@@ -25,7 +25,11 @@ def session_id():
     import uuid
     sid = f"test-{uuid.uuid4().hex[:12]}"
     yield sid
-    path = os.path.join(tempfile.gettempdir(), f"writ-session-{sid}.json")
+    # Production resolver, not tempfile.gettempdir(): the session cache moved off
+    # /tmp (systemd empties it at boot), so a hardcoded temp path reads a file the
+    # code never writes.
+    from writ.session.cache import _cache_path
+    path = _cache_path(sid)
     if os.path.exists(path):
         os.remove(path)
 
@@ -76,7 +80,8 @@ class TestEnrichedFeedback:
                           "--evidence", f"cycle {i+1}"])
 
         # Manually mark feedback as sent (simulating what writ-rag-inject.sh does)
-        cache_path = os.path.join(tempfile.gettempdir(), f"writ-session-{session_id}.json")
+        from writ.session.cache import _cache_path
+        cache_path = _cache_path(session_id)
         with open(cache_path) as f:
             cache = json.load(f)
         cache["escalation"]["feedback_sent"] = True
