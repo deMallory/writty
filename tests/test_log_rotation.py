@@ -119,6 +119,9 @@ def test_retention_days_constant_values():
     assert RETENTION_DAYS == {
         "audit": 365,
         "friction": 365,
+        # errors matches audit, not metrics: a silent failure that corrupted state
+        # months ago is exactly what an investigation needs to reach back for.
+        "errors": 365,
         "metrics": 90,
         "debug": 14,
     }
@@ -396,7 +399,7 @@ def test_rotate_logs_gzips_uncompressed_archive_generation_and_removes_original(
 # ===========================================================================
 
 
-@pytest.mark.parametrize("stream", ["audit", "friction", "metrics", "debug"])
+@pytest.mark.parametrize("stream", ["audit", "friction", "metrics", "debug", "errors"])
 def test_rotate_logs_prunes_past_retention_and_keeps_inside_window(
     tmp_path, stream,
 ):
@@ -610,7 +613,7 @@ def test_rotate_logs_signature_accepts_now_and_scratch_dir_as_optional_kwargs():
 # ===========================================================================
 
 
-@pytest.mark.parametrize("stream", ["audit", "friction", "metrics", "debug"])
+@pytest.mark.parametrize("stream", ["audit", "friction", "metrics", "debug", "errors"])
 def test_rotate_logs_keeps_archive_exactly_at_retention_window_boundary(
     tmp_path, stream,
 ):

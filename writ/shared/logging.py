@@ -29,6 +29,7 @@ import json
 import os
 import re
 import sys
+import traceback
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -40,6 +41,11 @@ from writ.shared.friction import base_friction_entry
 # two can never drift; DRY-CONFIG-001 / CLEAN-NAME-001). A stream file at or over
 # this size is rolled into archive/ before the next append.
 ROTATE_SIZE_BYTES = 50 * 1024 * 1024
+
+# Cap on the traceback recorded by emit_exception. Tail-biased when applied, so the
+# innermost frames survive; an uncapped traceback is how the errors stream would
+# become the next unbounded log.
+_TRACEBACK_MAX_CHARS = 2000
 
 # Classification taxonomy (## Analysis STREAM_MAP): audit = governance decisions
 # (immutable compliance), friction = "worth fixing" signal, metrics = high-volume
@@ -76,6 +82,13 @@ STREAM_MAP: dict[str, str] = {
     "recall_failed": "friction",
     "git_hooks_auto_install_failed": "friction",
     "debug_to_work_handoff": "friction",
+    # Emitted from writ/session/session_lifecycle.py; they reached friction only
+    # via _DEFAULT_STREAM. Same destination, stated rather than inferred.
+    "pre_compaction": "friction",
+    "post_compaction": "friction",
+    # errors: a caught exception is not workflow friction. Own stream, own
+    # retention (see log_rotation.RETENTION_DAYS).
+    "exception": "errors",
     # metrics
     "hook_execution": "metrics",
     "rag_query": "metrics",
@@ -88,8 +101,10 @@ STREAM_MAP: dict[str, str] = {
     "token_snapshot": "metrics",
     "pressure_audit": "metrics",
     "cwd_changed": "metrics",
-    "instructions_loaded": "metrics",
     "methodology_push": "metrics",
+    # Per-dispatch telemetry from hooks/scripts/writ-subagent-start.sh; it was the
+    # largest event reaching friction only through _DEFAULT_STREAM.
+    "subagent_rules_injected": "metrics",
 }
 
 # Fail-safe default for any event absent from STREAM_MAP: friction (never dropped,
@@ -301,7 +316,10 @@ def emit(
     with a single stderr note, so no event is lost and no caller is blocked.
     """
     entry = _build_entry(event, session_id, mode, fields)
-    line = json.dumps(entry) + "\n"
+    # default=str: a caller-supplied field that is not JSON-native must not turn a
+    # fire-and-forget log call into a TypeError at the call site. The docstring's
+    # "never raises" is the contract every hook and converted except-handler relies on.
+    line = json.dumps(entry, default=str) + "\n"
 
     friction_log = os.environ.get("WRIT_FRICTION_LOG")
     if friction_log:
@@ -321,6 +339,54 @@ def emit(
         _append_line(target, line)
     except OSError:
         _fallback(line, event)
+
+
+def emit_exception(
+    component: str,
+    exc: BaseException,
+    session_id: str = "",
+    mode: str | None = None,
+    **ctx,
+) -> None:
+    """Record a caught exception on the `errors` stream. Never raises.
+
+    For handlers that must keep swallowing (a hook may not be blocked by a logging
+    concern) but must stop being invisible. `component` is a stable dotted label for
+    the failing site, e.g. `session.cache.read`; it is what makes an errors row
+    greppable without parsing the traceback.
+
+    Adds a record and nothing else: the caller keeps its own control flow and return
+    value, so converting a handler cannot change behavior. Delegates to `emit`, so it
+    inherits classification, the durable `_fallback.jsonl`, CR/LF sanitization, and
+    the `WRIT_FRICTION_LOG` single-file collapse.
+
+    The traceback is tail-truncated to `_TRACEBACK_MAX_CHARS`: an uncapped traceback
+    in a JSON-lines file is the realistic way this stream becomes the next unbounded
+    log, and the innermost frames (at the tail) are the ones worth keeping.
+    """
+    try:
+        exc_type = type(exc).__name__
+        message = str(exc)
+    except Exception:
+        exc_type, message = "UnknownError", ""
+    try:
+        tb = "".join(
+            traceback.format_exception(type(exc), exc, exc.__traceback__)
+        )
+    except Exception:
+        # A non-exception argument (or one with no __traceback__) still deserves a row.
+        tb = ""
+    emit(
+        "errors",
+        "exception",
+        session_id,
+        mode,
+        component=component,
+        exc_type=exc_type,
+        message=message,
+        traceback=tb[-_TRACEBACK_MAX_CHARS:],
+        **ctx,
+    )
 
 
 def _fallback(line: str, event: str) -> None:

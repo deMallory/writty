@@ -126,7 +126,13 @@ def _load_categories(categories_path: str) -> dict:
     try:
         with open(categories_path) as f:
             return json.load(f)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        # The gate keeps running without its exclusion list, which silently changes
+        # what it blocks. Record it rather than degrade invisibly.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.gates.categories", exc, "", None,
+                       categories_path=categories_path)
         return {"exclusions": [], "categories": [], "framework_detection": {}}
 
 
@@ -537,8 +543,12 @@ def _classify_runtime_read(target: str, skill_dir: str, reason: str) -> dict:
     try:
         if _matches_any(target, _load_categories(categories_path).get("exclusions", [])):
             return {"can_read": True, "reason": None}
-    except Exception:
-        pass
+    except Exception as exc:
+        # Falling through skips the exclusion check entirely, so an excluded path can
+        # be classified as blocked code. Same outcome as before, now visible.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.gates.read_exclusions", exc, "", None, target=target)
     if os.path.splitext(target)[1].lower() in _CODE_EXTENSIONS:
         return {"can_read": False, "reason": reason}
     return {"can_read": True, "reason": None}  # non-code data/doc
@@ -592,7 +602,12 @@ def _can_read_code_check(session_id: str, envelope: dict, skill_dir: str = "") -
             return _classify_runtime_read(ti.get("pattern") or "", skill_dir, reason)
 
         return {"can_read": True, "reason": None}
-    except Exception:
+    except Exception as exc:
+        # Fail-open is deliberate (a gate bug must never wedge the agent), but an
+        # allow-from-crash is otherwise indistinguishable from a legitimate allow.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.gates.can_read", exc, session_id, None)
         return {"can_read": True, "reason": None}  # fail-open
 
 

@@ -200,7 +200,14 @@ def _read_cache(session_id: str) -> dict:
         for key, value in _default_cache().items():
             data.setdefault(key, value)
         return data
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        # Stay fail-soft, but say so: this fallback presents downstream as a session
+        # that lost its mode and gates, which is indistinguishable from a genuinely
+        # new session. That ambiguity is what made the mode=None class of bug so
+        # expensive to diagnose.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.cache.read", exc, session_id, None, cache_path=path)
         return _default_cache()
 
 

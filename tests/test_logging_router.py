@@ -144,6 +144,37 @@ def test_stream_map_classifies_friction_events(event):
     assert stream_for(event) == "friction"
 
 
+# Audit item 6 (taxonomy cleanup): these three are emitted in production but
+# reached their stream only through _DEFAULT_STREAM. pre/post_compaction keep
+# the same destination, stated rather than inferred; subagent_rules_injected is
+# per-dispatch telemetry and belongs in metrics, not friction.
+@pytest.mark.parametrize("event,expected", [
+    ("pre_compaction", "friction"),
+    ("post_compaction", "friction"),
+    ("subagent_rules_injected", "metrics"),
+])
+def test_previously_unmapped_live_events_are_mapped_explicitly(event, expected):
+    assert STREAM_MAP[event] == expected
+    assert stream_for(event) == expected
+
+
+def test_instructions_loaded_is_dropped_from_the_map():
+    """No emitter exists anywhere in the tree; a mapped event implies a producer."""
+    assert "instructions_loaded" not in STREAM_MAP
+
+
+# The errors stream (audit item 4): a dedicated stream so an OSError in the
+# cache writer is not filed as workflow friction.
+def test_errors_is_a_known_stream_with_its_own_retention():
+    from writ.session.log_rotation import RETENTION_DAYS
+
+    assert RETENTION_DAYS["errors"] == 365
+
+
+def test_exception_event_routes_to_the_errors_stream():
+    assert stream_for("exception") == "errors"
+
+
 # Audit item C1: both events are unmapped. write_failure's only emitter
 # (track-failed-writes.sh) was removed as dead because PostToolUseFailure
 # Write|Edit never fires, and pre_write_decision was retired in 1.3. They keep
@@ -159,7 +190,7 @@ def test_retired_events_are_unmapped_but_still_route_to_friction(event):
     "hook_execution", "rag_query", "always_on_inject", "subagent_start",
     "subagent_complete", "playbook_step_complete", "phase_token_summary",
     "phase_transition_time", "token_snapshot", "pressure_audit",
-    "cwd_changed", "instructions_loaded", "methodology_push",
+    "cwd_changed", "methodology_push", "subagent_rules_injected",
 ])
 def test_stream_map_classifies_metrics_events(event):
     assert STREAM_MAP[event] == "metrics"
@@ -172,9 +203,16 @@ def test_stream_for_unknown_event_defaults_to_friction():
 
 
 def test_stream_map_has_no_event_mapped_to_two_streams():
-    """Every event name in STREAM_MAP maps to exactly one stream string."""
+    """Every event maps to exactly one stream, and that stream is a known one.
+
+    The valid set is derived from RETENTION_DAYS rather than hardcoded, so adding a
+    stream cannot leave this check silently pinned to the old vocabulary (it was,
+    until `errors` was added).
+    """
+    from writ.session.log_rotation import RETENTION_DAYS
+
     for event, stream in STREAM_MAP.items():
-        assert stream in ("audit", "friction", "metrics"), (event, stream)
+        assert stream in RETENTION_DAYS, (event, stream)
 
 
 # --- emit(): base schema + classification + write -----------------------

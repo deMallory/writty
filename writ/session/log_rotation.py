@@ -45,6 +45,7 @@ from writ.shared.logging import (
 RETENTION_DAYS: dict[str, int] = {
     "audit": 365,
     "friction": 365,
+    "errors": 365,
     "metrics": 90,
     "debug": 14,
 }

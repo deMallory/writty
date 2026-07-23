@@ -231,11 +231,31 @@ Verification: 415 tests pass across every file touching the changed code
 `test_phase5_cli`, `test_metrics`, `test_writ_audit_session`, and the rest of the dependent set).
 
 **P1, the coverage core**
-4. `errors` stream plus `emit_exception` helper; convert the ~20 B1 sites.
-5. Instrument the 18 uninstrumented hooks: `hook_timer_end` on every exit, decision events on both
-   gate branches (A).
-6. Taxonomy cleanup: map the 4 unmapped live events, drop the 3 dead entries, stop
-   `logroot_smoke_test` reaching production (C2, C3).
+4. DONE 2026-07-22. `errors` stream (365-day retention, matching audit) plus `emit_exception`,
+   and 12 converted call sites.
+
+   SCOPE CORRECTION: the plan said ~20-28 sites from an AST classification. Reading each one showed
+   most are intended fallbacks, not hidden defects, and converting them would emit noise:
+   `embeddings.py`'s four `OSError` handlers are temp-file cleanups inside blocks that re-raise;
+   `cache.py:56,66,75,87` are a documented resolution chain whose third candidate raises
+   `FileNotFoundError` every normal turn; `approval_workflow.py:189,210` skip unreadable files during
+   a glob scan; `mode_engine.py:177` guards a logging call. Converted instead: `cache.py:203`,
+   `gates.py:129,540,595`, `gate_token.py:31,44,74,78`, `mode_engine.py:115`, `query.py:350,371`.
+   Three of those needed the anomalous case split from the routine one (an absent gate token is
+   normal; a present-but-unreadable one is not) rather than a blanket convert.
+
+   Also fixed while here: `emit` called `json.dumps` without `default=str`, so a non-JSON-native
+   field raised `TypeError` at the call site, contradicting its own "never raises" docstring.
+
+   DEFERRED: `pipeline.py:806,831` (HNSW cache miss / save failure). They already call `_logger`, so
+   they are the least silent of the set, and reaching them needs a full `build_pipeline` run.
+5. NEXT. Instrument the 18 uninstrumented hooks: `hook_timer_end` on every exit, decision events on
+   both gate branches (A). Bash-only, so it gets its own cycle.
+6. DONE 2026-07-22. `pre_compaction`/`post_compaction` mapped to friction explicitly,
+   `subagent_rules_injected` to metrics, dead `instructions_loaded` dropped. `logroot_smoke_test`
+   turned out to be a one-off manual smoke test with no emitter in the tree, so there was nothing to
+   fix. A router test now derives the valid stream vocabulary from `RETENTION_DAYS`, which is how the
+   old hardcoded `("audit", "friction", "metrics")` tuple silently failed to cover a new stream.
 
 **P2, new observability**
 7. Daemon per-request events, retrieval quality signals, Neo4j failure events (F).

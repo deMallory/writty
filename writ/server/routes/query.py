@@ -347,7 +347,12 @@ async def _count_categories(db: Neo4jConnection) -> int:
         if record is None:
             return 0
         return int(record.get("category_count") or 0)
-    except Exception:
+    except Exception as exc:
+        # A 0 from a graph failure reads downstream exactly like a genuinely empty
+        # corpus, so the caller cannot tell "no categories" from "no database".
+        from writ.shared.logging import emit_exception
+
+        emit_exception("server.query.count_categories", exc)
         return 0
 
 
@@ -368,7 +373,12 @@ async def _route_distribution(db: Neo4jConnection) -> dict[str, int]:
         async with db._driver.session(database=db._database) as session:
             result = await session.run(query)
             rows = [record.data() async for record in result]
-    except Exception:
+    except Exception as exc:
+        # Same ambiguity as _count_categories: an empty distribution from a failure
+        # is indistinguishable from a corpus with no routed categories.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("server.query.route_distribution", exc)
         return {}
     distribution: dict[str, int] = {}
     for row in rows:

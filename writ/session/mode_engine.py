@@ -112,7 +112,16 @@ def _extract_root_cause(debug_md_path: str) -> str | None:
     try:
         with open(debug_md_path) as f:
             content = f.read()
-    except OSError:
+    except FileNotFoundError:
+        # No debug.md yet: the normal state before a debug cycle starts.
+        return None
+    except OSError as exc:
+        # Present but unreadable silently reads as "no root cause recorded", which
+        # blocks the Debug -> Work handoff for a reason the agent cannot see.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.mode_engine.read_debug_md", exc, "", None,
+                       debug_md_path=debug_md_path)
         return None
     body = _section_body(content, r'^##\s+Root\s+[Cc]ause.*$')
     return (body.strip() or None) if body else None
