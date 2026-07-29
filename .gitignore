@@ -54,3 +54,6 @@ writ.egg-info/
 .jolli/
 
 .docs
+
+# Codebase inventory workflow output (regenerable, raw material for viz)
+inventory/
