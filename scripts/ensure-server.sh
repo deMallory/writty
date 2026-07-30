@@ -49,7 +49,8 @@ fi
 # plugin's SessionStart bootstrap cannot race each other into two `writ serve` launches.
 # shellcheck source=scripts/lib/writ-server-lib.sh
 source "$WRIT_DIR/scripts/lib/writ-server-lib.sh"
-WRIT_LOG="/tmp/writ-server.log"
+# WRIT_LOG intentionally unset: writ-server-lib.sh::writ_default_server_log owns the
+# resolution (one path, four callers). Export WRIT_LOG to override.
 # Start-only fallback (no cache-realign restart). The systemd user service
 # (scripts/install-server-service.sh) now owns the daemon's lifecycle and
 # auto-restarts it; this init path must never kill+restart a running daemon, or

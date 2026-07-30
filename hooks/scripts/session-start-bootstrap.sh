@@ -65,7 +65,8 @@ exec 3>&- 2>/dev/null || true
 #    WRIT_CACHE_DIR. Graceful: it always returns 0.
 WRIT_HOST="localhost"
 WRIT_PORT="8765"
-WRIT_LOG="${WRIT_DATA}/server.log"
+# WRIT_LOG intentionally unset: the library resolves it, and its plugin branch picks
+# ${CLAUDE_PLUGIN_DATA}/server.log -- the same path this line used to hardcode.
 # shellcheck source=scripts/lib/writ-server-lib.sh
 source "${WRIT_DIR}/scripts/lib/writ-server-lib.sh"
 writ_ensure_server

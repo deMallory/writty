@@ -74,7 +74,7 @@ if [ -z "${WRIT_NO_AUTOSTART:-}" ] && ! curl -sf --connect-timeout 0.2 "$WRIT_HE
         # shellcheck source=scripts/lib/writ-server-lib.sh
         source "$WRIT_DIR/scripts/lib/writ-server-lib.sh"
         WRIT_HOST="$WRIT_HOST" WRIT_PORT="$WRIT_PORT" WRIT_DIR="$WRIT_DIR" \
-            VENV_DIR="$VENV_DIR" WRIT_LOG="/tmp/writ-server.log" \
+            VENV_DIR="$VENV_DIR" \
             writ_ensure_server || true
     fi
 fi

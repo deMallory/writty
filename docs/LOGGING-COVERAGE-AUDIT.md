@@ -8,8 +8,10 @@ covers transport (streams, rotation, retention) but never covered coverage.
 Headline: transport is built, coverage is not. 18 of 37 wired hooks emit nothing at all, 181 of 224
 exception handlers record nothing, and one shipped metric can only ever report zero.
 
-**STATUS 2026-07-30: the worklist is CLOSED.** P0, P1 and P2 are all done except item 8, which
-was dropped by decision (see the worklist for both). The findings above are kept as written, in
+**STATUS 2026-07-30: CLOSED, including the findings that never became worklist items.** P0, P1
+and P2 are done except item 8 (dropped by decision). D3 and both remaining section-F bullets are
+resolved above: one as a decision with tests, one as a retracted claim with per-site evidence, one
+as new telemetry. The findings above are kept as written, in
 past tense, because the reasoning behind each fix is the reason it should not be undone; every
 item now carries a DONE / DROPPED note with what actually shipped and what was measured.
 
@@ -175,8 +177,21 @@ empty result unless `read_streams` also unions the archives. The two must ship t
    `debug.jsonl`. `STREAM_MAP` has no debug entries. Debug is still `/tmp` text files
    (`writ-hook-debug.log`, `writ-hooks.log`, `writ-prompt-debug.log`), now correctly gated behind
    `WRIT_DEBUG`. Spam is solved; durability is not.
-3. **`calibration.jsonl` unrouted.** Sits at `var/logs/calibration.jsonl`, outside any project dir
-   and outside the taxonomy. Was blueprint item 10.
+3. **`calibration.jsonl` unrouted.** RESOLVED 2026-07-30 as a DECISION, not a routing change.
+   It sits at `var/logs/calibration.jsonl`, outside any project dir and outside the taxonomy
+   (was blueprint item 10) -- and that is correct on both counts. It holds global
+   analyzer-calibration data, not per-project workflow events, so it is not a stream; and it
+   cannot grow, because `analysis/analyzer.py` calls `log_calibration` only under
+   `if mode == "calibration"` and `Instrumentation.get_mode()` flips to `production` once the
+   file reaches `CALIBRATION_THRESHOLD` (100) lines. Measured: 100 entries, mode=production,
+   writes already stopped.
+
+   The sweep skips root-level files by design (`_collect`: `elif not at_root`), which it shares
+   with `_fallback.jsonl` -- rotating the file that catches failed writes would be
+   self-defeating. Both are now named in that docstring, and
+   `tests/test_root_level_log_files.py` pins BOTH halves: the sweep leaves them byte-identical,
+   and the write bound still holds. If someone makes `log_calibration` unconditional, that test
+   fails and this "no rotation needed" conclusion has to be re-derived rather than inherited.
 
 ---
 
@@ -254,10 +269,29 @@ Beyond fixing the above, these produce no events today and are worth adding:
 - **Retrieval quality signals.** The S4 abstention gate fires with no event. Empty result sets,
   below-threshold scores, and HNSW rebuilds are unrecorded.
 - **Neo4j connection failures.** No event distinguishes "graph unreachable" from "no rules matched".
-- **Subprocess failures.** 22 `subprocess.run`/`Popen`/`check_output` call sites in `writ/`; non-zero
-  exits are largely unchecked and unrecorded.
-- **Config resolution.** Which `writ.toml` was loaded, which env overrides won. Currently
-  undiagnosable after the fact.
+- **Subprocess failures.** CLAIM RETRACTED 2026-07-30 after reading all 22 sites. "Non-zero exits
+  are largely unchecked" does not hold: every site outside two exempt families either raises with
+  the exit code attached (`git_hooks.py` RuntimeError, `git_identity.py` NotInRepoError,
+  `harvester.py` ValueError plus one `check=True`) or treats non-zero as a documented expected
+  outcome (`commit_capture.py` and `cli.py` guard on `returncode == 0` for "is this a repo?"
+  probes). The exempt families are the ones B2 already excused: `doctor.py`, where the diagnostic
+  IS the output, and `efficacy_ab.py`, a benchmark harness with explicit `check=False` that is
+  never imported at module scope. Emitting at the probe sites would repeat the mistake P1's SCOPE
+  CORRECTION recorded -- a `git rev-parse` failing in a non-repo directory is the same shape as
+  `cache.py`'s resolution chain raising `FileNotFoundError` every normal turn. No code change;
+  `tests/test_subprocess_failure_handling.py` pins the inventory and fails if a new caller
+  appears or if any site starts swallowing an exit silently.
+- **Config resolution.** DONE 2026-07-30. `config_resolved` (metrics) records path, outcome
+  (`loaded` / `absent-using-defaults` / `empty-using-defaults` / `malformed-using-defaults` /
+  `unreadable-using-defaults`) and the section.key NAMES, once per process per path -- every
+  getter calls `load_config` on each access, so a per-call emit would put dozens of identical
+  rows in every process. Key names only, never values: `writ.toml` holds `neo4j.password` and
+  `bitbucket.token`, and logging values would move credentials into a 365-day stream
+  (SEC-DATA-MASK-001); a test asserts the secrets are absent and the names present. The absent
+  case mattered most: `writ.toml` is gitignored, so a fresh install silently ran on built-in
+  defaults including `DEFAULT_NEO4J_PASSWORD`, indistinguishable from a loaded config. The
+  malformed and unreadable branches now also reach the `errors` stream, since their stderr
+  warning goes to a swallowed sink in a hook and to journald in the daemon.
 - **Verification evidence.** `verification_evidence` and `citation_log` live only in the session
   cache; they never reach a durable stream, so they die with the cache.
 

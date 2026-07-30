@@ -109,6 +109,9 @@ STREAM_MAP: dict[str, str] = {
     # HNSW index cache outcome, once per pipeline build. A miss means the process is
     # about to bulk-encode the whole corpus.
     "hnsw_cache": "metrics",
+    # Which writ.toml was resolved and what it contributed, once per process per path.
+    # Key NAMES only: that file holds neo4j.password and bitbucket.token.
+    "config_resolved": "metrics",
     "rag_query": "metrics",
     "always_on_inject": "metrics",
     "subagent_start": "metrics",
