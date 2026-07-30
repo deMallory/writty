@@ -23,7 +23,7 @@ except ImportError:
 from writ.server import app  # type: ignore[import]
 from pathlib import Path
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 SESSION_HELPER = f"{SKILL_DIR}/bin/lib/writ-session.py"
 
 

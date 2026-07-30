@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = (Path.home() / ".claude/skills/writ")
+SKILL_DIR = (Path(__file__).resolve().parent.parent)
 EXPECTED_VERSION = "1.5.0"
 
 

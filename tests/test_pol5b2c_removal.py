@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 WRIT_SESSION_PY = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")
 TRACK_HOOK = SKILL_DIR / "hooks" / "scripts" / "track-failed-writes.sh"
 HOOKS_JSON = SKILL_DIR / "hooks" / "hooks.json"

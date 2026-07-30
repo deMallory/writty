@@ -21,7 +21,7 @@ import sys
 import pytest
 from pathlib import Path
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 INJECT_HOOK = f"{SKILL_DIR}/hooks/scripts/writ-rag-inject.sh"
 POSTTOOL_HOOK = f"{SKILL_DIR}/hooks/scripts/writ-posttool-rag.sh"
 

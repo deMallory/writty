@@ -23,7 +23,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 HOOK = SKILL_DIR / "hooks" / "scripts" / "validate-test-file.sh"
 WRIT_SESSION_PY = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")
 HOOK_SRC = HOOK.read_text()

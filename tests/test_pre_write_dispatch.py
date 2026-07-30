@@ -49,7 +49,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 SESSION_ID = "test-pre-write-dispatch"
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 COMMON_SH = f"{SKILL_DIR}/bin/lib/common.sh"
 

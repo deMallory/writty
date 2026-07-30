@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 PATCH_SCRIPT = SKILL_DIR / "scripts" / "patch-global-config.sh"
 PATCH_SRC = PATCH_SCRIPT.read_text()
 

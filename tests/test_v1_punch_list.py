@@ -27,7 +27,7 @@ import pytest
 
 from writ.graph.ingest import _parse_rule_block
 
-SKILL_DIR = (Path.home() / ".claude/skills/writ")
+SKILL_DIR = (Path(__file__).resolve().parent.parent)
 BIBLE = SKILL_DIR / "bible"
 
 

@@ -41,7 +41,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 from tests._writ_cmd import WRIT_CMD_PREFIX as _WRIT_CMD_PREFIX

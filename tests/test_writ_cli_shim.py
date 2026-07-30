@@ -19,7 +19,7 @@ import subprocess
 import pytest
 from pathlib import Path
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 SHIM = f"{SKILL_DIR}/bin/writ"
 
 

@@ -1060,8 +1060,8 @@ class TestGitHookScripts:
     RED until the hook files are written to hooks/git/.
     """
 
-    _SKILL_DIR = str(Path.home() / ".claude/skills/writ")
-    _POST_HOOK = str(Path.home() / ".claude/skills/writ/hooks/git/post-commit")
+    _SKILL_DIR = str(Path(__file__).resolve().parent.parent)
+    _POST_HOOK = str(Path(__file__).resolve().parent.parent / "hooks/git/post-commit")
 
     def _hook_env(self, repo: Path) -> dict:
         """Env for hook subprocess: unreachable daemon port, real git repo."""
@@ -1698,7 +1698,7 @@ class TestAddQueriedRulesForFileHandler:
     def _load_facade(self):
         import importlib.util
         import importlib
-        facade_path = str(Path.home() / ".claude/skills/writ/bin/lib/writ-session.py")
+        facade_path = str(Path(__file__).resolve().parent.parent / "bin/lib/writ-session.py")
         spec = importlib.util.spec_from_file_location("writ_session_qrf", facade_path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -1706,7 +1706,7 @@ class TestAddQueriedRulesForFileHandler:
 
     def _seed(self, tmp_path, sid, **fields):
         import sys
-        skill_root = str(Path.home() / ".claude/skills/writ")
+        skill_root = str(Path(__file__).resolve().parent.parent)
         if skill_root not in sys.path:
             sys.path.insert(0, skill_root)
         import importlib
@@ -1717,7 +1717,7 @@ class TestAddQueriedRulesForFileHandler:
 
     def _read(self, tmp_path, sid):
         import sys
-        skill_root = str(Path.home() / ".claude/skills/writ")
+        skill_root = str(Path(__file__).resolve().parent.parent)
         if skill_root not in sys.path:
             sys.path.insert(0, skill_root)
         import importlib
@@ -2051,7 +2051,7 @@ class TestAddQueriedRulesForFileHandlerHardening:
 
     def _load_facade(self):
         import importlib.util, importlib
-        facade_path = str(Path.home() / ".claude/skills/writ/bin/lib/writ-session.py")
+        facade_path = str(Path(__file__).resolve().parent.parent / "bin/lib/writ-session.py")
         spec = importlib.util.spec_from_file_location("writ_session_c1h", facade_path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -2059,7 +2059,7 @@ class TestAddQueriedRulesForFileHandlerHardening:
 
     def _seed(self, tmp_path, sid, **fields):
         import sys, importlib
-        skill_root = str(Path.home() / ".claude/skills/writ")
+        skill_root = str(Path(__file__).resolve().parent.parent)
         if skill_root not in sys.path:
             sys.path.insert(0, skill_root)
         cache = importlib.import_module("writ.session.cache")
@@ -2069,7 +2069,7 @@ class TestAddQueriedRulesForFileHandlerHardening:
 
     def _read(self, tmp_path, sid):
         import sys, importlib
-        skill_root = str(Path.home() / ".claude/skills/writ")
+        skill_root = str(Path(__file__).resolve().parent.parent)
         if skill_root not in sys.path:
             sys.path.insert(0, skill_root)
         cache = importlib.import_module("writ.session.cache")
@@ -2362,7 +2362,7 @@ class TestPreWriteDispatchQueriedRulesWiring:
     existing NEW_RULE_IDS guard.
     """
 
-    DISPATCH = str(Path.home() / ".claude/skills/writ/hooks/scripts/writ-pre-write-dispatch.sh")
+    DISPATCH = str(Path(__file__).resolve().parent.parent / "hooks/scripts/writ-pre-write-dispatch.sh")
 
     def test_dispatch_calls_add_queried_rules_for_file(self) -> None:
         # Item 4: the --add-queried-rules-for-file flag must appear in the hook so
@@ -2407,7 +2407,7 @@ class TestSubagentStartStampWiring:
     merge silently captures no sub-agent queried rules in production.
     """
 
-    START_HOOK = str(Path.home() / ".claude/skills/writ/hooks/scripts/writ-subagent-start.sh")
+    START_HOOK = str(Path(__file__).resolve().parent.parent / "hooks/scripts/writ-subagent-start.sh")
 
     def test_start_hook_stamps_parent_session_id(self) -> None:
         # RED: the --parent-session-id stamp is absent from the hook.
@@ -2484,7 +2484,7 @@ class TestCommitCaptureRouteSessionId:
 class TestPostCommitHookSessionIdBridge:
     """Item 6: static source assertions on hooks/git/post-commit for session_id bridge."""
 
-    _POST_HOOK = str(Path.home() / ".claude/skills/writ/hooks/git/post-commit")
+    _POST_HOOK = str(Path(__file__).resolve().parent.parent / "hooks/git/post-commit")
 
     def test_post_commit_reads_writ_current_session(self) -> None:
         # Item 6: the hook must read /tmp/writ-current-session to obtain the

@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 from pathlib import Path
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 VALIDATE_RULES_SH = f"{SKILL_DIR}/hooks/scripts/validate-rules.sh"
 VALIDATE_FILE_SH = f"{SKILL_DIR}/hooks/scripts/validate-file.sh"
 VALIDATE_HANDOFF_SH = f"{SKILL_DIR}/hooks/scripts/validate-handoff.sh"

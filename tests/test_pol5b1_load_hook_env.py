@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 PARSE_PY = str(SKILL_DIR / "bin" / "lib" / "parse-hook-stdin.py")
 COMMON_SH = str(SKILL_DIR / "bin" / "lib" / "common.sh")
 HOOKS = SKILL_DIR / "hooks" / "scripts"

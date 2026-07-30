@@ -25,7 +25,7 @@ import pytest
 
 from tests._daemon import _port
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 VALIDATE_RULES = SKILL_DIR / "hooks" / "scripts" / "validate-rules.sh"
 RUN_PENDING = SKILL_DIR / "hooks" / "scripts" / "writ-run-pending-tests.sh"
 WRIT_SESSION_PY = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")

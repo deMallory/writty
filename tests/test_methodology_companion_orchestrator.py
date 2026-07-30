@@ -37,7 +37,7 @@ from writ.shared.logging import read_streams, resolve_project  # noqa: E402
 pytestmark = pytest.mark.no_friction_isolation
 
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 HOOK = f"{SKILL_DIR}/hooks/scripts/writ-rag-inject.sh"
 
 
