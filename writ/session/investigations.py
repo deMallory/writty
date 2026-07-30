@@ -220,7 +220,7 @@ def cmd_record_analysis(session_id: str, file: str) -> None:
             "excerpt": excerpt,
             "findings": total,
             "errors": errors,
-        })
+        }, session_id)
     json.dump({"status": "recorded", "file": file, "findings": total, "errors": errors}, sys.stdout)
     sys.stdout.write("\n")
 

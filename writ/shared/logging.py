@@ -62,6 +62,11 @@ STREAM_MAP: dict[str, str] = {
     "candidate_promoted": "audit",
     "quality_judgment": "audit",
     "memory_policy_deny": "audit",
+    # Evidence, on audit rather than metrics: these ARE the oversight record. Both lived
+    # only in the session cache, and citation_log is additionally trimmed to a cap, so the
+    # proof behind a completion claim was the most perishable data Writ held.
+    "verification_evidence": "audit",
+    "citation_recorded": "audit",
     "committed_file_not_in_plan": "audit",
     "read_blocked": "audit",
     # Every gate's allow/deny, emitted on BOTH branches by log_gate_decision.
