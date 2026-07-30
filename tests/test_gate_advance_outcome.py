@@ -80,3 +80,99 @@ def test_error_wins_even_with_reason_populated():
     """Confirm the ordering: error present always -> rejected, even if reason is also present."""
     r = classify('{"advanced": false, "error": "x", "reason": "y"}')
     assert r["outcome"] == "rejected"
+
+
+# -- The tab-separated transport the hook parses with `cut` -------------------
+#
+# The stdout contract grew from 3 fields to 5 (validated + token_spent inserted before
+# the error), and auto-approve-gate.sh reads them by position: outcome=-f1, phase=-f2,
+# validated=-f3, token_spent=-f4, error=-f5-. A silent position shift would make the hook
+# print an artifact path where the error belongs, or claim the wrong token state. Nothing
+# tested the emitted line at all, so these pin the wire format itself.
+
+import json  # noqa: E402
+import subprocess  # noqa: E402
+
+_SCRIPT = os.path.join(os.path.dirname(__file__), "..", "bin", "lib", "gate_advance_outcome.py")
+
+FIELDS = ("outcome", "phase", "validated", "token_spent", "error")
+
+
+def _emit(payload: dict) -> list[str]:
+    """Run the script the way the hook does and split the first line into fields."""
+    proc = subprocess.run(
+        [sys.executable, _SCRIPT, json.dumps(payload)],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout.split("\n")[0].split("\t")
+
+
+def test_emitted_line_has_five_fields_in_order():
+    fields = _emit({"phase": "testing", "project_root": "/p", "root_tier": "cwd",
+                    "validated": "/p/plan.md"})
+    assert len(fields) == len(FIELDS), f"field count changed: {fields}"
+    assert fields[0] == "advanced"
+    assert fields[1] == "testing"
+    assert "/p/plan.md" in fields[2]
+    assert fields[3] == ""          # a successful advance reports no token_spent
+    assert fields[4] == ""          # no error
+
+
+def test_error_is_the_last_field():
+    fields = _emit({"advanced": False, "error": "bad plan", "token_spent": True})
+    assert fields[0] == "rejected"
+    assert fields[3] == "true"
+    assert fields[4] == "bad plan"
+
+
+def test_not_spent_refusal_reports_false():
+    fields = _emit({"advanced": False, "error": "no root", "token_spent": False})
+    assert fields[3] == "false", "the hook decides its re-approve wording from this field"
+
+
+def test_missing_token_spent_stays_empty():
+    """An older daemon omits the flag; the hook must not infer either state."""
+    fields = _emit({"advanced": False, "error": "bad plan"})
+    assert fields[3] == ""
+
+
+def test_validated_never_contains_a_tab_or_newline():
+    """A path may legally contain either, and would shift every later field."""
+    fields = _emit({"phase": "testing", "project_root": "/p",
+                    "validated": "/p/we\tird\nplan.md", "root_tier": "marker"})
+    assert len(fields) == len(FIELDS)
+    assert "\t" not in fields[2]
+
+
+def test_multiline_error_keeps_the_fixed_fields_on_line_one():
+    """The hook does `head -1 | cut -f4` for token_spent, then `cut -f5-` for the error."""
+    proc = subprocess.run(
+        [sys.executable, _SCRIPT,
+         json.dumps({"advanced": False, "token_spent": True,
+                     "error": "line one\nline two\nline three"})],
+        capture_output=True, text=True, timeout=30,
+    )
+    first = proc.stdout.split("\n")[0].split("\t")
+    assert first[0] == "rejected"
+    assert first[3] == "true"
+    assert first[4] == "line one"
+    assert "line two" in proc.stdout
+
+
+def test_hook_cut_positions_match_the_emitter():
+    """Parse with the exact cut expressions the hook uses, via a real shell."""
+    payload = json.dumps({"advanced": False, "error": "why it failed", "token_spent": False,
+                          "project_root": "/p"})
+    script = (
+        f'RAW=$({sys.executable} {_SCRIPT} {payload!r}); '
+        'echo "O=$(printf %s "$RAW" | cut -f1)"; '
+        'echo "V=$(printf %s "$RAW" | head -1 | cut -f3)"; '
+        'echo "S=$(printf %s "$RAW" | head -1 | cut -f4)"; '
+        'echo "E=$(printf %s "$RAW" | cut -f5-)"'
+    )
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30).stdout
+    assert "O=rejected" in out
+    assert "S=false" in out
+    assert "E=why it failed" in out
+    assert "project root /p" in out

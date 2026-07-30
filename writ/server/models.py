@@ -208,6 +208,11 @@ class SessionAdvancePhaseRequest(BaseModel):
     confirmation_source: str = "explicit"
     token: str = ""
     project_root: str = ""
+    # The caller's working directory, used to resolve the project root when
+    # project_root is empty (a cwd with no repo marker used to resolve to nothing,
+    # which refused every advance). The daemon cannot substitute its own cwd: that is
+    # Writ's install dir. Optional, so existing callers keep today's behavior.
+    cwd: str = ""
 
 
 class SessionPromoteCandidateRequest(BaseModel):

@@ -74,6 +74,22 @@ def _write_token(session_id: str, token: str) -> str:
     return path
 
 
+def _project_with_test_skeleton(tmp_path) -> str:
+    """A project root whose test-skeletons gate validates, returned as a str path.
+
+    These tests seed the 'test-skeletons pending' gate and care only about the token
+    CLAIM. The route now runs the target gate's validator (it used to validate phase-a
+    only, so test-skeletons advanced with no artifact check at all), which means a
+    request with no resolvable root is refused before the claim is reached. Supplying a
+    root that genuinely passes _validate_test_skeletons keeps these tests aimed at
+    concurrency instead of accidentally re-testing validation.
+    """
+    tests_dir = tmp_path / "proj" / "tests"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    (tests_dir / "test_skeleton.py").write_text("def test_placeholder():\n    assert True\n")
+    return str(tmp_path / "proj")
+
+
 # ---------------------------------------------------------------------------
 # G1(a) -- the claim primitive (concurrency, absent, mismatched)
 # ---------------------------------------------------------------------------
@@ -187,7 +203,7 @@ class TestServerConcurrentDoubleFire:
         monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
 
     @pytest.mark.asyncio
-    async def test_two_concurrent_advances_same_token_advance_exactly_once(self, monkeypatch):
+    async def test_two_concurrent_advances_same_token_advance_exactly_once(self, monkeypatch, tmp_path):
         import writ.server as server_module
         from writ.session.cache import _read_cache as real_read_cache
         from writ.session.gate_token import read_gate_token as real_read_gate_token
@@ -218,7 +234,11 @@ class TestServerConcurrentDoubleFire:
             lambda *a, **k: friction_calls.append(k),
         )
 
-        body = {"confirmation_source": "explicit", "token": token}
+        body = {
+            "confirmation_source": "explicit",
+            "token": token,
+            "project_root": _project_with_test_skeleton(tmp_path),
+        }
         try:
             r1, r2 = await asyncio.gather(
                 server_module.session_advance_phase(sid, SessionAdvancePhaseRequest(**body)),
@@ -275,7 +295,7 @@ class TestPreservedBehaviorGuards:
         monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
 
     @pytest.mark.asyncio
-    async def test_single_valid_token_advance_still_advances(self):
+    async def test_single_valid_token_advance_still_advances(self, tmp_path):
         """Already true today: a lone call with a valid token performs a real
         advance. Must remain true once the claim replaces the post-advance
         consume_gate_token."""
@@ -287,7 +307,12 @@ class TestPreservedBehaviorGuards:
         token_path = _write_token(sid, token)
         try:
             result = await session_advance_phase(
-                sid, SessionAdvancePhaseRequest(confirmation_source="explicit", token=token)
+                sid,
+                SessionAdvancePhaseRequest(
+                    confirmation_source="explicit",
+                    token=token,
+                    project_root=_project_with_test_skeleton(tmp_path),
+                ),
             )
         finally:
             try:

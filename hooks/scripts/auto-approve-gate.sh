@@ -92,8 +92,11 @@ if [ "$IS_APPROVAL" = "yes" ] || [ "$LOOKS_LIKE_APPROVAL" = "yes" ]; then
     CURRENT_MODE=$(echo "$CURRENT_MODE" | tr -d '[:space:]')
 fi
 
-# Friction logging: approval_pattern_miss (looks-like-approval but did not match)
-if [ "$IS_APPROVAL" != "yes" ] && [ "$LOOKS_LIKE_APPROVAL" = "yes" ] && [ -n "$PROJECT_ROOT" ]; then
+# Friction logging: approval_pattern_miss (looks-like-approval but did not match).
+# NOT gated on PROJECT_ROOT: an unmarked directory resolves to no root, and gating the
+# log on it meant approvals in exactly the directories where the gate misbehaves were
+# the ones that left no telemetry.
+if [ "$IS_APPROVAL" != "yes" ] && [ "$LOOKS_LIKE_APPROVAL" = "yes" ]; then
     # json.dumps keeps the free-form prompt JSON-safe (quotes/backslashes/newlines).
     MISS_EXTRA=$(python3 -c "import json,sys; print(json.dumps({'prompt': sys.argv[1][:120]}))" "$PROMPT" 2>/dev/null || echo '{}')
     log_friction_event "$SESSION_ID" "${CURRENT_MODE:-}" "approval_pattern_miss" "$MISS_EXTRA"
@@ -136,31 +139,72 @@ ADVANCED_TO=""
 # work/phase guard below is skipped (no advance attempted).
 OUTCOME=""
 GATE_ERROR=""
+VALIDATED=""
+TOKEN_SPENT=""
 if [ "$CURRENT_MODE" = "work" ] && { [ "$CURRENT_PHASE" = "planning" ] || [ "$CURRENT_PHASE" = "testing" ]; }; then
     GATE_TOKEN=$(cat "$GATE_TOKEN_FILE" 2>/dev/null || echo "")
-    ADVANCE_PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'confirmation_source':'pattern','token':sys.argv[1],'project_root':sys.argv[2]}))" "$GATE_TOKEN" "$PROJECT_ROOT" 2>/dev/null || echo "{}")
-    ADVANCE_RESP=$(curl -s --connect-timeout 0.5 --max-time 3 \
-        -X POST "http://localhost:8765/session/${SESSION_ID}/advance-phase" \
+    # Send the cwd and let the SERVER resolve the project root
+    # (locators.resolve_project_root: marker dir at or above cwd, else the cwd itself).
+    # Two reasons not to send the bash marker walk as project_root instead:
+    #   - it would arrive as the "explicit" tier, so the reported root_tier could never
+    #     say whether a marker or the bare cwd produced the root -- the whole point of
+    #     showing the user where the approved plan came from;
+    #   - the marker list exists in both bash (detect_project_root) and python
+    #     (PROJECT_ROOT_MARKERS); resolving server-side keeps ONE of them authoritative
+    #     for the gate decision, so a future drift cannot change which plan is approved.
+    # $PROJECT_ROOT is still computed above, for the friction log. Sending cwd is what
+    # makes an unmarked directory workable at all: it used to resolve to no root, and the
+    # route then refused the advance and spent the approval every time. The server cannot
+    # substitute its own cwd -- that is Writ's install dir, which has its own plan.md.
+    ADVANCE_PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'confirmation_source':'pattern','token':sys.argv[1],'cwd':sys.argv[2]}))" "$GATE_TOKEN" "$(pwd -P)" 2>/dev/null || echo "{}")
+    # Address the daemon through WRIT_SESSION_HOST/PORT (common.sh derives them from
+    # WRIT_HOST/WRIT_PORT), as every other hook does. This curl hardcoded
+    # localhost:8765, so it ignored WRIT_PORT: the test suite pins WRIT_PORT to its own
+    # daemon precisely to leave the interactive 8765 singleton alone, and this one line
+    # reached past that isolation and advanced gates on the developer's real daemon,
+    # writing real phase_advance rows into the real audit log.
+    # --max-time 10, not 3: this POST now runs the target gate's validator, and
+    # _validate_test_skeletons falls back to a recursive glob over the project when no
+    # session-tracked test file matches, which on a large repo can outlast a 3s budget.
+    # A timeout is the worst outcome here: the server can still advance and consume the
+    # token while the hook, seeing no response, tells the user nothing was advanced. This
+    # runs once per human approval, not on a hot path, so the wider budget is cheap.
+    ADVANCE_RESP=$(curl -s --connect-timeout 0.5 --max-time 10 \
+        -X POST "http://${WRIT_SESSION_HOST}:${WRIT_SESSION_PORT}/session/${SESSION_ID}/advance-phase" \
         -H 'Content-Type: application/json' \
         --data "$ADVANCE_PAYLOAD" 2>/dev/null || echo "")
     # Classify the response via the shared stdlib helper (single source; the two
     # inline parses this replaces had drifted). A rejection SPENDS the token, so
     # the user must fix the artifact and type "approved" again to mint a fresh one.
-    OUTCOME_RAW=$(echo "$ADVANCE_RESP" | python3 "$WRIT_DIR/bin/lib/gate_advance_outcome.py" 2>/dev/null || printf 'none\t\t')
+    OUTCOME_RAW=$(echo "$ADVANCE_RESP" | python3 "$WRIT_DIR/bin/lib/gate_advance_outcome.py" 2>/dev/null || printf 'none\t\t\t\t')
     OUTCOME=$(printf '%s' "$OUTCOME_RAW" | cut -f1)
+    # Fields: 1 outcome, 2 phase, 3 what the gate judged, 4 token_spent, 5- the error.
+    # The error is last because it is the only unbounded/multi-line field; `head -1`
+    # keeps a multi-line error from smearing the fixed fields across its later lines.
+    VALIDATED=$(printf '%s' "$OUTCOME_RAW" | head -1 | cut -f3)
+    TOKEN_SPENT=$(printf '%s' "$OUTCOME_RAW" | head -1 | cut -f4)
     if [ "$OUTCOME" = "advanced" ]; then
         ADVANCED_TO=$(printf '%s' "$OUTCOME_RAW" | cut -f2)
     elif [ "$OUTCOME" = "rejected" ]; then
-        GATE_ERROR=$(printf '%s' "$OUTCOME_RAW" | cut -f3-)
+        GATE_ERROR=$(printf '%s' "$OUTCOME_RAW" | cut -f5-)
     fi
 fi
 
-# Friction log: advanced (hook executed the user's approval) or ask-prompt fallback.
-if [ -n "$PROJECT_ROOT" ]; then
-    python3 -c "
+# Friction log: advanced (hook executed the user's approval), rejected, or ask-prompt
+# fallback. Unconditional: this used to be gated on a non-empty PROJECT_ROOT, so an
+# approval typed in an unmarked directory -- the case where the gate refuses to advance
+# at all -- logged nothing, which is how the defect stayed invisible.
+python3 -c "
 import json, sys
 from datetime import datetime, timezone
 advanced_to = sys.argv[4]
+rejected = sys.argv[6]
+if advanced_to:
+    outcome = 'advanced->' + advanced_to
+elif rejected:
+    outcome = 'rejected'
+else:
+    outcome = 'ask-prompt-emitted'
 entry = {
     'ts': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'session': sys.argv[1],
@@ -168,22 +212,34 @@ entry = {
     'event': 'approval_pattern_match',
     'matched_prompt': sys.argv[3][:120],
     'confirmation_source': 'pattern',
-    'outcome': ('advanced->' + advanced_to) if advanced_to else 'ask-prompt-emitted',
+    'outcome': outcome,
+    'project_root': sys.argv[5],
 }
 print(json.dumps(entry))
-" "$SESSION_ID" "${CURRENT_MODE:-}" "$PROMPT" "${ADVANCED_TO:-}" 2>/dev/null | python3 "$FA" --stdin-json 2>/dev/null || true
-fi
+" "$SESSION_ID" "${CURRENT_MODE:-}" "$PROMPT" "${ADVANCED_TO:-}" "${PROJECT_ROOT:-}" "${GATE_ERROR:-}" \
+    2>/dev/null | python3 "$FA" --stdin-json 2>/dev/null || true
 
 if [ -n "$ADVANCED_TO" ]; then
-    # Confirm the advance to the assistant/user via next-turn context.
+    # Confirm the advance to the assistant/user via next-turn context, NAMING the
+    # artifact that was accepted. "approved" alone hid which plan.md the gate read, so a
+    # project root resolved from a stray marker file above the work dir could stamp an
+    # unrelated plan silently.
     echo "[Writ: ${CURRENT_PHASE} gate approved -> ${ADVANCED_TO}] (advanced by the approval hook on your confirmation; no agent self-approval)"
+    [ -n "$VALIDATED" ] && echo "[Writ: ${VALIDATED}] -- if that is not the plan you meant to approve, the project root is wrong: invalidate the gate before continuing."
 elif [ -n "$GATE_ERROR" ]; then
-    # The server REJECTED the advance (e.g. plan.md format). Surface the reason on
-    # STDOUT so the agent sees WHY and fixes it -- stderr is not shown in the
-    # UserPromptSubmit context, which made rejections look like "no gate pending".
-    # The rejection SPENT the approval token; fix the artifact, then re-approve.
+    # The server REFUSED the advance. Surface the reason on STDOUT so the agent sees WHY
+    # and fixes it -- stderr is not shown in the UserPromptSubmit context, which made
+    # refusals look like "no gate pending".
     echo "[Writ: ${CURRENT_PHASE} gate REJECTED -- not advanced] ${GATE_ERROR}"
-    echo "Fix the issue above in one edit; the rejection spent the prior approval, so the user must approve again."
+    # Two kinds of refusal, and telling the user the wrong one is a real cost: a spent
+    # token means they MUST type the approval again, an unspent one means they must not.
+    # token_spent=false comes back when the gate could not evaluate the artifact at all
+    # (no resolvable project root), where the approval stays valid.
+    if [ "$TOKEN_SPENT" = "false" ]; then
+        echo "Your approval was NOT consumed: fix the cause above and retry; you do not need to approve again."
+    else
+        echo "Fix the issue above in one edit; the rejection spent the prior approval, so the user must approve again."
+    fi
 elif [ "$OUTCOME" = "noop" ]; then
     # Benign no-op: the server reported no pending gate to advance (not a rejection).
     # Emit the SAME neutral steer as the none/else branch -- no REJECTED text, no

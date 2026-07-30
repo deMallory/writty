@@ -25,8 +25,8 @@ from writ.server.models import (
     SessionAdvancePhaseRequest,
     SessionPromoteCandidateRequest,
 )
-from writ.session.approval_workflow import _validate_phase_a, apply_phase_advance
-from writ.session.locators import _find_plan_md
+from writ.session.approval_workflow import _GATE_VALIDATORS, apply_phase_advance
+from writ.session.locators import _find_plan_md, resolve_project_root
 from writ.session.mode_engine import MODE_CONFIG, _next_pending_gate
 
 router = APIRouter()
@@ -84,35 +84,16 @@ async def session_advance_phase(
             ),
         }
 
-    project_root = req.project_root
-    # Read the session cache ONCE; the phase-a validation, the pending-gate
-    # decision, and apply_phase_advance all derive from this single read.
+    # Ordered resolution (explicit > marker-at-or-above-cwd > cwd). req.cwd comes from
+    # the approval hook's payload; the daemon's own cwd is never a candidate.
+    project_root, root_tier = resolve_project_root(explicit=req.project_root, start=req.cwd)
+    # Read the session cache ONCE; the gate validation, the pending-gate decision,
+    # and apply_phase_advance all derive from this single read.
     cache = await asyncio.to_thread(server.writ_session._read_cache, session_id)
-    current_phase = cache.get("current_phase", "planning")
 
-    # (2) Planning-advance phase-a gate: validate BEFORE advancing. A rejection
-    # CONSUMES the spent token (no reuse: a changed plan needs a fresh approval),
-    # and an empty project_root fails closed and loud. consume_gate_token (not the
-    # claim) is correct here: concurrent rejections both remove + both reject.
-    if cache.get("mode") == "work" and current_phase == "planning":
-        if not project_root:
-            await asyncio.to_thread(server.consume_gate_token, session_id)
-            return {
-                "advanced": False,
-                "error": (
-                    "project-root detection failed (empty project_root). This is an "
-                    "abnormal condition: the planning gate cannot validate plan.md "
-                    "without a project root. A human must supply the project root and "
-                    "re-approve."
-                ),
-                "gate": "phase-a",
-            }
-        gate_error = await asyncio.to_thread(_validate_phase_a, project_root, session_id)
-        if gate_error:
-            await asyncio.to_thread(server.consume_gate_token, session_id)
-            return {"advanced": False, "error": gate_error, "gate": "phase-a"}
-
-    # (3) Terminal guard + pending-gate decision, from the SAME pre-claim read.
+    # (2) Terminal guard + pending-gate decision, from the SAME pre-claim read. This
+    # runs BEFORE validation so a no-op advance (no gate pending) validates nothing and
+    # spends nothing -- and so validation can dispatch on the TARGET gate.
     old_phase = cache.get("current_phase", "planning")
     if old_phase == "complete":
         return {
@@ -139,6 +120,56 @@ async def session_advance_phase(
             "confirmation_source": source,
         }
 
+    # (3) Validate the TARGET gate's artifact via the shared registry -- the same
+    # gate->validator map the CLI dispatches. The route used to inline a phase-a-only
+    # check, so `test-skeletons` advanced on this path (the one the approval hook and
+    # /writ-approve both use) without ever checking that a test skeleton exists: the
+    # second gate was a rubber stamp in production while its validator ran only in the
+    # CLI. Dispatching the registry here makes both paths enforce the same artifacts.
+    validator = _GATE_VALIDATORS.get(target_gate)
+    if validator is not None:
+        if not project_root:
+            # Fail closed: without a root there is no artifact to judge. The token is
+            # NOT spent -- an unresolvable root is an infrastructure failure, not a
+            # rejected artifact, and spending here would burn the human's approval for
+            # something they cannot fix by editing anything. (Spend-on-rejection below
+            # still holds: a judged-and-failed artifact needs a fresh approval.)
+            await asyncio.to_thread(
+                server.log_friction_event,
+                session_id=session_id,
+                mode=mode,
+                event="gate_root_unresolved",
+                gate=target_gate,
+                had_explicit_root=bool(req.project_root),
+                had_cwd=bool(req.cwd),
+            )
+            return {
+                "advanced": False,
+                "error": (
+                    f"Cannot validate the {target_gate} gate: no project root. The "
+                    "caller sent neither a project_root nor a cwd to resolve one from. "
+                    "Re-approve from the project directory, or pass project_root "
+                    "explicitly. Your approval was NOT consumed."
+                ),
+                "gate": target_gate,
+                "token_spent": False,
+                "root_tier": root_tier,
+            }
+        gate_error = await asyncio.to_thread(validator, project_root, session_id)
+        if gate_error:
+            # A judged-and-failed artifact SPENDS the approval (no reuse: a changed
+            # artifact needs a fresh approval). consume_gate_token (not the claim) is
+            # correct here: concurrent rejections both remove + both reject.
+            await asyncio.to_thread(server.consume_gate_token, session_id)
+            return {
+                "advanced": False,
+                "error": gate_error,
+                "gate": target_gate,
+                "token_spent": True,
+                "project_root": project_root,
+                "root_tier": root_tier,
+            }
+
     # (4) A real advance is pending -> atomically CLAIM the token. Exactly one
     # concurrent same-token caller wins; the loser returns a no-op and runs NO
     # side effects. The claim consumes the token (replaces the old post-advance
@@ -161,9 +192,14 @@ async def session_advance_phase(
     # exactly once.
     new_phase = MODE_CONFIG[mode]["phase_after_gate"][target_gate]
     artifacts = []
-    if target_gate == "phase-a":
+    validated_path = ""
+    # `project_root and` guards the empty-root case: _find_plan_md("") resolves its
+    # relative candidates against the DAEMON's cwd (Writ's own install dir, which has a
+    # plan.md), so an unguarded call would name Writ's plan as the approved artifact.
+    if target_gate == "phase-a" and project_root:
         plan_path = _find_plan_md(project_root)
         if plan_path:
+            validated_path = plan_path
             artifacts.append(os.path.relpath(plan_path, project_root))
 
     def _apply() -> None:
@@ -175,7 +211,19 @@ async def session_advance_phase(
             )
 
     await asyncio.to_thread(_apply)
-    result = {"from": old_phase, "phase": new_phase, "confirmation_source": source}
+    # project_root/root_tier/validated travel back so the approval hook can TELL the
+    # user which project and which plan.md the approval just accepted. A root resolved
+    # from a stray marker file above the work directory (a leftover pyproject.toml, say)
+    # is otherwise invisible: the gate would stamp an unrelated plan and say only
+    # "approved". Naming the artifact is what makes a wrong root noticeable.
+    result = {
+        "from": old_phase,
+        "phase": new_phase,
+        "confirmation_source": source,
+        "project_root": project_root,
+        "root_tier": root_tier,
+        "validated": validated_path,
+    }
 
     # Phase 5 telemetry: one friction event per phase advance. Routed through the
     # shared env-aware writer (honors WRIT_FRICTION_LOG), same as the
@@ -230,7 +278,11 @@ async def session_advance_phase(
             total_steps=len(_PHASE_ORDER),
         )
 
-    return {"phase": result["phase"], "confirmation_source": source}
+    # Return `result` whole rather than re-projecting two keys: the re-projection dropped
+    # `from` (which every other return path here includes) and would drop the
+    # project_root/root_tier/validated fields the approval hook reports to the user.
+    # Purely additive to the response contract; no existing key changes.
+    return result
 
 
 @router.post("/session/{session_id}/promote-candidate")

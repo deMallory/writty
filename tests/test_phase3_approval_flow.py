@@ -80,6 +80,23 @@ class TestWritApproveSlashCommand:
             "/writ-approve must pass the gate token in the advance-phase POST body"
         )
 
+    def test_writ_approve_passes_cwd(self) -> None:
+        """The advance must carry a cwd, in BOTH copies of the command.
+
+        The server resolves the project root from it (where plan.md and the test skeletons
+        are looked for) and cannot substitute its own working directory, which is Writ's
+        install dir. Without cwd every planning advance failed closed on an empty root. The
+        installed copy under templates/commands is the one a user actually invokes, and it
+        had drifted so far it sent no token either -- so both are asserted here.
+        """
+        for path in (COMMANDS_DIR / "writ-approve.md",
+                     WRIT_ROOT / "templates" / "commands" / "writ-approve.md"):
+            content = path.read_text()
+            assert "cwd" in content and "pwd -P" in content, (
+                f"{path} must send a cwd resolved with `pwd -P` in the advance-phase POST"
+            )
+            assert "\\\"token\\\"" in content, f"{path} must also pass the gate token"
+
 
 class TestConfirmationSourceField:
     """session.phase_transitions records confirmation_source for audit trail."""

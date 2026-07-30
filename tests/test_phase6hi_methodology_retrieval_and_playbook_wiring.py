@@ -167,6 +167,13 @@ def _advance_with_token(client: TestClient, sid: str, source: str = "tool"):
         "## Rules Applied\n\nNo matching rules\n\n"
         "## Capabilities\n\n- [ ] the advance emits its events\n"
     )
+    # A test skeleton as well as the plan: the route now runs the TARGET gate's
+    # validator, so the SECOND advance in a two-advance sequence (testing ->
+    # implementation) checks for test skeletons. It previously validated phase-a only,
+    # which let the test-skeletons gate advance with no artifact at all.
+    tests_dir = Path(root) / "tests"
+    tests_dir.mkdir(exist_ok=True)
+    (tests_dir / "test_seed.py").write_text("def test_seed():\n    assert True\n")
     with writ_session.mutate_cache(sid) as c:
         if not c.get("mode"):
             c["mode"] = "work"
