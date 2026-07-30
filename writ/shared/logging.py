@@ -92,6 +92,11 @@ STREAM_MAP: dict[str, str] = {
     "exception": "errors",
     # metrics
     "hook_execution": "metrics",
+    # One row per daemon HTTP request (route/status/duration), from the server's
+    # _request_telemetry middleware. Declared here even though the emitter passes an
+    # explicit stream, so the map stays a complete inventory of live events (audit C3
+    # was live events missing from it).
+    "daemon_request": "metrics",
     "rag_query": "metrics",
     "always_on_inject": "metrics",
     "subagent_start": "metrics",
