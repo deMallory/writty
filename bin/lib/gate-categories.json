@@ -29,6 +29,8 @@
     "*_spec.rb",
     "*/migrations/*",
     "*/alembic/*",
-    "*/.claude/*"
+    "*/.claude/settings.json",
+    "*/.claude/settings.local.json",
+    "*/.claude/*.md"
   ]
 }
