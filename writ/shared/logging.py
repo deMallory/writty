@@ -97,6 +97,13 @@ STREAM_MAP: dict[str, str] = {
     # explicit stream, so the map stays a complete inventory of live events (audit C3
     # was live events missing from it).
     "daemon_request": "metrics",
+    # Retrieval quality, from the daemon's /query call site: mode (including the S4
+    # "abstained"), rule_count, abstain_signal. Emitted for every query so an abstention
+    # RATE is computable, not just its occurrences.
+    "retrieval_result": "metrics",
+    # HNSW index cache outcome, once per pipeline build. A miss means the process is
+    # about to bulk-encode the whole corpus.
+    "hnsw_cache": "metrics",
     "rag_query": "metrics",
     "always_on_inject": "metrics",
     "subagent_start": "metrics",

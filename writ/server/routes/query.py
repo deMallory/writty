@@ -33,6 +33,7 @@ from writ.server.models import (
     PromptBundleRequest,
     QueryRequest,
 )
+from writ.shared.logging import emit, emit_exception
 from writ.shared.tokens import estimate_tokens
 
 router = APIRouter()
@@ -45,18 +46,75 @@ async def query_rules(request: QueryRequest) -> dict[str, Any]:
         return {"error": "Pipeline not initialized. Run writ serve."}
     # Per PERF-IO-001: the pipeline query is CPU/IO-bound and synchronous; run it
     # off the event loop so concurrent hook requests are not serialized behind it.
-    result = await asyncio.to_thread(
-        server._pipeline.query,
-        query_text=request.query,
-        domain=request.domain,
-        budget_tokens=request.budget_tokens,
-        exclude_rule_ids=request.exclude_rule_ids,
-        prefer_rule_ids=request.prefer_rule_ids,
-        node_types=request.node_types,
-        retrieval_mode=request.retrieval_mode,
-        project=request.project,
-    )
+    try:
+        result = await asyncio.to_thread(
+            server._pipeline.query,
+            query_text=request.query,
+            domain=request.domain,
+            budget_tokens=request.budget_tokens,
+            exclude_rule_ids=request.exclude_rule_ids,
+            prefer_rule_ids=request.prefer_rule_ids,
+            node_types=request.node_types,
+            retrieval_mode=request.retrieval_mode,
+            project=request.project,
+        )
+    except Exception as exc:
+        # Audit item F: nothing distinguished "graph unreachable" from "no rules
+        # matched", yet the fixes are unrelated (start Neo4j vs author a rule vs lower
+        # the abstention threshold). A raising pipeline is almost always the graph:
+        # Neo4jConnection errors surface here. Record it, then re-raise so the response
+        # is byte-identical to before -- hooks fail open on a 500 and changing that shape
+        # on the hottest route is a separate decision from making the failure visible.
+        emit_exception(
+            "server.query", exc, request.session_id or "", None,
+            retrieval_mode=request.retrieval_mode,
+            domain=request.domain or "",
+            project=request.project or "",
+        )
+        raise
+    _emit_retrieval_result(request, result)
     return result
+
+
+def _emit_retrieval_result(request: QueryRequest, result: dict[str, Any]) -> None:
+    """Record the quality of one retrieval on the metrics stream. Never raises.
+
+    Audit item F: the S4 abstention gate returned an empty rule set with no event, so
+    "Writ injected nothing" was indistinguishable from "nothing matched" from
+    "the graph was unreachable" -- the three have completely different fixes.
+
+    Emitted for EVERY query, not only the abstentions, because a rate needs a
+    denominator: with abstentions alone an analyzer cannot tell one abstention in three
+    queries from one in three hundred. `rule_count == 0` covers the empty-result case the
+    audit also lists.
+
+    Emitted HERE, at the daemon call site, rather than inside pipeline.query: the pipeline
+    is a library used by authoring and benchmark paths that should stay silent, and the
+    abstention threshold itself is opted into per call site for the same reason (see
+    RULE_INJECTION_ABSTENTION_THRESHOLD). `writ query`, a human-run diagnostic, likewise
+    does not emit.
+    """
+    try:
+        rules = result.get("rules")
+        emit(
+            "metrics",
+            "retrieval_result",
+            request.session_id or "",
+            None,
+            mode=result.get("mode") or "",
+            rule_count=len(rules) if isinstance(rules, list) else 0,
+            total_candidates=result.get("total_candidates"),
+            # Present only on the abstention path: the top raw cosine that failed the
+            # threshold. It is the number to look at when tuning the threshold.
+            abstain_signal=result.get("abstain_signal"),
+            latency_ms=result.get("latency_ms"),
+            retrieval_mode=request.retrieval_mode,
+            domain=request.domain or "",
+            project=request.project or "",
+            had_error=bool(result.get("error")),
+        )
+    except Exception:  # noqa: BLE001 - telemetry must not break retrieval
+        pass
 
 
 @router.post("/methodology-companion")
@@ -160,6 +218,10 @@ async def prompt_bundle(request: PromptBundleRequest) -> dict[str, Any]:
         exclude_rule_ids=exclude_ids,
         prefer_rule_ids=(prefer_ids or None),
         domain=(detected_domain if detected_domain and detected_domain != "universal" else None),
+        # This is the hot per-prompt retrieval and the session is right here, so its
+        # retrieval_result row is session-correlated even though the four hooks that POST
+        # /query directly do not send one yet.
+        session_id=sid,
     ))
     if "error" in qresp:
         # Match the legacy hook: a /query error aborted the whole injection (the

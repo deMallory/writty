@@ -19,6 +19,11 @@ class QueryRequest(BaseModel):
     """Request body for /query endpoint."""
 
     query: str
+    # Optional, for correlating a retrieval_result row with the session that caused it.
+    # Defaults to empty so every existing caller (four hooks post to /query today, none
+    # of them sending it) keeps working unchanged; a row without it still carries the
+    # quality signal, it just cannot be grouped by session.
+    session_id: str = ""
     domain: str | None = None
     scope: str | None = None
     budget_tokens: int | None = None
