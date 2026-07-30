@@ -8,6 +8,11 @@ covers transport (streams, rotation, retention) but never covered coverage.
 Headline: transport is built, coverage is not. 18 of 37 wired hooks emit nothing at all, 181 of 224
 exception handlers record nothing, and one shipped metric can only ever report zero.
 
+**STATUS 2026-07-30: the worklist is CLOSED.** P0, P1 and P2 are all done except item 8, which
+was dropped by decision (see the worklist for both). The findings above are kept as written, in
+past tense, because the reasoning behind each fix is the reason it should not be undone; every
+item now carries a DONE / DROPPED note with what actually shipped and what was measured.
+
 ---
 
 ## A. Uninstrumented hooks (highest severity)
@@ -346,8 +351,60 @@ Verification: 415 tests pass across every file touching the changed code
    old hardcoded `("audit", "friction", "metrics")` tuple silently failed to cover a new stream.
 
 **P2, new observability**
-7. Daemon per-request events, retrieval quality signals, Neo4j failure events (F).
-8. Debug stream, or an explicit ADR that debug stays `/tmp`-only and the blueprint is amended (D2).
-9. Persist verification evidence to a durable stream (F), which the run ledger then consumes.
+7. DONE 2026-07-30. Split into two commits because they answer different questions.
+
+   `daemon_request` (metrics), one row per HTTP request from a single middleware: route
+   TEMPLATE (not the concrete path, or `/session/{session_id}/mode` splinters into one
+   identity per session id and no per-route rate is computable), method, status,
+   duration_ms. Emitted in a `finally`, so a raising handler still produces a row before
+   the exception re-raises; a return-only middleware would have recorded the successes and
+   dropped exactly the failures. `/health` is skipped: ensure-server, the SessionStart
+   hook, `writ doctor` and the test harness all poll it, so it can outnumber real traffic
+   by an order of magnitude, and a liveness probe's latency is not a signal anyone reads.
+
+   MEASURED, 300 requests: bare route 0.355ms median, plus middleware 0.682ms, plus real
+   emit 0.817ms. The emit is +0.135ms; the total is +0.462ms. The dominant cost is
+   Starlette's BaseHTTPMiddleware wrapper, not the logging, so a raw ASGI middleware would
+   recover ~0.33ms and is not worth the complexity against a 245ms hook run.
+
+   `retrieval_result` (metrics) at the daemon's /query call site: mode (including the S4
+   `abstained`), rule_count, total_candidates, abstain_signal, latency. Emitted for EVERY
+   query, not only abstentions, because a rate needs a denominator. Since the pipeline
+   reports abstain_signal on the success path too, this accumulates the distribution of top
+   cosines for hits AND misses, which is the data to retune the 0.30 threshold empirically.
+   At the call site rather than inside `pipeline.query` for the same reason the threshold
+   itself is opted into per call site: the pipeline is a library that authoring and
+   benchmark paths use, and those stay silent. `writ query` does not emit.
+
+   A raising pipeline records an `exception` row (component `server.query`) and re-raises,
+   so the 500 is byte-identical. Hooks fail open on it, and changing the hottest route's
+   error contract is a separate decision from making the failure visible.
+
+   The two HNSW handlers this audit's P1 deferred as "least silent" now emit too:
+   `hnsw_cache` records hit and miss once per pipeline build, and a failed index save goes
+   to `errors`. `_logger.debug` is invisible at the default level, so a cold start that
+   re-encoded the whole corpus left no trail, and a failed save (which makes every future
+   start pay that cost again) was silent.
+8. DROPPED by decision 2026-07-30. Not an ADR either: LOGGING-BLUEPRINT.md is being retired
+   once this program closes, so an ADR amending it would document a file about to be
+   deleted. `RETENTION_DAYS` keeps its `"debug": 14` entry as reserved capacity. The
+   rationale for not building it, recorded here instead: debug output is unstructured text
+   (tracebacks, prompt dumps), it is already gated behind `WRIT_DEBUG` so the spam problem
+   is solved, and it is only useful while someone is actively debugging, which is exactly
+   when `/tmp` is adequate and the developer is present.
+9. DONE 2026-07-30. `verification_evidence` and `citation_recorded` on the **audit** stream
+   (365-day retention, because these are the oversight record, not a metric).
+
+   Worse than described here: `citation_log` is trimmed to `_CITATION_LOG_MAX` on every
+   append, so the oldest citations were discarded while the session was still running, not
+   merely lost when the cache died. The cache copy is now the working set the gates read;
+   the stream copy is the record, so the trim is a working-set decision instead of data
+   loss. A test appends past the cap and asserts the trimmed-out row is still on the stream.
+
+   The evidence emit runs AFTER the cache write succeeds: a row for evidence that was never
+   stored is worse than no row. Citations emit from `_append_citation`, the choke point all
+   three callers share, carrying excerpt_hash so INV-7a's staleness signal survives.
+   `session_id` is an optional parameter because the two `cmd_update` handlers reach it
+   through a dispatch table passing only (cache, args, index).
 
 Item 1 gates everything. Items 4 and 5 are independent and can run in parallel.
