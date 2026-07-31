@@ -47,7 +47,7 @@ export const meta = {
 }
 
 const READONLY = `Constraints, non-negotiable:
-- READ-ONLY. Do not write, edit, or delete any file. Do not run "docker", "docker compose", "writ serve", or anything that starts a server or a database.
+- Do not modify, create, or delete any repo-tracked file (nothing under the repo except where a prompt explicitly says otherwise). Ephemeral outputs are allowed only where a prompt explicitly instructs them (e.g. dumps under /tmp); the orchestrator itself writes the final inventory/ directory. Do not run "docker", "docker compose", "writ serve", or anything that starts a server or a database.
 - Neo4j and the Writ HTTP server are both DOWN. Do not attempt to connect to localhost:8765 or bolt://localhost:7687. Any code you run must work purely off disk and git.
 - Work from the repo root using \`git ls-files\` (not \`find\`) to enumerate tracked files so you automatically skip .venv/node_modules/build artifacts.
 - Every numeric or structural claim (line counts, counts of things, "this hook is registered on event X") MUST carry an "evidence" string: the exact command you ran or the file:line you read it from. A claim with no evidence is worth less than no claim — do not guess.
@@ -131,7 +131,7 @@ Return a "summary" noting anything structurally notable (e.g. hooks that fire on
             properties: {
               path: { type: 'string' },
               event: { type: 'string' },
-              matcher: { type: 'string' },
+              matcher: { type: ['string', 'null'] },
               lines: { type: 'integer' },
               http_paths: { type: 'array', items: { type: 'string' } },
               tmp_files: { type: 'array', items: { type: 'string' } },
@@ -346,7 +346,7 @@ Do NOT try to dump every row through this schema — that's wasteful and error-p
         evidence: { type: 'string' },
         summary: { type: 'string' },
       },
-      required: ['subsystem', 'friction_row_count', 'access_line_count', 'normalization_spec', 'sample_rows', 'evidence', 'summary'],
+      required: ['subsystem', 'friction_row_count', 'access_line_count', 'session_shape_examples', 'normalization_spec', 'sample_rows', 'event_type_breakdown', 'server_currently_running', 'evidence', 'summary'],
     },
   },
 ]
@@ -375,6 +375,19 @@ const VERIFY_SCHEMA = {
   required: ['subsystem', 'checks', 'overall_verdict'],
 }
 
+function sampleForVerify(surveyResult, maxRecords = 40) {
+  const out = { ...surveyResult }
+  for (const key of Object.keys(out)) {
+    const val = out[key]
+    if (Array.isArray(val) && val.length > maxRecords) {
+      const step = val.length / maxRecords
+      out[key] = Array.from({ length: maxRecords }, (_, i) => val[Math.floor(i * step)])
+      out[`${key}_omitted`] = `${val.length - maxRecords} of ${val.length} entries omitted (evenly sampled across the array)`
+    }
+  }
+  return out
+}
+
 function verifyPrompt(subsystemKey, surveyResult) {
   return `${READONLY}
 
@@ -382,8 +395,8 @@ You are an ADVERSARIAL verifier, not a confirmer. Below is a survey of the "${su
 
 Default to skepticism: if you're not sure a claim is right, mark match: false and explain, don't give the benefit of the doubt.
 
-Survey to verify (JSON):
-${JSON.stringify(surveyResult, null, 2).slice(0, 12000)}
+Survey to verify (JSON; large arrays are evenly sampled, with an "_omitted" note where entries were dropped):
+${JSON.stringify(sampleForVerify(surveyResult), null, 2)}
 
 Report checks[] for each thing you independently tested, and an overall_verdict ("pass" if everything you sampled checked out, "issues" otherwise with issues_found[] listing what's wrong).`
 }

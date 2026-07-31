@@ -41,7 +41,7 @@ datasets into `inventory/` (gitignored — regenerable raw output):
 |---|---|---|
 | `service.json` | one record per `writ/*.py` module | + its adversarial verification |
 | `harness.json` | one record per hook script / library | event, matcher, HTTP paths curled, tmp files, blocking vs fail-open |
-| `corpus.json` | one record per `bible/` node | full parse attached to `survey.records` |
+| `corpus.json` | sample records + breakdowns | full parse lives on disk at `full_dump_path` (written by the survey agent) |
 | `tests.json` | one record per test file | test count (AST-based), markers, subprocess-driven |
 | `periphery.json` | one record per script / doc / config / template | kind + entry-point flag |
 | `trace.json` | normalization spec + sample rows | the survey does not return the full event table (see below) |
@@ -54,7 +54,8 @@ datasets into `inventory/` (gitignored — regenerable raw output):
 - **Corpus survey caps its own output.** At ~430 nodes, returning every record
   through the agent schema overflows the 64k output-token limit. The survey
   dumps the full parse to disk (via the repo's own `writ.graph.ingest` parser)
-  and returns samples + breakdowns; the orchestrator attaches the full dump.
+  and returns samples + breakdowns plus a `full_dump_path` pointing at the
+  on-disk dump; consumers read the full parse from that path.
 - **Trace survey returns a spec, not the table.** It emits a precise
   `normalization_spec` and sample rows; the orchestrator materializes the full
   `events.json` mechanically from `workflow-friction.log` +
