@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from pathlib import Path
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 SESSION_END_HOOK = f"{SKILL_DIR}/hooks/scripts/writ-session-end.sh"
 HOOKS_JSON = Path(__file__).resolve().parent.parent / "hooks" / "hooks.json"
 

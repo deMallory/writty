@@ -37,7 +37,7 @@ from writ.shared.logging import read_streams, resolve_project  # noqa: E402
 pytestmark = pytest.mark.no_friction_isolation
 
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 HOOK = f"{SKILL_DIR}/hooks/scripts/writ-rag-inject.sh"
 
 
@@ -75,6 +75,48 @@ class TestOrchestratorMethodologyCompanionStructural:
 class TestOrchestratorMethodologyCompanionEndToEnd:
     """End-to-end: run the hook with a seeded orchestrator cache and a
     user prompt, verify the friction log gets a methodology rag_query."""
+
+    def _ensure_aligned_daemon(self, cache_dir: str) -> bool:
+        """Start (and realign) the daemon on WRIT_PORT against cache_dir.
+
+        Mirrors test_fix2_cache_alignment: ensure-server.sh with WRIT_REALIGN_CACHE=1
+        guarantees a daemon whose cache_dir matches where this test seeded, so the
+        hook's HTTP session read sees the orchestrator cache. Returns True once
+        /health answers, False if it never comes up (no Neo4j, etc.)."""
+        import time
+        import urllib.request
+
+        from tests._daemon import _port
+
+        ensure = Path(SKILL_DIR) / "scripts" / "ensure-server.sh"
+        if not ensure.exists():
+            return False
+        env = {
+            **os.environ,
+            "WRIT_PORT": _port(),
+            "WRIT_HOST": "localhost",
+            "WRIT_CACHE_DIR": cache_dir,
+            "WRIT_REALIGN_CACHE": "1",  # realign a leftover misaligned daemon
+            "WRIT_NO_AUTOSTART": "",     # this explicit start IS the daemon
+        }
+        subprocess.run(["bash", str(ensure)], capture_output=True, text=True,
+                       env=env, timeout=40, check=False)
+        health = f"http://localhost:{_port()}/health"
+        for _ in range(40):
+            try:
+                with urllib.request.urlopen(health, timeout=2):
+                    return True
+            except Exception:  # noqa: BLE001
+                time.sleep(0.5)
+        return False
+
+    def _stop_daemon(self) -> None:
+        """Stop the daemon this test started, by exact port (never the 8765
+        interactive singleton)."""
+        from tests._daemon import _port
+
+        subprocess.run(["pkill", "-f", f"writ serve --port {_port()}"],
+                       capture_output=True)
 
     def _seed_orchestrator_cache(
         self, cache_dir: str, session_id: str
@@ -117,6 +159,16 @@ class TestOrchestratorMethodologyCompanionEndToEnd:
         cache_path = os.path.join(server_cache_dir, f"writ-session-{sid}.json")
         self._seed_orchestrator_cache(server_cache_dir, sid)
 
+        # This end-to-end path needs a LIVE daemon aligned to server_cache_dir on
+        # WRIT_PORT: the hook reads the seeded orchestrator cache over HTTP. It used
+        # to get one for free because writ-rag-inject.sh auto-started a daemon when
+        # none answered -- but that auto-start is a leak (the daemon outlived the
+        # run), so the suite now forces WRIT_NO_AUTOSTART=1. Start an aligned daemon
+        # explicitly and stop it in finally, rather than depend on the leak.
+        started_daemon = self._ensure_aligned_daemon(server_cache_dir)
+        if not started_daemon:
+            pytest.skip("could not start an aligned daemon on the test port")
+
         try:
             # Project root the hook runs in; a .git marker makes the router's
             # project-scope resolution derive a stable identity from this cwd.
@@ -142,11 +194,12 @@ class TestOrchestratorMethodologyCompanionEndToEnd:
                 timeout=15,
             )
         finally:
-            # Always clean up the seeded cache so /tmp doesn't accumulate.
+            # Always clean up the seeded cache and the daemon this test started.
             try:
                 os.unlink(cache_path)
             except FileNotFoundError:
                 pass
+            self._stop_daemon()
         # Hook must not error out.
         assert result.returncode == 0, (
             f"hook returned {result.returncode}; "

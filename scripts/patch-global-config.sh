@@ -84,8 +84,17 @@ ALLOW=(
     "Bash(bash *writ/scripts/ensure-server.sh*)"
     "Bash(bash *writ/scripts/install-user-commands.sh*)"
     "Bash(bash *writ/scripts/stop-server.sh*)"
-    "Edit(/home/lucio.saldivar/.claude/skills/writ/**)"
-    "Edit(/home/lucio.saldivar/analysis/Writ/**)"
+    # Self-edit + self-run entries are DERIVED from the resolved install dir, so a
+    # Writ checked out anywhere (/opt/writ, ~/src/writ, a second worktree) gets the
+    # right paths. They used to be hardcoded to one developer's home, which meant
+    # every other install silently ran without them and prompted on each self-edit.
+    "Edit($SKILL_DIR/**)"
+    "Bash($SKILL_DIR/*)"
+)
+
+# Superseded location-tied entries this script installed in earlier versions.
+# Removed on every run so a moved install does not accumulate dead allow rules.
+LEGACY_ALLOW=(
     "Bash(*/.claude/skills/writ/*)"
     "Bash(*/analysis/Writ/*)"
 )
@@ -121,6 +130,26 @@ fi
 
 timestamp() { date -u '+%Y%m%d%H%M%S'; }
 
+# Allow entries that pre-approve edits/runs inside a Writ tree that is NOT this
+# install and no longer exists on disk -- the residue of a moved or renamed
+# checkout. Printed one per line for the jq merge to subtract.
+#
+# Two guards keep an unrelated user entry from being pruned: the path basename must
+# be writ/Writ, and the directory must be absent. A live second checkout is kept.
+stale_self_entries() {
+    printf '%s\n' "${LEGACY_ALLOW[@]}"
+    [ -f "$SETTINGS_TARGET" ] || return 0
+    jq -r '(.permissions.allow // [])[]' "$SETTINGS_TARGET" 2>/dev/null | \
+    while IFS= read -r entry; do
+        local dir
+        dir=$(printf '%s' "$entry" | sed -nE 's#^(Edit|Write|Bash)\((/[^*?]+)/\*\*?\)$#\2#p')
+        [ -n "$dir" ] || continue
+        [ "$dir" != "$SKILL_DIR" ] || continue
+        case "$(basename "$dir")" in writ|Writ) ;; *) continue ;; esac
+        [ -d "$dir" ] || printf '%s\n' "$entry"
+    done
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Patch settings.json (permissions)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -135,9 +164,10 @@ patch_settings() {
     tmp=$(mktemp)
     local rc=0
 
-    local allow_json deny_json
+    local allow_json deny_json drop_json
     allow_json=$(printf '%s\n' "${ALLOW[@]}" | jq -R . | jq -s .)
     deny_json=$(printf '%s\n' "${DENY[@]}" | jq -R . | jq -s .)
+    drop_json=$(stale_self_entries | jq -R . | jq -s .)
 
     # Inform (do not act) when a non-Writ statusLine is already configured: the
     # merge below leaves it untouched, so point the user at the opt-in command.
@@ -148,14 +178,17 @@ patch_settings() {
         echo "[settings] To use the Writ context meter, set statusLine.command to: $SL_CMD"
     fi
 
-    jq --argjson new_allow "$allow_json" --argjson new_deny "$deny_json" --arg sl_cmd "$SL_CMD" '
+    jq --argjson new_allow "$allow_json" --argjson new_deny "$deny_json" \
+       --argjson drop_allow "$drop_json" --arg sl_cmd "$SL_CMD" '
         # Append only entries not already present. existing/incoming are bound
         # to values (not filters) so they survive the map/select context switch
         # where . becomes a single string from incoming.
         def append_new($existing; $incoming):
             $existing + ($incoming | map(select(. as $i | ($existing | index($i)) | not)));
+        def drop($existing; $unwanted):
+            $existing | map(select(. as $e | ($unwanted | index($e)) | not));
         .permissions = (.permissions // {}) |
-        .permissions.allow = append_new(.permissions.allow // []; $new_allow) |
+        .permissions.allow = append_new(drop(.permissions.allow // []; $drop_allow); $new_allow) |
         .permissions.deny  = append_new(.permissions.deny  // []; $new_deny) |
         # statusLine: add when absent, refresh when it is already a writ-statusline.sh
         # (upgrade-safe), leave a foreign statusLine untouched.

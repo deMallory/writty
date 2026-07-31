@@ -102,8 +102,43 @@ _writ_start_locked() {
 
 # Idempotent, singleton-safe entry point. Always returns 0 so a caller's `set -e` never trips
 # and hooks degrade gracefully (server unavailable) on any failure.
+writ_default_server_log() {
+    # The ONE owner of the daemon-log path (LOGGING-BLUEPRINT section 6: "collapse
+    # WRIT_LOG's two defaults into one router-owned path"). There were three: this
+    # library's /tmp default plus two different caller assignments, so which file the
+    # daemon's stdout landed in depended on which script happened to start it.
+    #
+    # Resolution order, explicit beats implicit:
+    #   1. $WRIT_LOG                       -- caller said exactly where
+    #   2. $WRIT_LOG_ROOT/server.log       -- the same override the Python router honors
+    #   3. $CLAUDE_PLUGIN_DATA/server.log  -- plugin install: survives an upgrade that
+    #                                         rewrites CLAUDE_PLUGIN_ROOT
+    #   4. <skill>/var/logs/server.log     -- standalone, co-located with the install
+    #
+    # Off /tmp deliberately. systemd's tmpfiles.d declares `D /tmp`, which EMPTIES it at
+    # boot; that is exactly how the session caches were lost (see the mode-wipe root
+    # cause), and a daemon log destroyed on every reboot is the one you want after a
+    # reboot-triggered failure. Resolved in bash from WRIT_DIR rather than by asking
+    # writ.shared.logging, because this runs on the per-prompt hook path via
+    # writ-rag-inject.sh and a python spawn there costs ~26ms.
+    if [ -n "${WRIT_LOG:-}" ]; then
+        printf '%s' "$WRIT_LOG"
+    elif [ -n "${WRIT_LOG_ROOT:-}" ]; then
+        printf '%s/server.log' "$WRIT_LOG_ROOT"
+    elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+        printf '%s/server.log' "${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}"
+    else
+        printf '%s/var/logs/server.log' "${WRIT_DIR:-$HOME/.claude/skills/writ}"
+    fi
+}
+
 writ_ensure_server() {
-    : "${WRIT_HOST:=localhost}" "${WRIT_PORT:=8765}" "${WRIT_LOG:=/tmp/writ-server.log}"
+    : "${WRIT_HOST:=localhost}" "${WRIT_PORT:=8765}"
+    WRIT_LOG="$(writ_default_server_log)"
+    # The redirect below creates the FILE but not its directory, so an unwritable parent
+    # would fail the launch outright rather than degrade. A fresh install has no var/logs
+    # until something writes there, and $CLAUDE_PLUGIN_DATA may not exist before bootstrap.
+    mkdir -p "$(dirname "$WRIT_LOG")" 2>/dev/null || true
     # FIX-2: pin the daemon's session-cache dir deterministically (not ambient TMPDIR), so every
     # start path agrees and /health can report it. Exported here so `writ serve` inherits it.
     export WRIT_CACHE_DIR="${WRIT_CACHE_DIR:-$(python3 -c 'import tempfile; print(tempfile.gettempdir())' 2>/dev/null || echo /tmp)}"

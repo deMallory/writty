@@ -28,7 +28,15 @@ def read_gate_token(session_id: str) -> str:
     try:
         with open(gate_token_path(session_id)) as f:
             return f.read().strip()
-    except (FileNotFoundError, OSError):
+    except FileNotFoundError:
+        # No approval outstanding: the normal state on most turns, not a failure.
+        return ""
+    except OSError as exc:
+        # Present but unreadable is anomalous -- a fail-closed gate that should have
+        # opened. Distinguished from the absent case so this stays signal, not noise.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.gate_token.read", exc, session_id, None)
         return ""
 
 
@@ -41,8 +49,14 @@ def consume_gate_token(session_id: str) -> None:
     """Remove the token: one user approval authorizes exactly one gated action."""
     try:
         os.remove(gate_token_path(session_id))
-    except OSError:
-        pass
+    except FileNotFoundError:
+        pass  # Already consumed: the normal idempotent case.
+    except OSError as exc:
+        # A token that cannot be removed stays claimable, which is the one failure
+        # mode that could let a single approval authorize a second action.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.gate_token.consume", exc, session_id, None)
 
 
 def claim_gate_token(session_id: str, supplied_token: str) -> bool:
@@ -71,10 +85,20 @@ def claim_gate_token(session_id: str, supplied_token: str) -> bool:
     try:
         with open(claimed) as f:
             actual = f.read().strip()
-    except OSError:
+    except OSError as exc:
+        # The rename above just succeeded, so this file exists and is ours; failing
+        # to read it now means the claim is lost to a real I/O fault, not contention.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.gate_token.claim_read", exc, session_id, None)
         actual = ""
     try:
         os.remove(claimed)
-    except OSError:
-        pass
+    except OSError as exc:
+        # Leaves a stray .claiming-* file behind; harmless per call, but it is the
+        # only trace that cleanup is failing.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.gate_token.claim_cleanup", exc, session_id, None,
+                       claimed_path=claimed)
     return gate_token_valid(supplied_token, actual)

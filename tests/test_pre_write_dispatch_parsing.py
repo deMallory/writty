@@ -20,7 +20,7 @@ import pytest
 
 from writ.session.cache import mutate_cache
 
-SKILL_DIR = (Path.home() / ".claude/skills/writ")
+SKILL_DIR = (Path(__file__).resolve().parent.parent)
 DISPATCH_HOOK = SKILL_DIR / "hooks" / "scripts" / "writ-pre-write-dispatch.sh"
 SESSION_HELPER = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")
 

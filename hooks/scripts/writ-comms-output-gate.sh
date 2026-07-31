@@ -12,6 +12,7 @@ set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 source "$WRIT_DIR/bin/lib/common.sh"
+hook_instrument "writ-comms-output-gate"
 
 STDIN_JSON=$(cat 2>/dev/null || echo '{}')
 stop_hook_active "$STDIN_JSON" && exit 0          # block at most once; never loop
@@ -66,9 +67,11 @@ PY
 ) || true
 
 if [ -n "$VIOLATION" ]; then
+    log_gate_decision "comms-output" "deny" "$VIOLATION" "assistant-response"
     echo "[ENF-COMMS-OUTPUT-001] Your last response used forbidden punctuation: $VIOLATION. \
 The user forbids em dashes and em-dash-substitute double hyphens. Re-send the SAME content using \
 commas, colons, semicolons, or parentheses for clause breaks, and hyphens only to join words." >&2
     exit 1
 fi
+log_gate_decision "comms-output" "allow" "no forbidden punctuation" "assistant-response"
 exit 0

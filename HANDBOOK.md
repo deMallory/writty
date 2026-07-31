@@ -122,7 +122,7 @@ Work mode is the only mode that gates writes to source. The lifecycle is `planni
 
 **ExitPlanMode integration.** `validate-exit-plan.sh` validates the plan's *format* on a successful `ExitPlanMode` and resets the task phase (`--reset-task-phase`). It does **not** create the phase-a gate - that gate is created by `auto-approve-gate.sh` on genuine user approval. (A common misconception is that `ExitPlanMode` clears the gate; it only validates and resets phase.)
 
-**Gate exemptions.** Sub-agents, the skill dir, settings files, `plan.md` before a mode is set, `capabilities.md`, and the paths listed in `gate-categories.json` `exclusions` (tests, migrations, `__init__.py`, `.claude/`, etc.) are exempt from write blocking. Deny reasons carry a `[RULE-ID]` prefix.
+**Gate exemptions.** Sub-agents, the skill dir, settings files, `plan.md` before a mode is set, `capabilities.md`, and the paths listed in `gate-categories.json` `exclusions` (tests, migrations, `__init__.py`, etc.) are exempt from write blocking. Deny reasons carry a `[RULE-ID]` prefix. Under a `.claude/` directory only CONFIG is exempt (`settings.json`, `settings.local.json`, and `*.md`): a blanket `*/.claude/*` exclusion left every implementation file under `~/.claude/skills/<name>/` ungated, and directory globs like `*/.claude/agents/*` re-opened it at any depth (the matcher's `*` spans `/`, so `..` in a path escaped the directory entirely). Keep new patterns extension-anchored or exact filenames.
 
 ---
 
@@ -320,7 +320,7 @@ The full inventory (34 scripts), grouped by what they do:
 
 **`writ/shared/budget.json`** - the token budget: `default_budget=8000`, per-rule render costs `full=200 / standard=120 / summary=40`, `subagent_budget=null` (unlimited), `always_on_cap=5000`.
 
-**`bin/lib/gate-categories.json`** - framework detection + the write-gate `exclusions` glob list (tests, migrations, `__init__.py`, `.claude/`).
+**`bin/lib/gate-categories.json`** - framework detection + the write-gate `exclusions` glob list (tests, migrations, `__init__.py`, and `.claude/` CONFIG only: `settings.json`, `settings.local.json`, `*.md`).
 
 **Env vars:**
 - `WRIT_CONTEXT_WINDOW_TOKENS` - validated 1000–10000000 at startup; the watcher hook uses it for the ~75% pressure threshold (default 200000 in the hook).

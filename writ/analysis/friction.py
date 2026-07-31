@@ -237,7 +237,6 @@ def summarize(
     write_decisions: Counter[str] = Counter()
     subagent_completions: Counter[str] = Counter()
     session_denials: Counter[str] = Counter()
-    write_failures = 0
     phase_transitions = 0
     approval_matches = 0
     # #7 delivery telemetry: bucket injected tokens by where they actually went
@@ -285,8 +284,6 @@ def summarize(
         elif evt == "gate_denial":
             sess = e.get("session", "unknown")
             session_denials[sess] += 1
-        elif evt == "write_failure":
-            write_failures += 1
         elif evt == "phase_transition":
             phase_transitions += 1
         elif evt == "approval_pattern_match":
@@ -314,7 +311,6 @@ def summarize(
         "write_decisions": dict(write_decisions),
         "subagent_completions": dict(subagent_completions),
         "sessions_with_denials": dict(session_denials.most_common(top)),
-        "write_failures": write_failures,
         "phase_transitions": phase_transitions,
         "approval_matches": approval_matches,
         "inject_tokens_by_delivery": dict(inject_tokens_by_delivery),
@@ -378,7 +374,6 @@ def format_report(summary: dict[str, Any]) -> str:
     lines.append("Gate activity:")
     lines.append(f"  approval_pattern_match {summary['approval_matches']:>5d}")
     lines.append(f"  phase_transitions      {summary['phase_transitions']:>5d}")
-    lines.append(f"  write_failures         {summary['write_failures']:>5d}")
     if summary["sessions_with_denials"]:
         lines.append("  sessions with gate denials:")
         for sess, count in summary["sessions_with_denials"].items():

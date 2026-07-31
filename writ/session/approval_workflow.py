@@ -18,7 +18,7 @@ from writ.session.gate_token import (
     gate_token_valid,
     read_gate_token,
 )
-from writ.session.locators import PROJECT_ROOT_MARKERS, _find_plan_md
+from writ.session.locators import _find_plan_md, resolve_project_root
 from writ.session.mode_engine import (
     MODE_CONFIG,
     _gate_sequence_for_mode,
@@ -223,18 +223,16 @@ _GATE_VALIDATORS: dict[str, object] = {
 
 
 def _detect_project_root(project_root: str) -> str:
-    """Return project_root as given, or walk up from cwd to the nearest dir holding a
-    PROJECT_ROOT_MARKERS marker (falling back to cwd if none is found before '/')."""
-    if project_root:
-        return project_root
-    project_root = os.getcwd()
-    markers = PROJECT_ROOT_MARKERS
-    path = project_root
-    while path != '/':
-        if any(os.path.exists(os.path.join(path, m)) for m in markers):
-            return path
-        path = os.path.dirname(path)
-    return project_root
+    """Return project_root as given, else the marker dir at or above cwd, else cwd.
+
+    Thin wrapper over locators.resolve_project_root, which owns the tier order for
+    every gate caller (CLI here, HTTP route in server/routes/gate.py). os.getcwd() is
+    supplied HERE because this is the CLI path, where the process cwd IS the user's
+    cwd; the resolver never reads cwd on its own (see its docstring for why that
+    matters to the daemon).
+    """
+    root, _tier = resolve_project_root(explicit=project_root, start=os.getcwd())
+    return root
 
 
 def apply_phase_advance(

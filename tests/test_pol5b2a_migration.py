@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 HOOKS = SKILL_DIR / "hooks" / "scripts"
 
 ALL_HOOKS = [

@@ -55,7 +55,7 @@ from writ.graph.ingest import (
 from tests._daemon import _port
 from tests.conftest import writ_server_source
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 METHODOLOGY = SKILL_DIR / "bible" / "methodology"
 RESEARCH_RULES = SKILL_DIR / "bible" / "research" / "rules.md"
 HOOK = str(SKILL_DIR / "hooks" / "scripts" / "writ-rag-inject.sh")

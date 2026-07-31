@@ -8,6 +8,7 @@
 
 SKILL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$SKILL_DIR/bin/lib/common.sh"
+hook_instrument "pre-validate-file"
 
 # Parse the Claude Code hook stdin envelope (one python3 spawn)
 load_hook_env
@@ -94,7 +95,9 @@ print(json.dumps({
     }
 }))
 " "${REASON:-Pre-write validation failed}"
+  log_gate_decision "pre-write-validation" "deny" "${REASON:-Pre-write validation failed}" "${FILE_PATH:-}"
   exit 0
 fi
 
+log_gate_decision "pre-write-validation" "allow" "pre-write validation passed" "${FILE_PATH:-}"
 exit 0

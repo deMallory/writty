@@ -8,6 +8,7 @@
 
 SKILL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$SKILL_DIR/bin/lib/common.sh"
+hook_instrument "validate-handoff"
 
 # Parse the Claude Code hook stdin envelope (one python3 spawn)
 load_hook_env
@@ -122,10 +123,12 @@ EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
   # Send errors to stderr for PostToolUse error context
+  log_gate_decision "handoff" "deny" "$RESULT" "${FILE_PATH:-}"
   echo "$RESULT" >&2
   exit 1
 else
   # Success info goes to stdout
+  log_gate_decision "handoff" "allow" "handoff validation passed" "${FILE_PATH:-}"
   echo "$RESULT"
   exit 0
 fi

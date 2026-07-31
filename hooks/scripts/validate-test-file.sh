@@ -10,6 +10,7 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 SESSION_HELPER="$WRIT_DIR/bin/lib/writ-session.py"
 source "$WRIT_DIR/bin/lib/common.sh"
+hook_instrument "validate-test-file"
 
 load_hook_env
 SESSION_ID="$HOOK_SESSION_ID"
@@ -89,6 +90,9 @@ PY
 )
 
 if [ -n "$DENY" ]; then
+    log_gate_decision "test-first" "deny" "$DENY" "${FILE_PATH:-}"
     emit_deny "$DENY"
+else
+    log_gate_decision "test-first" "allow" "test file with assertions found" "${FILE_PATH:-}"
 fi
 exit 0

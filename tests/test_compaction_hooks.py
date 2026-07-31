@@ -35,7 +35,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 SESSION_ID = "test-compaction-hooks-session"
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 SETTINGS_JSON = f"{SKILL_DIR}/../../settings.json"
 HOOKS_JSON = Path(__file__).resolve().parent.parent / "hooks" / "hooks.json"

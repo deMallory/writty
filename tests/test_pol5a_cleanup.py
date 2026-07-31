@@ -25,7 +25,7 @@ import pytest
 
 from tests.conftest import writ_server_source
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 WRIT_SESSION_PY = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")
 COMMON_SH = SKILL_DIR / "bin" / "lib" / "common.sh"
 POSTCOMPACT_SH = SKILL_DIR / "hooks" / "scripts" / "writ-postcompact.sh"

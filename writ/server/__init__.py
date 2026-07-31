@@ -26,6 +26,7 @@ import importlib.util
 import os
 import sys
 import threading
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -45,6 +46,7 @@ from writ.retrieval.pipeline import (
     build_pipeline,
 )
 from writ.retrieval.trigger_index import MethodologyTriggerIndex
+from writ.shared.logging import emit
 from writ.shared.tokens import estimate_tokens
 # POL-6-A3: single source the mode vocabulary. mode_engine.VALID_MODES is a real, normally-
 # imported module, so this binds a real set even when route tests mock the path-loaded
@@ -201,6 +203,57 @@ app = FastAPI(
     description="Hybrid RAG knowledge retrieval service for AI coding rule enforcement.",
     lifespan=lifespan,
 )
+
+
+# Routes whose volume would drown the stream without telling anyone anything. /health is
+# polled by ensure-server.sh, the SessionStart hook, `writ doctor` and the test harness, so
+# it can outnumber real traffic by an order of magnitude; a liveness probe's latency is not
+# a signal anyone reads. Everything else is recorded, including errors.
+_REQUEST_TELEMETRY_SKIP = frozenset({"/health"})
+
+
+@app.middleware("http")
+async def _request_telemetry(request, call_next):
+    """Emit one `daemon_request` metrics event per request.
+
+    Audit item F: the daemon had 17 domain events (phase_advance, candidate_promoted and
+    so on) but nothing per REQUEST, so latency, status and error rate per route were
+    unobservable for all ~30 routes -- including /query and /pre-write-check, which every
+    hook calls on every turn. A slow or 500-ing daemon was visible only as hooks
+    mysteriously degrading, since they all fail open by design.
+
+    Recorded on the way out, including when the handler raises, then the exception is
+    re-raised untouched. The emit itself can never affect the response: writ.shared.logging
+    .emit is documented never to raise, and it is wrapped anyway, because an observability
+    concern must not be able to break the thing it observes.
+    """
+    start = time.perf_counter()
+    status = 500          # what the client gets if the handler raises
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        try:
+            path = request.url.path
+            if path not in _REQUEST_TELEMETRY_SKIP:
+                # The matched ROUTE, not the concrete path: /session/{session_id}/mode
+                # keeps one identity instead of splintering into one per session id, which
+                # is what makes the rows aggregatable. Set by the router, so it is absent
+                # on a 404.
+                route = request.scope.get("route")
+                emit(
+                    "metrics",
+                    "daemon_request",
+                    (request.scope.get("path_params") or {}).get("session_id", "") or "",
+                    None,
+                    route=getattr(route, "path_format", None) or path,
+                    method=request.method,
+                    status=status,
+                    duration_ms=round((time.perf_counter() - start) * 1000, 2),
+                )
+        except Exception:  # noqa: BLE001 - telemetry must never mask the real outcome
+            pass
 
 
 # ---------------------------------------------------------------------------

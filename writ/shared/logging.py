@@ -41,6 +41,11 @@ from writ.shared.friction import base_friction_entry
 # this size is rolled into archive/ before the next append.
 ROTATE_SIZE_BYTES = 50 * 1024 * 1024
 
+# Cap on the traceback recorded by emit_exception. Tail-biased when applied, so the
+# innermost frames survive; an uncapped traceback is how the errors stream would
+# become the next unbounded log.
+_TRACEBACK_MAX_CHARS = 2000
+
 # Classification taxonomy (## Analysis STREAM_MAP): audit = governance decisions
 # (immutable compliance), friction = "worth fixing" signal, metrics = high-volume
 # operational telemetry. Every event maps to exactly one stream.
@@ -57,8 +62,15 @@ STREAM_MAP: dict[str, str] = {
     "candidate_promoted": "audit",
     "quality_judgment": "audit",
     "memory_policy_deny": "audit",
+    # Evidence, on audit rather than metrics: these ARE the oversight record. Both lived
+    # only in the session cache, and citation_log is additionally trimmed to a cap, so the
+    # proof behind a completion claim was the most perishable data Writ held.
+    "verification_evidence": "audit",
+    "citation_recorded": "audit",
     "committed_file_not_in_plan": "audit",
     "read_blocked": "audit",
+    # Every gate's allow/deny, emitted on BOTH branches by log_gate_decision.
+    "gate_decision": "audit",
     "exitplanmode_allow": "audit",
     "exitplanmode_denial": "audit",
     "debug_gate_root_cause_populated": "audit",
@@ -76,10 +88,30 @@ STREAM_MAP: dict[str, str] = {
     "recall_failed": "friction",
     "git_hooks_auto_install_failed": "friction",
     "debug_to_work_handoff": "friction",
-    "write_failure": "friction",
-    "pre_write_decision": "friction",
+    # Emitted from writ/session/session_lifecycle.py; they reached friction only
+    # via _DEFAULT_STREAM. Same destination, stated rather than inferred.
+    "pre_compaction": "friction",
+    "post_compaction": "friction",
+    # errors: a caught exception is not workflow friction. Own stream, own
+    # retention (see log_rotation.RETENTION_DAYS).
+    "exception": "errors",
     # metrics
     "hook_execution": "metrics",
+    # One row per daemon HTTP request (route/status/duration), from the server's
+    # _request_telemetry middleware. Declared here even though the emitter passes an
+    # explicit stream, so the map stays a complete inventory of live events (audit C3
+    # was live events missing from it).
+    "daemon_request": "metrics",
+    # Retrieval quality, from the daemon's /query call site: mode (including the S4
+    # "abstained"), rule_count, abstain_signal. Emitted for every query so an abstention
+    # RATE is computable, not just its occurrences.
+    "retrieval_result": "metrics",
+    # HNSW index cache outcome, once per pipeline build. A miss means the process is
+    # about to bulk-encode the whole corpus.
+    "hnsw_cache": "metrics",
+    # Which writ.toml was resolved and what it contributed, once per process per path.
+    # Key NAMES only: that file holds neo4j.password and bitbucket.token.
+    "config_resolved": "metrics",
     "rag_query": "metrics",
     "always_on_inject": "metrics",
     "subagent_start": "metrics",
@@ -90,8 +122,10 @@ STREAM_MAP: dict[str, str] = {
     "token_snapshot": "metrics",
     "pressure_audit": "metrics",
     "cwd_changed": "metrics",
-    "instructions_loaded": "metrics",
     "methodology_push": "metrics",
+    # Per-dispatch telemetry from hooks/scripts/writ-subagent-start.sh; it was the
+    # largest event reaching friction only through _DEFAULT_STREAM.
+    "subagent_rules_injected": "metrics",
 }
 
 # Fail-safe default for any event absent from STREAM_MAP: friction (never dropped,
@@ -303,7 +337,10 @@ def emit(
     with a single stderr note, so no event is lost and no caller is blocked.
     """
     entry = _build_entry(event, session_id, mode, fields)
-    line = json.dumps(entry) + "\n"
+    # default=str: a caller-supplied field that is not JSON-native must not turn a
+    # fire-and-forget log call into a TypeError at the call site. The docstring's
+    # "never raises" is the contract every hook and converted except-handler relies on.
+    line = json.dumps(entry, default=str) + "\n"
 
     friction_log = os.environ.get("WRIT_FRICTION_LOG")
     if friction_log:
@@ -325,6 +362,60 @@ def emit(
         _fallback(line, event)
 
 
+def emit_exception(
+    component: str,
+    exc: BaseException,
+    session_id: str = "",
+    mode: str | None = None,
+    **ctx,
+) -> None:
+    """Record a caught exception on the `errors` stream. Never raises.
+
+    For handlers that must keep swallowing (a hook may not be blocked by a logging
+    concern) but must stop being invisible. `component` is a stable dotted label for
+    the failing site, e.g. `session.cache.read`; it is what makes an errors row
+    greppable without parsing the traceback.
+
+    Adds a record and nothing else: the caller keeps its own control flow and return
+    value, so converting a handler cannot change behavior. Delegates to `emit`, so it
+    inherits classification, the durable `_fallback.jsonl`, CR/LF sanitization, and
+    the `WRIT_FRICTION_LOG` single-file collapse.
+
+    The traceback is tail-truncated to `_TRACEBACK_MAX_CHARS`: an uncapped traceback
+    in a JSON-lines file is the realistic way this stream becomes the next unbounded
+    log, and the innermost frames (at the tail) are the ones worth keeping.
+    """
+    try:
+        exc_type = type(exc).__name__
+        message = str(exc)
+    except Exception:
+        exc_type, message = "UnknownError", ""
+    try:
+        # Imported HERE, not at module scope: `traceback` costs ~2ms to import and
+        # this module is imported by friction-append.py on EVERY instrumented hook
+        # spawn, while an exception is logged only rarely. At module scope it was a
+        # measured ~2ms tax on every hook run for a path almost never taken.
+        import traceback
+
+        tb = "".join(
+            traceback.format_exception(type(exc), exc, exc.__traceback__)
+        )
+    except Exception:
+        # A non-exception argument (or one with no __traceback__) still deserves a row.
+        tb = ""
+    emit(
+        "errors",
+        "exception",
+        session_id,
+        mode,
+        component=component,
+        exc_type=exc_type,
+        message=message,
+        traceback=tb[-_TRACEBACK_MAX_CHARS:],
+        **ctx,
+    )
+
+
 def _fallback(line: str, event: str) -> None:
     """Preserve an event whose primary write failed (ERR-HANDLE-003).
 
@@ -343,27 +434,67 @@ def _fallback(line: str, event: str) -> None:
     )
 
 
-def read_streams(project: str, streams) -> list[dict]:
-    """Union + JSON-parse the named stream files for a project.
+def _generation_lines(path: Path) -> list[str]:
+    """Read one generation's raw lines, transparently decompressing `.gz`.
 
-    Skips malformed lines and missing files (which contribute zero rows); a project
-    with no logs yields an empty list. Used by the analyzers/metrics readers to merge
-    audit + friction + metrics without knowing the on-disk layout (SOLID-DIP-002).
+    Fail-soft on the whole file for the same reason the per-line parse is fail-soft:
+    every caller is a read-only analyzer that today cannot fail, so a truncated or
+    corrupt archive must cost its own rows and nothing else. `OSError` covers an
+    unreadable file, `EOFError`/`gzip.BadGzipFile` a corrupt or non-gzip archive
+    (BadGzipFile subclasses OSError, so it is already caught; EOFError is not).
+    """
+    import gzip
+
+    try:
+        if path.suffix == ".gz":
+            with gzip.open(path, "rt", encoding="utf-8") as fh:
+                return fh.read().splitlines()
+        return path.read_text(encoding="utf-8").splitlines()
+    except (OSError, EOFError, UnicodeDecodeError):
+        return []
+
+
+def _stream_generations(project: str, stream: str) -> list[Path]:
+    """Every readable generation of one stream, oldest first.
+
+    Rotation moves history into `archive/<stream>-<date>.jsonl.gz` and leaves a fresh
+    live file behind, so a reader that opens only `stream_path` reports an empty
+    corpus the day after a sweep. Archives sort by their ISO date token, which is
+    lexicographically ordered, and the live file is always the newest generation, so
+    it goes last. Callers depend on this: `render_audit_json` reads `events[0]` and
+    `events[-1]` as the first and last timestamps.
+
+    The glob is anchored to `<stream>-` so one stream never picks up another's
+    archives (`audit-*.jsonl.gz` cannot match `metrics-2026-07-21.jsonl.gz`).
+    """
+    generations: list[Path] = []
+    arc = archive_dir(project)
+    if arc.is_dir():
+        generations.extend(sorted(arc.glob(f"{stream}-*.jsonl.gz")))
+    live = stream_path(project, stream)
+    if live.is_file():
+        generations.append(live)
+    return generations
+
+
+def read_streams(project: str, streams) -> list[dict]:
+    """Union + JSON-parse every generation of the named streams for a project.
+
+    Covers both the live stream file and its rotated `archive/*.jsonl.gz`
+    generations, so rotation never removes history from the analyzers' view. Skips
+    malformed lines, unreadable files, and corrupt archives (each contributes zero
+    rows); a project with no logs yields an empty list. Used by the analyzers/metrics
+    readers to merge audit + friction + metrics without knowing the on-disk layout
+    (SOLID-DIP-002).
     """
     events: list[dict] = []
     for stream in streams:
-        path = stream_path(project, stream)
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        for raw in text.splitlines():
-            if not raw.strip():
-                continue
-            try:
-                events.append(json.loads(raw))
-            except (json.JSONDecodeError, ValueError):
-                continue
+        for path in _stream_generations(project, stream):
+            for raw in _generation_lines(path):
+                if not raw.strip():
+                    continue
+                try:
+                    events.append(json.loads(raw))
+                except (json.JSONDecodeError, ValueError):
+                    continue
     return events

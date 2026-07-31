@@ -45,6 +45,7 @@ from writ.shared.logging import (
 RETENTION_DAYS: dict[str, int] = {
     "audit": 365,
     "friction": 365,
+    "errors": 365,
     "metrics": 90,
     "debug": 14,
 }
@@ -119,8 +120,21 @@ def _collect(root: Path) -> tuple[list[Path], list[Path], list[Path]]:
     stream is a live file wherever it sits. This keeps a project whose resolved
     scope is literally `archive` -- or nested like `github.com/org/archive` --
     from having its live `audit.jsonl`/`friction.jsonl` treated as archive files
-    and gzipped/unlinked. Root-level bookkeeping (e.g. the durable
-    `_fallback.jsonl`) is never a live stream and is skipped.
+    and gzipped/unlinked. Root-level bookkeeping is never a live stream and is skipped;
+    that set is exactly two files, both deliberately outside the taxonomy:
+
+      `_fallback.jsonl`     the durable safety net. Rotating the thing that catches
+                            failed writes would be self-defeating.
+      `calibration.jsonl`   paired pattern-vs-LLM analyzer verdicts. Global rather than
+                            per-project, so it is not a stream, and BOUNDED at the
+                            writer: analysis/analyzer.py only calls log_calibration when
+                            Instrumentation.get_mode() == "calibration", which flips to
+                            "production" once the file reaches CALIBRATION_THRESHOLD
+                            (100) lines. It cannot grow, so it needs no rotation.
+
+    The coverage audit filed calibration.jsonl as "unrouted" (finding D3). It is
+    unmanaged deliberately, not by omission -- which is only a defensible answer while
+    that write bound holds, so tests/test_root_level_log_files.py pins both halves.
     """
     live: list[Path] = []
     arc_jsonl: list[Path] = []

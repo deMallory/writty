@@ -7,6 +7,7 @@
 # Hook type: PostToolUse (matcher: Write|Edit)
 SKILL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$SKILL_DIR/bin/lib/common.sh"
+hook_instrument "writ-bible-authoring-push"
 
 load_hook_env
 [ -z "${HOOK_FILE_PATH:-}" ] && exit 0

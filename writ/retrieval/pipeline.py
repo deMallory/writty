@@ -44,6 +44,7 @@ from writ.retrieval.ranking import (
     normalize_ranks,
 )
 from writ.retrieval.traversal import AdjacencyCache
+from writ.shared.logging import emit, emit_exception
 
 if TYPE_CHECKING:
     from writ.graph.db import Neo4jConnection
@@ -803,8 +804,22 @@ async def build_pipeline(
             "Loaded HNSW index from cache (hash=%s); skipping encode_batch",
             corpus_hash[:12],
         )
+        # The hit is recorded too, for the same reason every query is: without the
+        # denominator, "two misses" cannot be read as either routine (two restarts after
+        # corpus edits) or alarming (two misses out of two hundred starts).
+        emit("metrics", "hnsw_cache", "", None,
+             outcome="hit", corpus_hash=corpus_hash[:12])
     except Exception as exc:
         _logger.debug("HNSW cache miss: %s", exc)
+        # P1 deferred this pair as "the least silent of the set" because they already
+        # call _logger. But _logger.debug is invisible at the default level, and a cache
+        # miss means the process is about to bulk-encode the whole corpus: the single
+        # biggest cold-start cost. Recorded on metrics (once per process build, so the
+        # volume is trivial) to make a slow startup explainable after the fact.
+        emit(
+            "metrics", "hnsw_cache", "", None,
+            outcome="miss", corpus_hash=corpus_hash[:12], reason=str(exc)[:200],
+        )
 
     # Select the embedding model and (on cache miss) bulk-encode the corpus.
     query_encoder, embeddings = _resolve_encoder(
@@ -830,6 +845,12 @@ async def build_pipeline(
             _logger.info("Saved HNSW index to cache (hash=%s)", corpus_hash[:12])
         except Exception as exc:
             _logger.warning("Failed to save HNSW index: %s", exc)
+            # A failed save is not cosmetic: every future cold start pays the full
+            # encode again, and a _logger.warning nobody is watching is how that
+            # becomes "Writ feels slow" with no trail.
+            emit_exception(
+                "retrieval.hnsw.save", exc, "", None, corpus_hash=corpus_hash[:12],
+            )
 
     # Build adjacency cache (Stage 4).
     adjacency_cache = AdjacencyCache()

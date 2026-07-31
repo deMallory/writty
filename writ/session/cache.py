@@ -25,9 +25,32 @@ from writ.session.config import (
 )
 
 
+# Default session-state root: the skill install's `var/session`, derived from this
+# module's own __file__ so it follows the install rather than assuming a fixed home
+# layout. parents[2] is the skill dir containing the `writ` package
+# (parents[0]=writ/session, parents[1]=writ, parents[2]=<skill>). Identical
+# derivation to writ/shared/logging.py::_DEFAULT_LOG_ROOT.
+#
+# NOT tempfile.gettempdir(). /usr/lib/tmpfiles.d/tmp.conf declares `D /tmp`, and the
+# capital D means systemd EMPTIES the directory at boot -- so every session cache was
+# destroyed on reboot and a resumed conversation silently lost its mode, gates, and
+# loaded_rule_ids (the "mode=None" wipe). Measured 2026-07-23: 341 session caches
+# existed, every one postdating the boot, zero predating it. The loss was invisible
+# because a MISSING cache is not an error: _read_cache returns _default_cache()
+# before its try block, so nothing raised and nothing logged.
+# Built with os.path, not pathlib: this module is on the per-hook hot path and
+# importing pathlib here costs ~5.6ms per spawn (it pulls urllib.parse + ipaddress),
+# which would undo the import-cost fix made for exactly this reason. `os` is already
+# imported. The three dirnames walk writ/session/cache.py -> writ/session -> writ -> <skill>.
+_SKILL_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+_DEFAULT_CACHE_DIR = os.path.join(_SKILL_ROOT, "var", "session")
+
+
 def _cache_dir() -> str:
     """Resolve the session-cache directory from WRIT_CACHE_DIR at call time."""
-    return os.environ.get("WRIT_CACHE_DIR", tempfile.gettempdir())
+    return os.environ.get("WRIT_CACHE_DIR", _DEFAULT_CACHE_DIR)
 
 
 # Payload-derived pointer file the hooks rewrite each turn with the CURRENT session id.
@@ -93,6 +116,23 @@ def resolve_current_session_id() -> str | None:
 # Import-time snapshot for the server health endpoint / desync display only (not the I/O
 # source). The daemon's env is fixed at startup, so this equals _cache_dir() there.
 CACHE_DIR = _cache_dir()
+
+
+def _ensure_cache_dir() -> str:
+    """Return the cache dir, creating it if absent.
+
+    /tmp always existed, so nothing on the write path ever had to create this. The
+    default now lives under the skill install, which does NOT exist on a fresh
+    checkout -- and a failed write would land right back in the silent-blank-session
+    behavior this move exists to remove. Read paths deliberately do not call this: a
+    missing dir there is just "no cache yet".
+    """
+    d = _cache_dir()
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass  # Surfaced by the caller's own write failure, not swallowed here.
+    return d
 
 
 def _cache_path(session_id: str) -> str:
@@ -200,7 +240,14 @@ def _read_cache(session_id: str) -> dict:
         for key, value in _default_cache().items():
             data.setdefault(key, value)
         return data
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        # Stay fail-soft, but say so: this fallback presents downstream as a session
+        # that lost its mode and gates, which is indistinguishable from a genuinely
+        # new session. That ambiguity is what made the mode=None class of bug so
+        # expensive to diagnose.
+        from writ.shared.logging import emit_exception
+
+        emit_exception("session.cache.read", exc, session_id, None, cache_path=path)
         return _default_cache()
 
 
@@ -219,6 +266,7 @@ def _write_cache(session_id: str, data: dict) -> None:
     enumeration glob.
     """
     path = _cache_path(session_id)
+    _ensure_cache_dir()  # fresh install: the default var/session tree may not exist yet
     dir_ = os.path.dirname(path) or "."
     fd, tmp_path = tempfile.mkstemp(
         dir=dir_, prefix=f"writ-session-{session_id}.json.", suffix=".tmp"
@@ -277,6 +325,8 @@ def mutate_cache(session_id: str):
         # Reentrant: share the outer block's cache; the outermost owns the write.
         yield held[session_id]
         return
+    # The lock is opened BEFORE _write_cache runs, so it needs the dir to exist too.
+    _ensure_cache_dir()
     lock_fd = os.open(_lock_path(session_id), os.O_CREAT | os.O_RDWR, 0o600)
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)

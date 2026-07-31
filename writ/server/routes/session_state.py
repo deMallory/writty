@@ -35,6 +35,7 @@ from writ.server.models import (
     SessionVerificationEvidenceRequest,
 )
 from writ.session.mode_engine import VALID_MODES
+from writ.shared.logging import emit
 
 router = APIRouter()
 
@@ -469,6 +470,18 @@ async def session_verification_evidence_set(
                 "recorded_at": datetime.now().isoformat(),
             }
             cache["verification_evidence"] = evidence
+        # Audit item F: this lived ONLY in the session cache, so the proof behind a
+        # completion claim died with the cache -- and a claim whose evidence has evaporated
+        # is indistinguishable from one that never had any. Mirrored to the durable audit
+        # stream (365-day retention) AFTER the cache write succeeds, so a rejected or
+        # failed write never leaves a record of evidence that was not stored.
+        emit(
+            "audit", "verification_evidence", session_id, None,
+            todo_id=todo_id,
+            command=request.command,
+            exit_code=request.exit_code,
+            output_excerpt=request.output_excerpt,
+        )
         return {"ok": True, "todo_id": todo_id}
 
     return await asyncio.to_thread(_set)

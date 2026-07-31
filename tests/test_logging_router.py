@@ -138,10 +138,51 @@ def test_stream_map_classifies_audit_events(event):
     "approval_pattern_match", "subagent_type_fallback",
     "decision_capture_failed", "commit_capture_failed", "recall_failed",
     "git_hooks_auto_install_failed", "debug_to_work_handoff",
-    "write_failure", "pre_write_decision",
 ])
 def test_stream_map_classifies_friction_events(event):
     assert STREAM_MAP[event] == "friction"
+    assert stream_for(event) == "friction"
+
+
+# Audit item 6 (taxonomy cleanup): these three are emitted in production but
+# reached their stream only through _DEFAULT_STREAM. pre/post_compaction keep
+# the same destination, stated rather than inferred; subagent_rules_injected is
+# per-dispatch telemetry and belongs in metrics, not friction.
+@pytest.mark.parametrize("event,expected", [
+    ("pre_compaction", "friction"),
+    ("post_compaction", "friction"),
+    ("subagent_rules_injected", "metrics"),
+])
+def test_previously_unmapped_live_events_are_mapped_explicitly(event, expected):
+    assert STREAM_MAP[event] == expected
+    assert stream_for(event) == expected
+
+
+def test_instructions_loaded_is_dropped_from_the_map():
+    """No emitter exists anywhere in the tree; a mapped event implies a producer."""
+    assert "instructions_loaded" not in STREAM_MAP
+
+
+# The errors stream (audit item 4): a dedicated stream so an OSError in the
+# cache writer is not filed as workflow friction.
+def test_errors_is_a_known_stream_with_its_own_retention():
+    from writ.session.log_rotation import RETENTION_DAYS
+
+    assert RETENTION_DAYS["errors"] == 365
+
+
+def test_exception_event_routes_to_the_errors_stream():
+    assert stream_for("exception") == "errors"
+
+
+# Audit item C1: both events are unmapped. write_failure's only emitter
+# (track-failed-writes.sh) was removed as dead because PostToolUseFailure
+# Write|Edit never fires, and pre_write_decision was retired in 1.3. They keep
+# routing to friction through _DEFAULT_STREAM, so any late-arriving row is
+# still captured; they just no longer claim to be a measured signal.
+@pytest.mark.parametrize("event", ["write_failure", "pre_write_decision"])
+def test_retired_events_are_unmapped_but_still_route_to_friction(event):
+    assert event not in STREAM_MAP
     assert stream_for(event) == "friction"
 
 
@@ -149,7 +190,7 @@ def test_stream_map_classifies_friction_events(event):
     "hook_execution", "rag_query", "always_on_inject", "subagent_start",
     "subagent_complete", "playbook_step_complete", "phase_token_summary",
     "phase_transition_time", "token_snapshot", "pressure_audit",
-    "cwd_changed", "instructions_loaded", "methodology_push",
+    "cwd_changed", "methodology_push", "subagent_rules_injected",
 ])
 def test_stream_map_classifies_metrics_events(event):
     assert STREAM_MAP[event] == "metrics"
@@ -162,9 +203,16 @@ def test_stream_for_unknown_event_defaults_to_friction():
 
 
 def test_stream_map_has_no_event_mapped_to_two_streams():
-    """Every event name in STREAM_MAP maps to exactly one stream string."""
+    """Every event maps to exactly one stream, and that stream is a known one.
+
+    The valid set is derived from RETENTION_DAYS rather than hardcoded, so adding a
+    stream cannot leave this check silently pinned to the old vocabulary (it was,
+    until `errors` was added).
+    """
+    from writ.session.log_rotation import RETENTION_DAYS
+
     for event, stream in STREAM_MAP.items():
-        assert stream in ("audit", "friction", "metrics"), (event, stream)
+        assert stream in RETENTION_DAYS, (event, stream)
 
 
 # --- emit(): base schema + classification + write -----------------------
@@ -481,3 +529,124 @@ def test_read_streams_missing_file_returns_no_rows_for_that_stream(tmp_path, mon
 def test_read_streams_returns_empty_list_for_project_with_no_logs(tmp_path, monkeypatch):
     monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path))
     assert read_streams("never-logged-project", ["audit", "friction", "metrics"]) == []
+
+
+# --- read_streams() archive awareness (D1a) ----------------------------------
+# RED until read_streams unions <project>/archive/<stream>-<date>.jsonl.gz with
+# the live stream file. Rotation moves history into those archives, so a reader
+# that only opens the live file reports an empty corpus the day after a sweep
+# (measured live 2026-07-22: 15729 archived rows, one project visible-count 0).
+
+
+def _write_archive(project: str, stream: str, day: str, rows: list[dict]) -> Path:
+    """Write a gzipped archive generation the way log_rotation produces it."""
+    import gzip
+
+    from writ.shared.logging import archive_dir
+
+    arc = archive_dir(project)
+    arc.mkdir(parents=True, exist_ok=True)
+    dest = arc / f"{stream}-{day}.jsonl.gz"
+    with gzip.open(dest, "wt", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(json.dumps(row) + "\n")
+    return dest
+
+
+def test_read_streams_includes_archived_rows(tmp_path, monkeypatch):
+    """A rotated generation still counts: its rows come back alongside live ones."""
+    monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path))
+    project = "proj-arc-1"
+    _write_archive(project, "audit", "2026-07-21",
+                   [{"ts": "2026-07-21T01:00:00Z", "event": "mode_change", "session": "s1"}])
+    path = stream_path(project, "audit")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"ts": "2026-07-22T01:00:00Z", "event": "gate_denial", "session": "s2"}\n')
+
+    events = read_streams(project, ["audit"])
+    assert {e["event"] for e in events} == {"mode_change", "gate_denial"}
+
+
+def test_read_streams_orders_archives_oldest_first(tmp_path, monkeypatch):
+    """Callers take events[0]/events[-1] as first/last ts, so order is a contract."""
+    monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path))
+    project = "proj-arc-2"
+    _write_archive(project, "audit", "2026-07-20",
+                   [{"ts": "2026-07-20T01:00:00Z", "event": "older", "session": "s"}])
+    _write_archive(project, "audit", "2026-07-21",
+                   [{"ts": "2026-07-21T01:00:00Z", "event": "newer", "session": "s"}])
+
+    events = read_streams(project, ["audit"])
+    assert [e["event"] for e in events] == ["older", "newer"]
+
+
+def test_read_streams_places_live_rows_after_archived_rows(tmp_path, monkeypatch):
+    """The live file is always the newest generation for its stream."""
+    monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path))
+    project = "proj-arc-3"
+    _write_archive(project, "audit", "2026-07-21",
+                   [{"ts": "2026-07-21T01:00:00Z", "event": "archived", "session": "s"}])
+    path = stream_path(project, "audit")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"ts": "2026-07-22T01:00:00Z", "event": "live", "session": "s"}\n')
+
+    events = read_streams(project, ["audit"])
+    assert [e["event"] for e in events] == ["archived", "live"]
+
+
+def test_read_streams_skips_corrupt_archive_without_raising(tmp_path, monkeypatch):
+    """Same fail-soft contract as a malformed line: skip it, keep the rest."""
+    monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path))
+    project = "proj-arc-4"
+    from writ.shared.logging import archive_dir
+
+    arc = archive_dir(project)
+    arc.mkdir(parents=True, exist_ok=True)
+    (arc / "audit-2026-07-20.jsonl.gz").write_bytes(b"this is not gzip data")
+    _write_archive(project, "audit", "2026-07-21",
+                   [{"ts": "2026-07-21T01:00:00Z", "event": "survivor", "session": "s"}])
+
+    events = read_streams(project, ["audit"])
+    assert [e["event"] for e in events] == ["survivor"]
+
+
+def test_read_streams_reads_only_the_requested_streams_archives(tmp_path, monkeypatch):
+    """An archive for a stream that was not asked for must not leak into results."""
+    monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path))
+    project = "proj-arc-5"
+    _write_archive(project, "audit", "2026-07-21",
+                   [{"ts": "2026-07-21T01:00:00Z", "event": "wanted", "session": "s"}])
+    _write_archive(project, "metrics", "2026-07-21",
+                   [{"ts": "2026-07-21T01:00:00Z", "event": "unwanted", "session": "s"}])
+
+    events = read_streams(project, ["audit"])
+    assert [e["event"] for e in events] == ["wanted"]
+
+
+def test_read_streams_with_archives_but_no_live_file(tmp_path, monkeypatch):
+    """The exact post-rotation state: live file gone, everything in archive."""
+    monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path))
+    project = "proj-arc-6"
+    _write_archive(project, "friction", "2026-07-21",
+                   [{"ts": "2026-07-21T01:00:00Z", "event": "repeated_denial", "session": "s"}])
+
+    events = read_streams(project, ["friction"])
+    assert [e["event"] for e in events] == ["repeated_denial"]
+
+
+def test_read_streams_skips_malformed_lines_inside_an_archive(tmp_path, monkeypatch):
+    """Malformed-line skipping applies inside archives, not just the live file."""
+    monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path))
+    project = "proj-arc-7"
+    import gzip
+
+    from writ.shared.logging import archive_dir
+
+    arc = archive_dir(project)
+    arc.mkdir(parents=True, exist_ok=True)
+    with gzip.open(arc / "audit-2026-07-21.jsonl.gz", "wt", encoding="utf-8") as fh:
+        fh.write('{"ts": "2026-07-21T01:00:00Z", "event": "good", "session": "s"}\n')
+        fh.write("NOT JSON\n\n")
+
+    events = read_streams(project, ["audit"])
+    assert [e["event"] for e in events] == ["good"]

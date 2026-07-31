@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 SID = "test-debug-gate"
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 TEMPLATE = Path(SKILL_DIR) / "templates" / "debug.md"
 

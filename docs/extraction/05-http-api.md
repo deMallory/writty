@@ -130,7 +130,11 @@ Response on success:
 | `/session/{session_id}/quality-judgment` | GET | — | `{"judgments": <dict>, "override_count": <int>}` |
 
 ### POST /session/{session_id}/advance-phase (409-506)
-Body `{confirmation_source}` ∈ `{"tool", "pattern", "explicit"}` (default `"explicit"`).
+Body `{confirmation_source, token, project_root, cwd}`. `confirmation_source` ∈ `{"tool", "pattern", "explicit"}` (default `"explicit"`).
+
+- `token` is REQUIRED: the single-use gate token the approval hook writes only on a genuine user approval. No token, no advance (logged `agent_self_approval_blocked`).
+- The project root is resolved in order: `project_root` if given, else the nearest repo-marker directory at or above `cwd`, else `cwd` itself. It decides which `plan.md` and which test skeletons are validated. Send `cwd` (absolute): the daemon will not fall back to its own working directory, which is Writ's install dir.
+- Response on success adds `project_root`, `root_tier` (`explicit`/`marker`/`cwd`) and `validated` (the artifact path) so the caller can report WHICH plan was accepted. A refusal adds `token_spent`: `false` means the gate could not evaluate anything (no root) and the approval is still valid; `true` means the artifact was judged and failed, so a fresh approval is needed.
 
 - Phase order: `["planning", "testing", "implementation", "complete"]`.
 - Default current phase: `"planning"`.

@@ -38,6 +38,7 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
+from writ.graph.db._query_runner import _QueryRunnerMixin
 from writ.graph.db.record_store import RecordStoreMixin
 from writ.graph.schema import Commit, Decision, FileChange
 
@@ -118,9 +119,22 @@ class _FakeDriver:
         return _FakeSession(self._calls)
 
 
+class _RecordStoreUnderTest(_QueryRunnerMixin, RecordStoreMixin):
+    """RecordStoreMixin composed with the query runner, mirroring production.
+
+    RecordStoreMixin._create_record calls self._run_single, which is defined on
+    _QueryRunnerMixin -- Neo4jConnection resolves it through the MRO
+    (writ/graph/db/__init__.py: `class Neo4jConnection(_QueryRunnerMixin,
+    ..., RecordStoreMixin, ...)`). Instantiating RecordStoreMixin ALONE, as this
+    fixture previously did via __new__, builds an object that cannot exist in
+    production and fails with AttributeError: no attribute '_run_single'.
+    Composing the same two mixins in the same order tests the real resolution.
+    """
+
+
 @pytest.fixture()
 def hermetic_conn():
-    """Fresh RecordStoreMixin instance wired to a fresh fake driver.
+    """Fresh record-store instance wired to a fresh fake driver.
 
     No __init__ call (no real connection): _driver/_database are set the same
     way Neo4jConnection.__init__ sets them, so create_decision/create_filechange/
@@ -130,7 +144,7 @@ def hermetic_conn():
     Returns (conn, calls).
     """
     calls: list[dict] = []
-    conn = RecordStoreMixin.__new__(RecordStoreMixin)
+    conn = _RecordStoreUnderTest.__new__(_RecordStoreUnderTest)
     conn._driver = _FakeDriver(calls)
     conn._database = "neo4j"
     return conn, calls

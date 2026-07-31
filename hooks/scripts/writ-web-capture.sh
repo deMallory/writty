@@ -11,6 +11,7 @@ set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$SKILL_DIR/bin/lib/common.sh"
+hook_instrument "writ-web-capture"
 SESSION_HELPER="$SKILL_DIR/bin/lib/writ-session.py"
 
 load_hook_env

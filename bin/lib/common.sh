@@ -325,7 +325,10 @@ detect_language() {
 }
 
 # ── Friction event logging ──────────────────────────────────────────────────
-# Appends a JSON event to workflow-friction.log. Fire-and-forget.
+# Appends a JSON event to the typed stream its event name maps to. Fire-and-forget.
+# (Historically this wrote the single per-project friction log; since the P1 router
+# it routes through friction-append.py -> writ.shared.logging.emit, which classifies
+# by event via STREAM_MAP.)
 # Usage: log_friction_event "$SESSION_ID" "$MODE" "event_name" '{"key":"val"}'
 # Extra fields arg is optional JSON object to merge.
 # Single env-aware writer (Phase 1.2): all friction writes route through
@@ -351,9 +354,13 @@ hook_timer_start() {
 # Logs hook_execution event with duration. Call before exit.
 # Bypasses log_friction_event to avoid shell quoting issues with JSON.
 # Usage: hook_timer_end "$HOOK_START_NS" "hook_name" "$SESSION_ID" "$MODE"
+# `exit_code` (5th arg) is OPTIONAL so the pre-existing 4-arg callers keep working;
+# when given it is emitted, which is what makes "which hooks are quietly failing"
+# answerable. hook_name is hook-controlled (never tool input), so interpolating it
+# into the JSON is safe here.
 hook_timer_end() {
-  local start_ns="$1" hook_name="$2" session_id="$3" mode="$4"
-  local now_ns dur_ms
+  local start_ns="$1" hook_name="$2" session_id="$3" mode="$4" exit_code="${5:-}"
+  local now_ns dur_ms extra
   now_ns=$(date +%s%N 2>/dev/null || echo 0)
   if [ "${start_ns:-0}" -gt 0 ] 2>/dev/null && [ "$now_ns" -gt 0 ] 2>/dev/null; then
     dur_ms=$(( (now_ns - start_ns) / 1000000 ))
@@ -361,8 +368,137 @@ hook_timer_end() {
     dur_ms=0
   fi
   [ "$dur_ms" -lt 0 ] 2>/dev/null && dur_ms=0
+  extra="{\"hook_name\":\"$hook_name\",\"duration_ms\":$dur_ms"
+  case "$exit_code" in
+    ''|*[!0-9]*) : ;;                                  # absent or non-numeric: omit
+    *) extra="$extra,\"exit_code\":$exit_code" ;;
+  esac
+  extra="$extra}"
   python3 "$_FRICTION_APPEND" "$session_id" "$mode" "hook_execution" \
-    "{\"hook_name\":\"$hook_name\",\"duration_ms\":$dur_ms}" 2>/dev/null || true
+    "$extra" 2>/dev/null || true
+}
+
+# ── Hook instrumentation (one trap, every exit path) ────────────────────────
+# Installs an EXIT trap that records the run REGARDLESS of how the hook leaves:
+# an early `exit 0`, a gate's `exit 2`, a `set -e` abort, or a command-not-found
+# crash. Editing each `exit` instead would be 96 edits across the 18 hooks and
+# would still miss the abort/crash paths -- the ones that vanish silently today.
+#
+# Behavior-neutral by construction: `$?` is captured FIRST and re-exited with, so
+# a gate's exit code (Claude Code reads 2 as deny) is preserved exactly, and every
+# write is stderr-redirected + `|| true` so a logging fault can never change a
+# hook's outcome.
+#
+# SESSION_ID / CURRENT_MODE are read INSIDE the trap (late binding): most hooks
+# resolve them after this call, so reading them at install time would record empty
+# values.
+# Usage: hook_instrument "writ-bash-write-gate"   (call right after sourcing common.sh)
+hook_instrument() {
+  _WRIT_HOOK_NAME="${1:-$(basename "${BASH_SOURCE[1]:-$0}" .sh)}"
+  _WRIT_HOOK_START_NS=$(hook_timer_start)
+  # Event buffer: log_gate_decision appends here instead of spawning its own
+  # python, so a hook that both decides and times out pays ONE spawn at exit
+  # rather than two. Measured: a friction-append spawn is ~26ms, and 11 of the
+  # instrumented hooks emit both events. mktemp failure leaves the buffer empty,
+  # which falls back to the direct per-event spawn.
+  _WRIT_EVENT_BUF="$(mktemp 2>/dev/null || echo "")"
+  trap '_writ_hook_exit_trap' EXIT
+}
+
+_writ_hook_exit_trap() {
+  local rc=$?
+  local start_ns="${_WRIT_HOOK_START_NS:-0}" now_ns dur_ms
+  now_ns=$(date +%s%N 2>/dev/null || echo 0)
+  if [ "${start_ns:-0}" -gt 0 ] 2>/dev/null && [ "$now_ns" -gt 0 ] 2>/dev/null; then
+    dur_ms=$(( (now_ns - start_ns) / 1000000 ))
+  else
+    dur_ms=0
+  fi
+  [ "$dur_ms" -lt 0 ] 2>/dev/null && dur_ms=0
+
+  # One spawn for every event this hook produced: the buffered gate decisions
+  # (if any) plus this hook_execution row. The buffer holds RAW field values
+  # separated by ASCII unit/record separators, so python does all JSON encoding
+  # and no bash-side quoting can corrupt a record (SEC-INJ-LOG-001).
+  WRIT_EV_BUF="${_WRIT_EVENT_BUF:-}" \
+  WRIT_EV_HOOK="${_WRIT_HOOK_NAME:-unknown}" \
+  WRIT_EV_DUR="$dur_ms" \
+  WRIT_EV_RC="$rc" \
+  WRIT_EV_SESSION="${SESSION_ID:-${HOOK_SESSION_ID:-}}" \
+  WRIT_EV_MODE="${CURRENT_MODE:-${MODE:-}}" \
+  WRIT_EV_SKILL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" \
+  python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["WRIT_EV_SKILL"])
+from writ.shared.logging import emit
+
+session = os.environ.get("WRIT_EV_SESSION", "")
+mode = os.environ.get("WRIT_EV_MODE") or None
+
+buf = os.environ.get("WRIT_EV_BUF", "")
+if buf and os.path.exists(buf):
+    try:
+        raw = open(buf).read()
+    except OSError:
+        raw = ""
+    for rec in raw.split("\x1e"):
+        parts = rec.split("\x1f")
+        if len(parts) < 5 or parts[0] != "gate_decision":
+            continue
+        emit(None, "gate_decision", session, mode, gate=parts[1],
+             decision=parts[2], reason=parts[3], target=parts[4])
+
+emit(None, "hook_execution", session, mode,
+     hook_name=os.environ.get("WRIT_EV_HOOK", "unknown"),
+     duration_ms=int(os.environ.get("WRIT_EV_DUR") or 0),
+     exit_code=int(os.environ.get("WRIT_EV_RC") or 0))
+' 2>/dev/null || true
+  [ -n "${_WRIT_EVENT_BUF:-}" ] && rm -f "$_WRIT_EVENT_BUF" 2>/dev/null || true
+  exit "$rc"
+}
+
+# Records a gate's allow/deny decision. Emitted on BOTH branches on purpose: a
+# gate ALLOW is already silent by design (only a deny sends JSON back to Claude
+# Code), so deny-only logging leaves "was this gate even active" unanswerable.
+# `gate_decision` is mapped to the audit stream (governance decision, 365-day
+# retention), not metrics.
+#
+# reason/target carry tool input, so they are passed through the environment into
+# python and serialized with json.dumps rather than interpolated into a JSON
+# string -- quotes, backslashes, and newlines in a file path or denial reason
+# cannot forge a second record (SEC-INJ-LOG-001).
+# Usage: log_gate_decision "phase-a" "deny" "no plan approved" "src/foo.py"
+log_gate_decision() {
+  # Fast path: append RAW field values to the event buffer and let the exit trap
+  # emit everything in ONE python spawn. printf writes the values verbatim with
+  # ASCII unit (\x1f) / record (\x1e) separators -- control characters that cannot
+  # occur in a bash variable -- so python does all JSON encoding and no bash-side
+  # quoting can corrupt or forge a record.
+  if [ -n "${_WRIT_EVENT_BUF:-}" ] && [ -f "${_WRIT_EVENT_BUF}" ]; then
+    printf 'gate_decision\037%s\037%s\037%s\037%s\036' \
+      "${1:-}" "${2:-}" "${3:-}" "${4:-}" >> "$_WRIT_EVENT_BUF" 2>/dev/null || true
+    return 0
+  fi
+  # Fallback for a hook that calls this without hook_instrument (no buffer):
+  # emit directly so the decision is still recorded.
+  WRIT_GD_GATE="${1:-}" \
+  WRIT_GD_DECISION="${2:-}" \
+  WRIT_GD_REASON="${3:-}" \
+  WRIT_GD_TARGET="${4:-}" \
+  WRIT_GD_SESSION="${SESSION_ID:-${HOOK_SESSION_ID:-}}" \
+  WRIT_GD_MODE="${CURRENT_MODE:-${MODE:-}}" \
+  python3 -c '
+import json, os
+print(json.dumps({
+    "session": os.environ.get("WRIT_GD_SESSION", ""),
+    "mode": os.environ.get("WRIT_GD_MODE") or None,
+    "event": "gate_decision",
+    "gate": os.environ.get("WRIT_GD_GATE", ""),
+    "decision": os.environ.get("WRIT_GD_DECISION", ""),
+    "reason": os.environ.get("WRIT_GD_REASON", ""),
+    "target": os.environ.get("WRIT_GD_TARGET", ""),
+}))
+' 2>/dev/null | python3 "$_FRICTION_APPEND" --stdin-json 2>/dev/null || true
 }
 
 # ── Writ session daemon helper ───────────────────────────────────────────────
@@ -419,8 +555,17 @@ _writ_session() {
                 "${WRIT_SESSION_BASE}/session/${session_id}/mode" 2>/dev/null) || true
             if [ -n "$mode_result" ]; then
                 # jq-first parse (B2: ~1-2ms vs ~10ms python cold-start per call).
-                parsed_field "$mode_result" "mode"
-                return $?
+                local _mode_val
+                _mode_val=$(parsed_field "$mode_result" "mode")
+                # An EMPTY mode means the daemon answered but does not know this
+                # session -- typically because its cache dir differs from ours (the
+                # server-desync state, or a stale daemon on this port). Returning ""
+                # here silently disables every mode-gated hook; fall through to the
+                # local subprocess, which reads the cache we actually write.
+                if [ -n "$_mode_val" ]; then
+                    printf '%s\n' "$_mode_val"
+                    return 0
+                fi
             fi
             # Fallback to subprocess
             python3 "$helper" mode get "$session_id"

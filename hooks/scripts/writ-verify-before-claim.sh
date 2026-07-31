@@ -24,6 +24,7 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 SESSION_HELPER="$WRIT_DIR/bin/lib/writ-session.py"
 source "$WRIT_DIR/bin/lib/common.sh"
+hook_instrument "writ-verify-before-claim"
 
 # WRIT_HOOK_LOG stderr breadcrumb sink, gated by WRIT_DEBUG: /dev/null when unset,
 # ${WRIT_HOOK_LOG:-/tmp/writ-hooks.log} when WRIT_DEBUG=1 (single source: common.sh).
@@ -64,7 +65,9 @@ PY
 )
 
 if [ -n "$SURFACE" ]; then
+    log_gate_decision "verify-before-claim" "deny" "$SURFACE" "${SESSION_ID:-}"
     echo "$SURFACE" >&2
     exit 1
 fi
+log_gate_decision "verify-before-claim" "allow" "no failing quality judgments" "${SESSION_ID:-}"
 exit 0

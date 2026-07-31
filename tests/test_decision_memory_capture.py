@@ -1199,9 +1199,14 @@ class TestServerRouteGateAndCapture:
         self, client: TestClient, isolated_cache: Path
     ) -> None:
         # [server-3]: a planning advance with an EMPTY project_root must return
-        # {"advanced": false, "error": <project-root msg>, "gate": "phase-a"},
-        # must NOT advance, and must CONSUME the token.
-        # RED: server does not yet check project_root.
+        # {"advanced": false, "error": <project-root msg>, "gate": "phase-a"} and must
+        # NOT advance.
+        #
+        # Token policy CHANGED: the token is now KEPT, not consumed. Spending it here
+        # punished the human for an infrastructure failure they cannot fix by editing an
+        # artifact -- and every retry burned a fresh approval. Spend-on-rejection still
+        # holds where the gate actually JUDGED an artifact and it failed (see
+        # test_advance_gate_validation_parity.py::test_rejection_spends_the_token).
         cache_dir = isolated_cache / "writ-cache"
         sid = f"{_TEST_SCOPE}-srv3-{uuid.uuid4().hex[:6]}"
         _seed_planning_phase(cache_dir, sid)
@@ -1226,8 +1231,13 @@ class TestServerRouteGateAndCapture:
         assert phase_after == "planning", (
             "cache phase must remain 'planning' after hard-reject; got: " + repr(phase_after)
         )
-        assert not _token_exists(sid), (
-            "gate token must be CONSUMED on empty-project_root hard-reject"
+        assert result.get("token_spent") is False, (
+            "an unresolvable root is an infra failure, not a judged artifact; got: "
+            + repr(result)
+        )
+        assert _token_exists(sid), (
+            "gate token must be KEPT on empty-project_root hard-reject so the user can "
+            "retry with a root instead of re-approving"
         )
 
     @pytest.mark.asyncio
@@ -1312,8 +1322,15 @@ class TestServerRouteGateAndCapture:
 
         token = uuid.uuid4().hex
         _write_gate_token(sid, token)
-        # No plan.md -- a testing->implementation advance must never look for one.
-        result = _advance_post(client, sid, token, project_root="")
+        # A root holding a test skeleton but NO plan.md: the route now runs the TARGET
+        # gate's validator (test-skeletons here), which it previously skipped entirely on
+        # this path, and this test's point stands -- a non-planning advance must never
+        # look for a plan.md.
+        skel_root = isolated_cache / "srv5-proj"
+        (skel_root / "tests").mkdir(parents=True)
+        (skel_root / "tests" / "test_x.py").write_text("def test_x():\n    assert True\n")
+        assert not (skel_root / "plan.md").exists()
+        result = _advance_post(client, sid, token, project_root=str(skel_root))
 
         # The advance must succeed: testing -> implementation.
         assert result.get("phase") == "implementation", (

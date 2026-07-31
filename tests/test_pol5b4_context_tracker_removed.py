@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 HOOK = SKILL_DIR / "hooks" / "scripts" / "writ-context-tracker.sh"
 HOOKS_JSON = SKILL_DIR / "hooks" / "hooks.json"
 GLOBAL_SETTINGS = Path.home() / ".claude" / "settings.json"

@@ -20,6 +20,13 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   exit 0
 fi
 WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"
+# Instrumented from HERE, not the top of the file: the early `exit 0` above fires
+# when CLAUDE_PLUGIN_ROOT is unset, which means we are not running under the plugin
+# loader and there is nothing to bootstrap -- a genuine no-op not worth a row, and
+# WRIT_DIR is not resolvable there anyway (dirname walks are unreliable for this
+# hook, see the header). Guarded so bootstrap never breaks on a missing common.sh.
+source "$WRIT_DIR/bin/lib/common.sh" 2>/dev/null || true
+type hook_instrument >/dev/null 2>&1 && hook_instrument "session-start-bootstrap"
 WRIT_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}"
 # Venv lives at ${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv so it
 # survives plugin upgrades that rewrite ${CLAUDE_PLUGIN_ROOT}.
@@ -58,7 +65,8 @@ exec 3>&- 2>/dev/null || true
 #    WRIT_CACHE_DIR. Graceful: it always returns 0.
 WRIT_HOST="localhost"
 WRIT_PORT="8765"
-WRIT_LOG="${WRIT_DATA}/server.log"
+# WRIT_LOG intentionally unset: the library resolves it, and its plugin branch picks
+# ${CLAUDE_PLUGIN_DATA}/server.log -- the same path this line used to hardcode.
 # shellcheck source=scripts/lib/writ-server-lib.sh
 source "${WRIT_DIR}/scripts/lib/writ-server-lib.sh"
 writ_ensure_server

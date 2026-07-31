@@ -30,7 +30,7 @@ from writ.graph.ingest import (
 
 from tests._daemon import _port
 
-SKILL_DIR = Path.home() / ".claude/skills/writ"
+SKILL_DIR = Path(__file__).resolve().parent.parent
 METHODOLOGY = SKILL_DIR / "bible" / "methodology"
 SPINE = METHODOLOGY / "PBK-PROC-DEBUG-001.md"
 SERVER = f"http://localhost:{_port()}"

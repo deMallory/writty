@@ -40,8 +40,16 @@ def test_graph_first_provenance_is_the_two_transient_states() -> None:
 
 def test_integrity_imports_the_provenance_axis() -> None:
     # The parity module (5.2's home) must consume the 6.1 axis, not source_origin.
+    # It re-exports PARITY_EXEMPT_PROVENANCE rather than GRAPH_FIRST_PROVENANCE
+    # itself: parity must also exempt runtime `record` nodes, so the exported name
+    # is the wider set (PARITY_EXEMPT_PROVENANCE = GRAPH_FIRST_PROVENANCE |
+    # {"record"}, writ/graph/schema.py). Asserting on the old name failed while the
+    # contract it stands for -- provenance, not source_origin -- was in fact held.
     import writ.graph.integrity as integ
-    assert hasattr(integ, "GRAPH_FIRST_PROVENANCE")
+    from writ.graph.schema import GRAPH_FIRST_PROVENANCE
+
+    assert hasattr(integ, "PARITY_EXEMPT_PROVENANCE")
+    assert GRAPH_FIRST_PROVENANCE <= integ.PARITY_EXEMPT_PROVENANCE
 
 
 @pytest_asyncio.fixture()

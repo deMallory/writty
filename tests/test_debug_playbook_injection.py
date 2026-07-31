@@ -52,7 +52,7 @@ pytestmark = pytest.mark.no_friction_isolation
 
 from tests._daemon import _port
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 HOOK = f"{SKILL_DIR}/hooks/scripts/writ-rag-inject.sh"
 SERVER = f"http://localhost:{_port()}"
 DEBUG_SYMPTOM = (

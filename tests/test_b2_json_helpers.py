@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-COMMON_SH = str(Path.home() / ".claude/skills/writ/bin/lib/common.sh")
+COMMON_SH = str(Path(__file__).resolve().parent.parent / "bin/lib/common.sh")
 
 
 def _field(json: str, field: str, default: str = "", *, no_jq: bool = False) -> str:

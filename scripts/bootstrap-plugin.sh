@@ -168,7 +168,12 @@ DAEMON_URL="http://localhost:8765/health"
 if curl -sf --connect-timeout 0.5 "$DAEMON_URL" >/dev/null 2>&1; then
     ok "writ serve already running"
 else
-    WRIT_LOG="${WRIT_DATA}/server.log"
+    # Resolved by the shared owner (writ_default_server_log), whose plugin branch yields
+    # ${CLAUDE_PLUGIN_DATA}/server.log -- the same path this line hardcoded. Sourcing it
+    # keeps this fifth start path from drifting from the other four.
+    source "${WRIT_DIR}/scripts/lib/writ-server-lib.sh"
+    WRIT_LOG="$(writ_default_server_log)"
+    mkdir -p "$(dirname "$WRIT_LOG")" 2>/dev/null || true
     (cd "${WRIT_DIR}" && nohup writ serve > "$WRIT_LOG" 2>&1 &)
     printf "   waiting for /health "
     waited=0

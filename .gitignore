@@ -65,3 +65,8 @@ capabilities.md
 .claude/settings.local.json
 .claude/skills/
 writ.egg-info/
+
+# Local strategy/planning notes: kept on disk, never shipped
+PREMISE-VERIFICATION-BLUEPRINT.md
+*_absorption.md
+RESUME.md

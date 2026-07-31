@@ -14,6 +14,7 @@ set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 source "$WRIT_DIR/bin/lib/common.sh"
+hook_instrument "writ-dispatch-discipline"
 
 # Capture stderr (Python tracebacks etc.) to debug log so next-occurrence diagnostics
 # are readable. tee preserves stderr propagation so behavior is unchanged. Gated behind
@@ -128,4 +129,12 @@ PY
 
 [ -n "$DECISION" ] && printf '%s' "$DECISION" | blackbox_log out writ-dispatch-discipline "$SESSION_ID"
 [ -n "$DECISION" ] && echo "$DECISION"
+
+# The hook emits a decision only when it intervenes (steer or deny); an empty
+# $DECISION means the dispatch was left alone, which is the allow branch.
+if [ -n "$DECISION" ]; then
+    log_gate_decision "dispatch-discipline" "deny" "$DECISION" "${AGENT_TYPE:-}"
+else
+    log_gate_decision "dispatch-discipline" "allow" "dispatch not intercepted" "${AGENT_TYPE:-}"
+fi
 exit 0

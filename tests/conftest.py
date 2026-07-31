@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os as _os
+import tempfile as _tempfile
 
 import pytest
 
@@ -14,6 +15,31 @@ import pytest
 # friction bleed) -- the interactive daemon is structurally untouched by the suite.
 TEST_DAEMON_PORT = "8799"
 _os.environ["WRIT_PORT"] = TEST_DAEMON_PORT
+
+# Force WRIT_CACHE_DIR to a session-owned temp dir, at import (before any test or
+# subprocess). The session-cache default moved off /tmp to <skill>/var/session so it
+# survives a reboot -- but that made the install dir the fallback, so any subprocess
+# test that does NOT set WRIT_CACHE_DIR (many build their own env from os.environ)
+# would now write real session caches into var/session, polluting live state. /tmp
+# used to absorb those harmlessly. This restores that: a stable non-production dir
+# for the whole run (the daemon reads it once at start via expected_cache_dir(), so
+# it must not change per-test), off the install tree. Tests that set their own
+# WRIT_CACHE_DIR via monkeypatch still override it and monkeypatch restores this
+# default afterward. mkdtemp (not a fixed name) so parallel `pytest` invocations do
+# not share one dir.
+_os.environ.setdefault("WRIT_CACHE_DIR", _tempfile.mkdtemp(prefix="writ-test-cache-"))
+
+# Never let a hook auto-spawn a daemon during the suite. writ-rag-inject.sh
+# auto-starts the Writ server when its health check fails, guarded by
+# WRIT_NO_AUTOSTART. Tests that invoke that hook with a deliberately-unreachable
+# WRIT_PORT (e.g. 19999) but forget to set this guard cause it to LAUNCH a real
+# daemon on that port -- which then outlives the run holding a deleted pytest
+# tmpdir as its cache, answers {"mode":""} for every session, and silently
+# disables mode-gated hooks in later runs (the order-dependent failures). The
+# suite starts its own daemon explicitly (start_test_daemon on WRIT_PORT), so no
+# hook ever needs to; forcing this closes the whole leak class rather than
+# per-test. Individual per-test settings become redundant but harmless.
+_os.environ["WRIT_NO_AUTOSTART"] = "1"
 
 
 def writ_server_source() -> str:

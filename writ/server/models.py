@@ -19,6 +19,11 @@ class QueryRequest(BaseModel):
     """Request body for /query endpoint."""
 
     query: str
+    # Optional, for correlating a retrieval_result row with the session that caused it.
+    # Defaults to empty so every existing caller (four hooks post to /query today, none
+    # of them sending it) keeps working unchanged; a row without it still carries the
+    # quality signal, it just cannot be grouped by session.
+    session_id: str = ""
     domain: str | None = None
     scope: str | None = None
     budget_tokens: int | None = None
@@ -208,6 +213,11 @@ class SessionAdvancePhaseRequest(BaseModel):
     confirmation_source: str = "explicit"
     token: str = ""
     project_root: str = ""
+    # The caller's working directory, used to resolve the project root when
+    # project_root is empty (a cwd with no repo marker used to resolve to nothing,
+    # which refused every advance). The daemon cannot substitute its own cwd: that is
+    # Writ's install dir. Optional, so existing callers keep today's behavior.
+    cwd: str = ""
 
 
 class SessionPromoteCandidateRequest(BaseModel):

@@ -43,26 +43,94 @@ def _warn_config_ignored(config_path: str, reason: str) -> None:
     )
 
 
+# Paths already reported by _emit_config_resolution, so the event fires ONCE per process
+# per path. Every getter (get_neo4j_uri, get_neo4j_password, ...) calls load_config on each
+# access, so emitting per call would put dozens of identical rows in every process.
+_REPORTED_CONFIG_PATHS: set[str] = set()
+
+
+def _emit_config_resolution(config_path: str, outcome: str, sections: list[str]) -> None:
+    """Record which writ.toml was resolved and what it contributed. Never raises.
+
+    Audit item F: config resolution was undiagnosable after the fact. A missing file was
+    entirely silent, so "running on built-in defaults" (including DEFAULT_NEO4J_PASSWORD)
+    looked identical to "loaded a config with these values" -- and writ.toml is gitignored,
+    so a fresh install genuinely has none.
+
+    Records section and key NAMES only, never values. This file holds neo4j.password and
+    bitbucket.token; logging values would move credentials into a 365-day retained stream
+    (SEC-DATA-MASK-001). Names are what you need to answer "did my setting get picked up".
+    """
+    try:
+        from writ.shared.logging import emit
+
+        emit(
+            "metrics", "config_resolved", "", None,
+            path=config_path, outcome=outcome, sections=sections,
+        )
+    except Exception:  # noqa: BLE001 - config loading must not depend on logging
+        pass
+
+
+def _section_keys(data: dict[str, Any]) -> list[str]:
+    """`["neo4j.uri", "neo4j.password", ...]` -- key paths, never values."""
+    out: list[str] = []
+    for section, body in sorted(data.items()):
+        if isinstance(body, dict):
+            out.extend(f"{section}.{k}" for k in sorted(body))
+        else:
+            out.append(section)
+    return out
+
+
 def load_config(path: str | None = None) -> dict[str, Any]:
     """Load and return the parsed writ.toml as a dict.
 
     Returns an empty dict when the file does not exist or is empty.
     """
     config_path = path if path is not None else _DEFAULT_CONFIG_PATH
+    first_time = config_path not in _REPORTED_CONFIG_PATHS
+    if first_time:
+        _REPORTED_CONFIG_PATHS.add(config_path)
     if not os.path.isfile(config_path):
+        if first_time:
+            _emit_config_resolution(config_path, "absent-using-defaults", [])
         return {}
     try:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
+        if first_time:
+            _emit_config_resolution(
+                config_path, "loaded" if data else "empty-using-defaults",
+                _section_keys(data) if data else [],
+            )
         return data if data else {}
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
         _warn_config_ignored(
             config_path, f"is malformed (unparseable) and was ignored ({e})"
         )
+        if first_time:
+            # errors stream, not just stderr: a hook's stderr is a swallowed sink and the
+            # daemon's goes to journald, so "your config was ignored" reached nobody.
+            _emit_config_exception("config.load.malformed", e, config_path)
+            _emit_config_resolution(config_path, "malformed-using-defaults", [])
         return {}
     except OSError as e:
         _warn_config_ignored(config_path, f"could not be read ({e})")
+        if first_time:
+            _emit_config_exception("config.load.unreadable", e, config_path)
+            _emit_config_resolution(config_path, "unreadable-using-defaults", [])
         return {}
+
+
+def _emit_config_exception(component: str, exc: BaseException, config_path: str) -> None:
+    """Route a config-load failure to the errors stream. Never raises."""
+    try:
+        from writ.shared.logging import emit_exception
+
+        emit_exception(component, exc, "", None, config_path=config_path)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def get_neo4j_uri(path: str | None = None) -> str:
