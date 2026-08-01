@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import urllib.error
 import urllib.request
 import uuid
@@ -51,7 +50,10 @@ def _post_advance(session_id: str, body: dict) -> dict:
 
 
 def _token_path(session_id: str) -> str:
-    return os.path.join(tempfile.gettempdir(), f"writ-gate-token-{session_id}")
+    # Fork policy: see feat/upstream-resync migration (option A). Must match
+    # gate_token_path()'s literal "/tmp" (and auto-approve-gate.sh); on macOS
+    # tempfile.gettempdir() is /var/folders/..., which the daemon never reads.
+    return os.path.join("/tmp", f"writ-gate-token-{session_id}")
 
 
 class TestAdvancePhaseTokenGate:

@@ -132,10 +132,19 @@ class TestRealCorpus:
         })
 
     def test_remaining_findings_are_the_known_two(self) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A). The fork
+        # prunes plugin hook registrations from hooks/hooks.json (.claude/hooks
+        # is authoritative, commit 3837e3b), so the two known upstream findings
+        # only apply while their scripts are still registered there.
+        registered = (WRIT_ROOT / "hooks" / "hooks.json").read_text()
         inert = {f["script"] for f in self._findings() if f["severity"] == "inert"}
         review = {f["script"] for f in self._findings() if f["severity"] == "review"}
-        assert "writ-postcompact.sh" in inert
-        assert "validate-exit-plan.sh" in review
+        if "writ-postcompact.sh" in registered:
+            assert "writ-postcompact.sh" in inert
+        if "validate-exit-plan.sh" in registered:
+            assert "validate-exit-plan.sh" in review
+        # No findings beyond the known two.
+        assert (inert | review) <= {"writ-postcompact.sh", "validate-exit-plan.sh"}
 
     def test_working_hooks_never_flagged(self) -> None:
         flagged = {f["script"] for f in self._findings()}
