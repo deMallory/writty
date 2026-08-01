@@ -23,7 +23,7 @@ import os
 import time
 from typing import TYPE_CHECKING
 
-from writ.config import get_hnsw_cache_dir
+from writ.config import get_hnsw_cache_dir, get_min_relevance_score
 from writ.graph.predicates import RANKED_INCLUDE_WHERE
 from writ.retrieval.embeddings import (
     DEFAULT_ONNX_DIR,
@@ -39,6 +39,7 @@ from writ.retrieval.ranking import (
     RankingWeights,
     apply_authority_preference,
     apply_context_budget,
+    apply_relevance_floor,
     compute_score,
     filter_proximity_seeds,
     normalize_ranks,
@@ -205,6 +206,7 @@ class RetrievalPipeline:
         abstention_threshold: float = 0.0,
         abstractions: list[dict] | None = None,
         node_routes: dict[str, list[str]] | None = None,
+        min_relevance_score: float = 0.0,
     ) -> None:
         self._keyword = keyword_index
         self._vector = vector_store
@@ -216,6 +218,9 @@ class RetrievalPipeline:
         # S4 CRAG abstention: return no rules when the top raw vector cosine is
         # below this (0.0 = off).
         self._abstention_threshold = abstention_threshold
+        # Rank-tail floor: fused scores below this are dropped before the
+        # context budget fills up on baseline-dominated candidates (0.0 = off).
+        self._min_relevance_score = min_relevance_score
         self._abstractions = abstractions or []
         # Phase 0 T0.4: maps a node's identity (node_type label or node_id) to
         # the route tags of its category. When present, the default semantic
@@ -343,6 +348,8 @@ class RetrievalPipeline:
 
         # Sort by score descending.
         scored_rules.sort(key=lambda r: r["score"], reverse=True)
+
+        scored_rules = apply_relevance_floor(scored_rules, self._min_relevance_score)
 
         # Phase 3b: hard authority preference -- human outranks ai-provisional.
         scored_rules = apply_authority_preference(
@@ -896,4 +903,5 @@ async def build_pipeline(
         abstention_threshold=abstention_threshold,
         abstractions=abstractions,
         node_routes=node_routes,
+        min_relevance_score=get_min_relevance_score(),
     )

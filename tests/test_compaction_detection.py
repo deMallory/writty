@@ -38,7 +38,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 SESSION_ID = "test-compaction-session"
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 
 
@@ -193,7 +193,11 @@ class TestCmdDetectCompaction:
     def test_compaction_logs_friction_event_with_correct_event_key(self) -> None:
         """On compaction, _log_friction_event is called with event='compaction_detected'."""
         cache = _make_cache(context_percent=80)
-        with patch.object(self.mod, "_log_friction_event") as mock_log:
+        # cmd_detect_compaction lives in writ.session.session_lifecycle since the
+        # session package extraction; patch it where it is looked up, not on the
+        # bin/lib facade that merely re-exports it.
+        import writ.session.session_lifecycle as lifecycle
+        with patch.object(lifecycle, "_log_friction_event") as mock_log:
             _run_detect(self.mod, SESSION_ID, cache, 30)
             mock_log.assert_called_once()
             call_args = mock_log.call_args

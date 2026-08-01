@@ -58,6 +58,17 @@ def _upd_context_percent(cache: dict, args: list[str], i: int) -> int:
     return i + 2
 
 
+def _upd_context_warning_emitted_at_pct(cache: dict, args: list[str], i: int) -> int:
+    cache["context_warning_emitted_at_pct"] = int(args[i + 1])
+    return i + 2
+
+
+def _upd_add_failed_write(cache: dict, args: list[str], i: int) -> int:
+    record = json.loads(args[i + 1])
+    cache.setdefault("failed_writes", []).append(record)
+    return i + 2
+
+
 def _upd_is_subagent(cache: dict, args: list[str], i: int) -> int:
     value = args[i + 1].strip().lower()
     cache["is_subagent"] = value in ("true", "1", "yes")
@@ -262,6 +273,8 @@ _UPDATE_HANDLERS: dict = {
     "--set-last-injected-rule-ids": (_upd_set_last_injected, 1),
     "--cost": (_upd_cost, 1),
     "--context-percent": (_upd_context_percent, 1),
+    "--context-warning-emitted-at-pct": (_upd_context_warning_emitted_at_pct, 1),
+    "--add-failed-write": (_upd_add_failed_write, 1),
     "--is-subagent": (_upd_is_subagent, 1),
     "--inc-queries": (_upd_inc_queries, 0),
     "--add-file": (_upd_add_file, 1),

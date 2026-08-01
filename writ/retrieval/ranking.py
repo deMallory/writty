@@ -195,6 +195,22 @@ def normalize_ranks(scores: list[float]) -> list[float]:
     return normalized
 
 
+def apply_relevance_floor(
+    scored_rules: list[dict],
+    min_score: float,
+) -> list[dict]:
+    """Drop rules whose fused score falls below min_score.
+
+    Reciprocal-rank normalization means rank-tail candidates carry scores
+    dominated by the severity/confidence baseline (~0.05-0.20) rather than
+    query relevance. The floor removes that tail before the context budget
+    fills up on it. min_score <= 0.0 disables the floor.
+    """
+    if min_score <= 0.0:
+        return scored_rules
+    return [r for r in scored_rules if r.get("score", 0.0) >= min_score]
+
+
 def apply_authority_preference(
     scored_rules: list[dict],
     threshold: float,

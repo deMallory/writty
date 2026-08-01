@@ -6,6 +6,13 @@
 # Absolute path to the stdin-envelope parser invoked by load_hook_env (below).
 _PARSE_HOOK_STDIN_PY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/parse-hook-stdin.py"
 
+# Compat shim for hooks written against the pre-load_hook_env idiom
+# (PARSED=$(parse_hook_stdin); FILE=$(parsed_field "$PARSED" file_path)).
+# New hooks use load_hook_env (single spawn); existing callers keep working.
+parse_hook_stdin() {
+    python3 "$_PARSE_HOOK_STDIN_PY" 2>/dev/null || echo '{}'
+}
+
 # ── Debug gating ─────────────────────────────────────────────────────────────
 # One shared gate for all opt-in debug sinks (the /tmp/*-debug.log files and the
 # WRIT_HOOK_LOG stderr breadcrumbs). Debug is OFF by default; WRIT_DEBUG=1 turns
@@ -777,6 +784,43 @@ print(envelope)
             url="${WRIT_SESSION_BASE}/session/${session_id}/reset-after-compaction"
             method="POST"
             body="{}"
+            ;;
+        "context-percent")
+            # POST /session/{id}/context-percent. Body fields:
+            #   --pct N             -> context_percent
+            #   --emitted-at N      -> context_warning_emitted_at_pct
+            local cp_pct=0 cp_emitted=0
+            shift
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --pct) cp_pct="$2"; shift 2 ;;
+                    --emitted-at) cp_emitted="$2"; shift 2 ;;
+                    *) shift ;;
+                esac
+            done
+            local cp_body cp_result
+            cp_body="{\"context_percent\":${cp_pct},\"context_warning_emitted_at_pct\":${cp_emitted}}"
+            cp_result=$(curl -sf --connect-timeout 0.1 --max-time 0.5 \
+                -X POST "${WRIT_SESSION_BASE}/session/${session_id}/context-percent" \
+                -H "Content-Type: application/json" \
+                -d "$cp_body" 2>/dev/null) || true
+            if [ -n "$cp_result" ]; then
+                echo "$cp_result"
+                return 0
+            fi
+            # Fallback: write both fields via the CLI update path
+            python3 "$helper" update "$session_id" \
+                --context-percent "$cp_pct" \
+                --context-warning-emitted-at-pct "$cp_emitted" 2>/dev/null
+            return $?
+            ;;
+        "detect-compaction")
+            local pct="${2:-0}"
+            url="${WRIT_SESSION_BASE}/session/${session_id}/detect-compaction"
+            method="POST"
+            body="{\"context_percent\":${pct}}"
+            set -- detect-compaction "$session_id" --context-percent "$pct"
+            shift
             ;;
         *)
             # Unknown subcommand -- fall through to subprocess

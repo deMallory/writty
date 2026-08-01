@@ -179,6 +179,8 @@ def _default_cache() -> dict:
         "loaded_rules": [],
         "remaining_budget": DEFAULT_SESSION_BUDGET,
         "context_percent": 0,
+        "context_warning_emitted_at_pct": 0,
+        "failed_writes": [],
         "queries": 0,
         "mode": None,
         "is_subagent": False,
@@ -195,6 +197,7 @@ def _default_cache() -> dict:
         "paused_work_state": None,
         "is_orchestrator": False,
         "last_injected_rule_ids": [],
+        "instructions_rule_ids": [],
         "detected_domain": None,
         # Phase 1 additions per plan Section 6.1 deliverable 5. Track playbook
         # execution state for SDD/brainstorm workflows, verification evidence

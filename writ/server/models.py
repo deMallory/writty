@@ -190,6 +190,7 @@ class ContextPercentRequest(BaseModel):
     model_config = {"strict": True}
 
     context_percent: int
+    context_warning_emitted_at_pct: int = 0
 
 
 class PreWriteCheckRequest(BaseModel):

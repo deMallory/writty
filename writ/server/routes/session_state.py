@@ -314,6 +314,9 @@ async def session_context_percent(
     def _set() -> dict[str, Any]:
         with server.writ_session.mutate_cache(session_id) as cache:
             cache["context_percent"] = int(request.context_percent)
+            # The context-watcher hook computes both fields per turn; they move
+            # together so the debounce state can never lag the percentage.
+            cache["context_warning_emitted_at_pct"] = int(request.context_warning_emitted_at_pct)
             context_percent = cache["context_percent"]
         return {
             "ok": True,
@@ -338,6 +341,26 @@ async def session_clear_rules_for_compaction(session_id: str) -> dict[str, Any]:
         return json_mod.loads(buf.getvalue().strip())
 
     result = await asyncio.to_thread(_clear)
+    return result
+
+
+@router.post("/session/{session_id}/detect-compaction")
+async def session_detect_compaction(
+    session_id: str, request: ContextPercentRequest,
+) -> dict[str, Any]:
+    """Detect context window compaction and recover if needed."""
+
+    def _detect() -> dict[str, Any]:
+        import io
+        import contextlib
+        import json as json_mod
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            server.writ_session.cmd_detect_compaction(session_id, request.context_percent)
+        return json_mod.loads(buf.getvalue().strip())
+
+    result = await asyncio.to_thread(_detect)
     return result
 
 

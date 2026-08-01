@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pathlib import Path
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 HOOK_PATH = f"{SKILL_DIR}/.claude/hooks/track-failed-writes.sh"
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 
@@ -307,6 +307,9 @@ class TestTrackFailedWritesFrictionLog:
             env["WRIT_SESSION_ID"] = session_id
             env["WRIT_CACHE_DIR"] = tmp
             env["WRIT_PORT"] = "19999"
+            # The P1 logging router writes to <skill>/var/logs by default;
+            # WRIT_FRICTION_LOG is its back-compat single-file override.
+            env["WRIT_FRICTION_LOG"] = os.path.join(tmp, "workflow-friction.log")
 
             stdin = _build_hook_stdin("Write", "/src/app.py", "gate denied")
             subprocess.run(

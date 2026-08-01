@@ -42,6 +42,7 @@ from writ.session.violations import (
 from writ.session.session_lifecycle import (
     cmd_read,
     cmd_clear_rules_for_compaction,
+    cmd_detect_compaction,
     cmd_reset_after_compaction,
 )
 from writ.session.feedback import cmd_auto_feedback
@@ -166,6 +167,12 @@ def _cli_advance_phase(argv: list[str]) -> None:
     cmd_advance_phase(argv[2], _opt_value("--project-root", "", argv), _opt_value("--token", "", argv))
 
 
+def _cli_detect_compaction(argv: list[str]) -> None:
+    if len(argv) < 3:
+        _usage_exit("Usage: writ-session.py detect-compaction <session_id> --context-percent N")
+    cmd_detect_compaction(argv[2], int(_opt_value("--context-percent", "0", argv)))
+
+
 def _cli_metrics(argv: list[str]) -> None:
     cmd_metrics(_opt_value("--log", "", argv))
 
@@ -203,6 +210,7 @@ _COMPLEX_COMMANDS = {
     "can-write": _cli_can_write,
     "can-read-code": _cli_can_read_code,
     "advance-phase": _cli_advance_phase,
+    "detect-compaction": _cli_detect_compaction,
     "metrics": _cli_metrics,
 }
 

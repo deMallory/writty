@@ -22,6 +22,7 @@ DEFAULT_NEO4J_URI = "bolt://localhost:7687"
 DEFAULT_NEO4J_USER = "neo4j"
 DEFAULT_NEO4J_PASSWORD = "writdevpass"
 DEFAULT_HNSW_CACHE_DIR = str(Path.home() / ".cache" / "writ" / "hnsw")
+DEFAULT_MIN_RELEVANCE_SCORE = 0.30
 
 # Default config file path: writ.toml in the package root (one level above writ/).
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -183,6 +184,17 @@ def get_hnsw_cache_dir(path: str | None = None) -> str:
     cfg = load_config(path)
     raw = cfg.get("hnsw", {}).get("cache_dir", DEFAULT_HNSW_CACHE_DIR)
     return os.path.expanduser(raw)
+
+
+def get_min_relevance_score(path: str | None = None) -> float:
+    """Return ranking.min_relevance_score, falling back to DEFAULT_MIN_RELEVANCE_SCORE.
+
+    Rules whose fused relevance score falls below this floor are dropped
+    from query results before the context budget is applied. 0.0 disables
+    the floor.
+    """
+    cfg = load_config(path)
+    return float(cfg.get("ranking", {}).get("min_relevance_score", DEFAULT_MIN_RELEVANCE_SCORE))
 
 
 def get_logs_backup_dest(path: str | None = None) -> str | None:
