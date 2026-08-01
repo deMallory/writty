@@ -59,6 +59,18 @@ RENAME_SWEEP_DIRS = [
     WRIT_ROOT / "hooks" / "scripts",
     WRIT_ROOT / "docs",
 ]
+# Fork policy: see feat/upstream-resync migration (option A).
+# The fork deliberately keeps the split reviewer agents (.claude/agents/
+# writ-code-quality-reviewer.md, writ-spec-reviewer.md) and the restored
+# files that reference the old identifiers; exempt them from the sweep.
+RENAME_SWEEP_EXEMPT = {
+    "bible/methodology/ROL-CODE-REVIEWER-001.md",
+    "bible/methodology/PBK-PROC-SDD-001.md",
+    "bible/methodology/PBK-PROC-REVREQ-001.md",
+    "bible/methodology/ENF-PROC-SDD-001.md",
+    "bible/process/rules.md",
+    "tests/test_sdd_review_order_hook_json_decode.py",
+}
 
 
 def _load_render():
@@ -196,7 +208,11 @@ class TestRenameComplete:
                 except (UnicodeDecodeError, OSError):
                     continue
                 if needle in text:
-                    hits.append(str(path.relative_to(WRIT_ROOT)))
+                    rel = str(path.relative_to(WRIT_ROOT))
+                    # Fork policy: see feat/upstream-resync migration (option A).
+                    if rel in RENAME_SWEEP_EXEMPT:
+                        continue
+                    hits.append(rel)
         assert not hits, f"Stale '{needle}' still present in: {hits}"
 
 
@@ -225,10 +241,11 @@ class TestRolePromptLive:
         )
         if _role_prompt_unavailable(proc.stderr, proc.stdout):
             pytest.skip("Neo4j not reachable for role-prompt")
-        # The CLI reports an unresolved name on stderr with a non-zero exit.
-        combined = (proc.stdout + proc.stderr).lower()
-        assert proc.returncode != 0 and "not found" in combined, (
-            f"'{OLD_NAME}' should be retired but role-prompt still resolves it"
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # The fork keeps the code-reviewer role (split reviewer agents restored),
+        # so the "old" name is expected to resolve.
+        assert proc.returncode == 0, (
+            f"'{OLD_NAME}' is a live fork role; role-prompt should resolve it\n{proc.stderr}"
         )
 
 

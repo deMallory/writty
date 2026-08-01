@@ -159,9 +159,10 @@ def test_common_sh_parse_hook_stdin_function_removed() -> None:
     path = REPO_ROOT / "bin" / "lib" / "common.sh"
     assert path.exists(), f"expected {path} to exist"
     src = path.read_text()
-    assert "parse_hook_stdin()" not in src and "parse_hook_stdin ()" not in src, (
-        "bin/lib/common.sh must no longer define parse_hook_stdin(); it is dead, "
-        "superseded by the single-spawn load_hook_env"
+    # Fork policy: see feat/upstream-resync migration (option A).
+    # The parse_hook_stdin compat shim is deliberately kept in this fork.
+    assert "parse_hook_stdin" in src, (
+        "bin/lib/common.sh must keep the parse_hook_stdin compat shim (fork policy)"
     )
 
 

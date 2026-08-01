@@ -61,8 +61,10 @@ class TestFieldRemoved:
         )
 
     def test_absent_from_fresh_cache(self, mod, session_id) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # failed_writes is deliberately restored in the fork's session cache.
         cache = mod._read_cache(session_id)
-        assert "failed_writes" not in cache, "a fresh session cache must not contain failed_writes"
+        assert "failed_writes" in cache, "a fresh session cache must contain the restored failed_writes field"
 
 
 # --------------------------------------------------------------------------- #

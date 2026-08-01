@@ -127,12 +127,17 @@ class TestFailedWritesCacheSchema:
 
             # Patch CACHE_DIR to our temp dir
             spec.loader.exec_module(mod)  # type: ignore[union-attr]
-            original_cache_dir = mod.CACHE_DIR
-            mod.CACHE_DIR = tmp
+            # Fork policy: see feat/upstream-resync migration (option A).
+            # POL-6b-2 env-var pattern: override via WRIT_CACHE_DIR, not module attr.
+            original_cache_dir = os.environ.get("WRIT_CACHE_DIR")
+            os.environ["WRIT_CACHE_DIR"] = tmp
             try:
                 cache = mod._read_cache(session_id)
             finally:
-                mod.CACHE_DIR = original_cache_dir
+                if original_cache_dir is None:
+                    os.environ.pop("WRIT_CACHE_DIR", None)
+                else:
+                    os.environ["WRIT_CACHE_DIR"] = original_cache_dir
 
         assert "failed_writes" in cache, (
             "_read_cache must add 'failed_writes' via setdefault on cache missing the field"

@@ -18,21 +18,23 @@ from tests.plugin.conftest import REPO_ROOT, _expand_plugin_root
 
 HOOKS_JSON_PATH = REPO_ROOT / "hooks" / "hooks.json"
 
-# Expected script names per event from the plan's Phase B Files section
+# Fork policy: see feat/upstream-resync migration (option A).
+# hooks.json is pruned to the 13 hooks with no .claude/hooks/ counterpart;
+# the remainder register via templates/settings.json.
 EXPECTED_EVENT_SCRIPTS: dict[str, list[str]] = {
-    "UserPromptSubmit": ["auto-approve-gate.sh", "writ-rag-inject.sh"],
-    "SubagentStart": ["writ-subagent-start.sh"],
-    "SubagentStop": ["writ-subagent-stop.sh"],
-    "Stop": [
-        "friction-logger.sh",
-        "enforce-violations.sh",
-        "writ-verify-before-claim.sh",
-        "writ-comms-output-gate.sh",
+    "SessionStart": ["writ-blackbox-capture.sh", "session-start-bootstrap.sh"],
+    "SubagentStop": ["writ-blackbox-capture.sh"],
+    "Stop": ["writ-comms-output-gate.sh"],
+    "PostToolUseFailure": ["writ-blackbox-capture.sh"],
+    "PostCompact": ["writ-blackbox-capture.sh"],
+    "CwdChanged": ["writ-blackbox-capture.sh"],
+    "PreToolUse": [
+        "writ-read-junk-gate.sh",
+        "writ-debug-code-gate.sh",
+        "writ-dispatch-discipline.sh",
+        "writ-bash-write-gate.sh",
     ],
-    "PreCompact": ["writ-precompact.sh"],
-    "PostCompact": ["writ-postcompact.sh"],
-    "SessionEnd": ["writ-session-end.sh", "writ-pressure-audit.sh"],
-    "CwdChanged": ["writ-cwd-changed.sh"],
+    "PostToolUse": ["writ-web-capture.sh", "writ-bible-authoring-push.sh"],
 }
 
 
@@ -109,9 +111,11 @@ class TestHooksJsonStructure:
         read-junk gate added the PreToolUse Read writ-read-junk-gate (39 -> 40); the
         comms-output gate added the Stop writ-comms-output-gate (40 -> 41)."""
         registrations = _collect_all_registrations(hooks_data)
-        assert len(registrations) == 41, (
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # hooks.json carries only the 13 hooks with no .claude/hooks/ counterpart.
+        assert len(registrations) == 13, (
             f"hooks.json registration count drifted; found {len(registrations)}, "
-            f"expected 41. Update this and HANDBOOK if the change is intentional."
+            f"expected 13. Update this and HANDBOOK if the change is intentional."
         )
 
     def test_hooks_json_event_mapping(self, hooks_data: dict) -> None:

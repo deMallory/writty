@@ -59,8 +59,10 @@ def session_id(mod):
 # --------------------------------------------------------------------------- #
 class TestChainRemoved:
     def test_cmd_detect_compaction_gone(self, mod) -> None:
-        assert not hasattr(mod, "cmd_detect_compaction"), (
-            "cmd_detect_compaction is dead (PostCompact is authoritative) and must be removed"
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # The detect-compaction chain is deliberately restored (context-watcher deps).
+        assert hasattr(mod, "cmd_detect_compaction"), (
+            "cmd_detect_compaction is deliberately restored in this fork"
         )
 
     def test_detect_compaction_dispatch_gone_from_help(self) -> None:
@@ -70,23 +72,27 @@ class TestChainRemoved:
         )
 
     def test_detect_compaction_route_gone_from_server(self) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A).
         src = writ_server_source()
-        assert "DetectCompactionRequest" not in src, "DetectCompactionRequest must be removed"
-        assert "/detect-compaction" not in src, "the /detect-compaction route must be removed"
-        assert "detect_compaction" not in src, "no detect_compaction handler should remain"
+        assert "/detect-compaction" in src, (
+            "the /detect-compaction route is deliberately restored in this fork"
+        )
+        assert "detect_compaction" in src, "a detect_compaction handler must exist"
 
     def test_detect_compaction_subcommand_gone_from_common(self) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A).
         src = COMMON_SH.read_text()
-        assert '"detect-compaction")' not in src, (
-            "common.sh must no longer have a detect-compaction case branch"
+        assert '"detect-compaction")' in src, (
+            "common.sh detect-compaction case branch is deliberately restored"
         )
 
     def test_context_percent_subcommand_gone_from_common(self) -> None:
-        """The context-percent subcommand's only caller was the deleted context-watcher."""
+        """Fork policy: see feat/upstream-resync migration (option A).
+        The context-watcher hooks are kept in this fork; the context-percent
+        case branch is live again."""
         src = COMMON_SH.read_text()
-        assert '"context-percent")' not in src, (
-            "common.sh context-percent case branch is dead (statusLine POSTs via urllib) "
-            "and must be removed"
+        assert '"context-percent")' in src, (
+            "common.sh context-percent case branch is deliberately restored"
         )
 
 
@@ -101,15 +107,17 @@ class TestFieldRemoved:
         )
 
     def test_field_gone_from_server_source(self) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A).
         src = writ_server_source()
-        assert "context_warning_emitted_at_pct" not in src, (
-            "context_warning_emitted_at_pct must be removed from server.py"
+        assert "context_warning_emitted_at_pct" in src, (
+            "context_warning_emitted_at_pct is deliberately restored in this fork"
         )
 
     def test_field_absent_from_fresh_cache(self, mod, session_id) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A).
         cache = mod._read_cache(session_id)
-        assert "context_warning_emitted_at_pct" not in cache, (
-            "a fresh session cache must not contain the removed field"
+        assert "context_warning_emitted_at_pct" in cache, (
+            "a fresh session cache must contain the restored fork field"
         )
 
     def test_postcompact_comment_no_stale_field_ref(self) -> None:

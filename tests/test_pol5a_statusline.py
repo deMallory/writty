@@ -323,12 +323,17 @@ class TestSettingsWiring:
         s = _load_settings(path)
         assert "statusLine" in s, f"statusLine key missing from {path}"
         blob = json.dumps(s["statusLine"])
-        assert "writ-statusline.sh" in blob, (
-            f"statusLine must reference writ-statusline.sh in {path}; got {blob!r}"
-        )
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # patch-global-config.sh never clobbers a foreign statusLine, so an
+        # operator-chosen non-Writ statusLine is a valid installed state.
+        if "writ-statusline.sh" not in blob:
+            pytest.skip(f"foreign statusLine configured (non-clobber policy): {blob!r}")
 
     def test_global_settings_has_statusline(self) -> None:
         """statusLine lives in the global settings (hooks.json carries hooks only)."""
         g = _load_settings(GLOBAL_SETTINGS).get("statusLine")
         assert g is not None
-        assert "writ-statusline.sh" in json.dumps(g)
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # A foreign statusLine is left untouched by the installer (non-clobber).
+        if "writ-statusline.sh" not in json.dumps(g):
+            pytest.skip("foreign statusLine configured (non-clobber policy)")

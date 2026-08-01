@@ -28,6 +28,9 @@ def _read(*parts):
 
 
 class TestDeadFilesRemoved:
+    # Fork policy: see feat/upstream-resync migration (option A).
+    # The standalone install path is deliberately restored in this fork;
+    # these files must exist.
     @pytest.mark.parametrize("relpath", [
         "templates/settings.json",
         "templates/settings.README.md",
@@ -35,7 +38,7 @@ class TestDeadFilesRemoved:
         "tests/test_harness_installer.py",
     ])
     def test_file_deleted(self, relpath):
-        assert not os.path.exists(_p(relpath)), f"{relpath} must be deleted (standalone sunset)"
+        assert os.path.exists(_p(relpath)), f"{relpath} must exist (fork restores standalone install)"
 
 
 class TestBootstrapRepointed:
@@ -52,6 +55,10 @@ class TestBootstrapRepointed:
 
 
 class TestHooksJsonIsSoleSource:
+    # Fork policy: see feat/upstream-resync migration (option A).
+    # hooks.json is NOT the sole source in this fork: registration is split
+    # between hooks/hooks.json (13 pruned entries) and templates/settings.json
+    # (.claude/hooks paths). Events/hooks below are checked across both.
     EXPECTED_EVENTS = {
         "SessionStart", "UserPromptSubmit", "SubagentStart", "SubagentStop", "Stop",
         "PostToolUseFailure", "PreCompact", "PostCompact", "SessionEnd", "CwdChanged",
@@ -66,8 +73,13 @@ class TestHooksJsonIsSoleSource:
         d = json.loads(_read("hooks", "hooks.json"))
         return d.get("hooks", d)
 
+    def _settings_hooks(self):
+        d = json.loads(_read("templates", "settings.json"))
+        return d.get("hooks", {})
+
     def test_all_events_present(self):
-        events = set(self._hooks().keys())
+        # Fork policy: see feat/upstream-resync migration (option A).
+        events = set(self._hooks().keys()) | set(self._settings_hooks().keys())
         assert self.EXPECTED_EVENTS <= events, f"missing events: {self.EXPECTED_EVENTS - events}"
 
     def test_every_event_has_a_command(self):
@@ -76,9 +88,10 @@ class TestHooksJsonIsSoleSource:
             assert any(c.strip() for c in cmds), f"{event} has no hook command"
 
     def test_critical_hooks_registered(self):
-        src = _read("hooks", "hooks.json")
+        # Fork policy: see feat/upstream-resync migration (option A).
+        src = _read("hooks", "hooks.json") + _read("templates", "settings.json")
         for name in self.CRITICAL_HOOKS:
-            assert name in src, f"{name} missing from hooks/hooks.json (SoT incomplete)"
+            assert name in src, f"{name} missing from hook registration surfaces"
 
     def test_hooks_use_plugin_root(self):
         # SoT registers via the plugin root, never absolute home paths.
@@ -92,8 +105,18 @@ class TestPreWriteDispatchConsolidationFromHooksJson:
     not from ~/.claude/settings.json (which no longer carries hooks)."""
 
     def _pretooluse_commands(self):
-        d = json.loads(_read("hooks", "hooks.json"))
-        hooks = d.get("hooks", d)
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # The pre-write dispatch registers via templates/settings.json in this
+        # fork; scan both registration surfaces.
+        cmds = []
+        for parts in (("hooks", "hooks.json"), ("templates", "settings.json")):
+            d = json.loads(_read(*parts))
+            hooks = d.get("hooks", d) if parts[0] == "hooks" else d.get("hooks", {})
+            cmds.extend(self._extract(hooks))
+        return cmds
+
+    @staticmethod
+    def _extract(hooks):
         cmds = []
         for entry in hooks.get("PreToolUse", []):
             matcher = entry.get("matcher", "")

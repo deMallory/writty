@@ -116,13 +116,18 @@ class TestInstructionsRuleIdsDefault:
     """instructions_rule_ids must be present with a [] default in _read_cache."""
 
     def setup_method(self) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # POL-6b-2 env-var pattern: override via WRIT_CACHE_DIR, not module attr.
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
+        self._orig_cache_dir = os.environ.get("WRIT_CACHE_DIR")
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        os.environ["WRIT_CACHE_DIR"] = self._tmpdir
 
     def teardown_method(self) -> None:
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        if self._orig_cache_dir is None:
+            os.environ.pop("WRIT_CACHE_DIR", None)
+        else:
+            os.environ["WRIT_CACHE_DIR"] = self._orig_cache_dir
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 

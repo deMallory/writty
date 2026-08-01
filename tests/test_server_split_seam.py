@@ -106,6 +106,8 @@ ROUTE_BASELINE: list[tuple[str, str]] = [
     ("POST", "/session/{session_id}/clear-pending-violations"),
     ("POST", "/session/{session_id}/clear-rules-for-compaction"),
     ("POST", "/session/{session_id}/context-percent"),
+    # Fork policy: see feat/upstream-resync migration (option A).
+    ("POST", "/session/{session_id}/detect-compaction"),
     ("POST", "/session/{session_id}/invalidate-gate"),
     ("POST", "/session/{session_id}/mode"),
     ("POST", "/session/{session_id}/promote-candidate"),
@@ -136,8 +138,10 @@ class TestServerIsPackage:
         """Sanity check on the frozen constant itself: exactly 53 tuples were
         captured from HEAD. PASS now -- this just guards against a copy/paste
         mistake in ROUTE_BASELINE, independent of the split."""
-        assert len(ROUTE_BASELINE) == 53
-        assert len(set(ROUTE_BASELINE)) == 53, "ROUTE_BASELINE must have no duplicate tuples"
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # Restored detect-compaction route: 53 -> 54.
+        assert len(ROUTE_BASELINE) == 54
+        assert len(set(ROUTE_BASELINE)) == 54, "ROUTE_BASELINE must have no duplicate tuples"
 
     def test_writ_server_is_package(self) -> None:
         """RED now: `writ.server` is still the single-file writ/server.py module
@@ -239,7 +243,8 @@ class TestRouteParityVsBaseline:
     def test_route_count_matches_baseline(self) -> None:
         """PASS now; a duplicate or dropped route changes the count even if
         set membership alone were checked loosely elsewhere."""
-        assert len(_current_route_tuples()) == len(ROUTE_BASELINE) == 53
+        # Fork policy: see feat/upstream-resync migration (option A).
+        assert len(_current_route_tuples()) == len(ROUTE_BASELINE) == 54
 
 
 # ---------------------------------------------------------------------------

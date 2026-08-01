@@ -70,9 +70,11 @@ class TestHookRemoved:
         )
 
     def test_field_absent_from_fresh_cache(self, mod, session_id) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # instructions_rule_ids is deliberately restored in the fork's session cache.
         cache = mod._read_cache(session_id)
-        assert "instructions_rule_ids" not in cache, (
-            "a fresh session cache must not contain instructions_rule_ids"
+        assert "instructions_rule_ids" in cache, (
+            "a fresh session cache must contain the restored instructions_rule_ids field"
         )
 
     def test_consumer_gone_from_rag_inject(self) -> None:
@@ -114,11 +116,12 @@ class TestUnregistered:
         "path", [GLOBAL_SETTINGS], ids=["global"],
     )
     def test_permission_entry_absent(self, path: Path) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # The fork keeps writ-instructions-loaded.sh in .claude/hooks and
+        # registers it via templates/settings.json; operator settings may
+        # legitimately reference it. Only require the entry parses.
         data = json.loads(path.read_text())
-        allow = data.get("permissions", {}).get("allow", [])
-        assert not any("writ-instructions-loaded.sh" in a for a in allow), (
-            f"writ-instructions-loaded.sh permission-allow entry must be removed from {path}"
-        )
+        assert isinstance(data.get("permissions", {}).get("allow", []), list)
 
     def test_no_reference_to_hook_script_anywhere_in_settings(self) -> None:
         # PLUGIN_HOOKS is a repo file (always present in a checkout); its
@@ -126,12 +129,10 @@ class TestUnregistered:
         assert "writ-instructions-loaded.sh" not in PLUGIN_HOOKS.read_text(), (
             f"no reference to the deleted hook should remain in {PLUGIN_HOOKS}"
         )
-        # GLOBAL_SETTINGS is the operator's real file; guard on existence so the
-        # check runs where installed and is skipped (not crashed) where absent.
-        if GLOBAL_SETTINGS.exists():
-            assert "writ-instructions-loaded.sh" not in GLOBAL_SETTINGS.read_text(), (
-                f"no reference to the deleted hook should remain in {GLOBAL_SETTINGS}"
-            )
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # The fork keeps the hook in .claude/hooks (registered via
+        # templates/settings.json), so operator settings may reference it;
+        # the upstream absence check on GLOBAL_SETTINGS no longer applies.
 
 
 # --------------------------------------------------------------------------- #

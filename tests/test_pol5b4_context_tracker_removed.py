@@ -60,17 +60,21 @@ class TestDeregistered:
             "hooks/hooks.json must not reference writ-context-tracker"
         )
 
-    def test_not_in_global_settings(self) -> None:
-        if not GLOBAL_SETTINGS.exists():
-            return
-        assert NAME not in GLOBAL_SETTINGS.read_text(), (
-            "~/.claude/settings.json must not reference writ-context-tracker"
+    def test_registered_in_settings_template(self) -> None:
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # The fork's context-watcher chain deliberately keeps the Stop
+        # context-tracker registered via templates/settings.json.
+        template = SKILL_DIR / "templates" / "settings.json"
+        assert NAME in template.read_text(), (
+            "templates/settings.json must register writ-context-tracker (fork chain)"
         )
 
 
 class TestStopEventIntact:
     def test_stop_still_routes_friction_logger(self) -> None:
-        data = json.loads(HOOKS_JSON.read_text())
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # friction-logger registers via templates/settings.json in this fork.
+        data = json.loads((SKILL_DIR / "templates" / "settings.json").read_text())
         section = data.get("hooks", {})
         assert "Stop" in section, "Stop event must still exist"
         stop_cmds = " ".join(
@@ -91,4 +95,6 @@ class TestStopEventIntact:
         # HANDBOOK 'registers **N hook scripts**' in sync.
         data = json.loads(HOOKS_JSON.read_text())
         n = _registration_count(data)
-        assert n == 41, f"hooks.json registration count drifted; found {n}, expected 41"
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # hooks.json is pruned to the 13 hooks with no .claude/hooks/ counterpart.
+        assert n == 13, f"hooks.json registration count drifted; found {n}, expected 13"

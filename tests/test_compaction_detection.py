@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import os
 import json
 import subprocess
 import sys
@@ -141,13 +142,18 @@ class TestCmdDetectCompaction:
     """Unit tests for cmd_detect_compaction() in writ-session.py."""
 
     def setup_method(self):
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # POL-6b-2 env-var pattern: override via WRIT_CACHE_DIR, not module attr.
         self.mod = _load_writ_session()
-        self._orig_cache_dir = self.mod.CACHE_DIR
+        self._orig_cache_dir = os.environ.get("WRIT_CACHE_DIR")
         self._tmpdir = tempfile.mkdtemp()
-        self.mod.CACHE_DIR = self._tmpdir
+        os.environ["WRIT_CACHE_DIR"] = self._tmpdir
 
     def teardown_method(self):
-        self.mod.CACHE_DIR = self._orig_cache_dir
+        if self._orig_cache_dir is None:
+            os.environ.pop("WRIT_CACHE_DIR", None)
+        else:
+            os.environ["WRIT_CACHE_DIR"] = self._orig_cache_dir
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 

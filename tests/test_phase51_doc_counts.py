@@ -112,8 +112,10 @@ class TestDocCounts:
 
     def test_hooks_json_entry_count(self) -> None:
         source_count = _count_hooks_json_entries()
-        assert source_count == 41, (
-            f"hooks/hooks.json has {source_count} 'command' entries; expected 41. "
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # hooks.json is pruned to the 13 hooks with no .claude/hooks/ counterpart.
+        assert source_count == 13, (
+            f"hooks/hooks.json has {source_count} 'command' entries; expected 13. "
             "Bump this (and HANDBOOK 'registers **N hook scripts**') when adding or "
             "removing a registration."
         )
@@ -125,6 +127,8 @@ class TestDocCounts:
         # writ/server/**/*.py and matches both @app.<verb> and @router.<verb>
         # decorators. Bump this when adding/removing a route.
         source_count = _count_server_endpoints()
-        assert source_count == 45, (
-            f"writ.server has {source_count} @app/@router route decorators; expected 45"
+        # Fork policy: see feat/upstream-resync migration (option A).
+        # The restored POST /session/{id}/detect-compaction route adds one (45 -> 46).
+        assert source_count == 46, (
+            f"writ.server has {source_count} @app/@router route decorators; expected 46"
         )

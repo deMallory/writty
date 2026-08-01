@@ -154,6 +154,7 @@ from writ.session.violations import (  # noqa: E402
 from writ.session.session_lifecycle import (  # noqa: E402
     cmd_read,
     cmd_clear_rules_for_compaction,
+    cmd_detect_compaction,
     cmd_reset_after_compaction,
 )
 from writ.session.feedback import (  # noqa: E402
