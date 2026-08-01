@@ -27,6 +27,23 @@ import os
 import sys
 
 
+def _blackbox_capture(raw: str, envelope: dict) -> None:
+    """Append the raw envelope to ~/.claude/writ-blackbox/envelopes.jsonl when
+    ~/.claude/writ-blackbox.on exists. Fail-open: a capture failure must never
+    break hook parsing. This implements the capture procedure OVERVIEW.md
+    documents for re-verifying envelope shapes after a Claude Code upgrade."""
+    if not os.path.exists(os.path.expanduser("~/.claude/writ-blackbox.on")):
+        return
+    try:
+        cap_dir = os.path.expanduser("~/.claude/writ-blackbox")
+        os.makedirs(cap_dir, exist_ok=True)
+        line = json.dumps(envelope) if envelope else json.dumps({"unparsed_raw": raw})
+        with open(os.path.join(cap_dir, "envelopes.jsonl"), "a") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
+
+
 def parse() -> None:
     raw = sys.stdin.read()
 
@@ -35,6 +52,8 @@ def parse() -> None:
         envelope = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
         envelope = {}
+
+    _blackbox_capture(raw, envelope)
 
     # Extract tool_input -- could be dict or JSON string
     tool_input = envelope.get("tool_input", {})

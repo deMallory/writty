@@ -180,6 +180,15 @@
             "command": "bash $HOME/.claude/skills/writ/.claude/hooks/track-failed-writes.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-bash-failure.sh"
+          }
+        ]
       }
     ],
     "PreCompact": [
@@ -293,7 +302,7 @@
         ]
       },
       {
-        "matcher": "TodoWrite",
+        "matcher": "TodoWrite|TaskUpdate",
         "hooks": [
           {
             "type": "command",
@@ -302,7 +311,7 @@
         ]
       },
       {
-        "matcher": "Task",
+        "matcher": "Task|Agent",
         "hooks": [
           {
             "type": "command",
@@ -343,6 +352,15 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-memory-policy-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-agent-hotswap.sh"
           }
         ]
       }
@@ -408,6 +426,15 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-mark-pending-test.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/skills/writ/.claude/hooks/writ-output-rewrite.sh"
           }
         ]
       }

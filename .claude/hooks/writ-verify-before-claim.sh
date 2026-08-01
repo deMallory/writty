@@ -61,11 +61,13 @@ PY
     exit 0
 fi
 
-# Only evaluate on TodoWrite marking a todo completed, or on Stop events.
-# For TodoWrite: parse the tool_input.todos and check if any transition to
-# "completed" lacks verification_evidence.
+# Only evaluate on TodoWrite/TaskUpdate marking work completed, or on Stop
+# events. TodoWrite carries tool_input.todos[] (legacy; disabled by default
+# since Claude Code 2.1.142); TaskUpdate carries a flat
+# {taskId, status, ...} for a single task. Both funnel into the same
+# completion checks.
 DENY_REASON=""
-if [ "$TOOL" = "TodoWrite" ]; then
+if [ "$TOOL" = "TodoWrite" ] || [ "$TOOL" = "TaskUpdate" ]; then
     DENY_REASON=$(python3 <<PY
 import json, sys
 sys.path.insert(0, "$WRIT_DIR/bin/lib")
@@ -77,7 +79,14 @@ evidence = session.get("verification_evidence") or {}
 judgments = session.get("quality_judgment_state") or {}
 parsed = json.loads('''$PARSED''')
 tool_input = parsed.get("tool_input") or {}
-todos = tool_input.get("todos") or []
+if parsed.get("tool_name") == "TaskUpdate":
+    todos = [{
+        "id": tool_input.get("taskId") or tool_input.get("id") or "",
+        "content": tool_input.get("subject") or "",
+        "status": tool_input.get("status") or "",
+    }]
+else:
+    todos = tool_input.get("todos") or []
 for t in todos:
     tid = t.get("id") or t.get("content", "")[:40]
     status = t.get("status") or ""
