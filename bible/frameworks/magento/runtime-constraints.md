@@ -1,7 +1,8 @@
 <!-- RULE START: FW-M2-RT-001 -->
 ## Rule FW-M2-RT-001
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -51,7 +52,8 @@ ENF-SYS-002 (temporal truth source declaration).
 <!-- RULE START: FW-M2-RT-002 -->
 ## Rule FW-M2-RT-002
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -92,13 +94,14 @@ Magento's order state machine has non-obvious behaviors. Explicit declaration pr
 <!-- RULE START: FW-M2-RT-003 -->
 ## Rule FW-M2-RT-003
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
 
 ### Trigger
-When a value classified as "deployment-variable policy" by ENF-SYS-004 is hardcoded in a Magento 2 module instead of being sourced from admin configuration.
+When a value classified as "deployment-variable policy" by ARCH-ENV-001 is hardcoded in a Magento 2 module instead of being sourced from admin configuration.
 
 ### Statement
 Store-specific policy values must be declared in `etc/adminhtml/system.xml`, defaulted in `etc/config.xml`, read via `ScopeConfigInterface` with proper scope, and encapsulated in a dedicated Config class.
@@ -135,7 +138,7 @@ class ReservationConfig
 ```
 
 ### Enforcement
-ENF-SYS-004 (policy vs mechanism).
+ARCH-ENV-001 (configuration over hardcoded environment behavior).
 
 ### Rationale
 Magento's multi-store architecture requires per-store configuration. `ScopeConfigInterface` with proper scope is the only mechanism that correctly handles default -> website -> store fallback. Inline reads without scope are unreliable in multi-website setups.
@@ -146,7 +149,8 @@ Magento's multi-store architecture requires per-store configuration. `ScopeConfi
 <!-- RULE START: FW-M2-RT-004 -->
 ## Rule FW-M2-RT-004
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -207,7 +211,8 @@ Magento has four distinct caller types (admin, customer, integration, guest), ea
 <!-- RULE START: FW-M2-RT-005 -->
 ## Rule FW-M2-RT-005
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -286,7 +291,8 @@ Magento's queue framework splits configuration across four XML files. Missing an
 <!-- RULE START: FW-M2-RT-006 -->
 ## Rule FW-M2-RT-006
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false

@@ -29,8 +29,8 @@ source_attribution: "writ-native"
 source_commit: null
 body: "Always-on in debug mode only. Empty mechanical_enforcement_path per plan Section 2.1 advisory-vs-mandatory distinction."
 edges:
-  - { target: PBK-PROC-DEBUG-001, type: TEACHES }
-  - { target: ANT-PROC-DEBUG-001, type: COUNTERS }
+  - { target: PBK-PROC-DEBUG-001, type: GATES }
+category: CAT-PROC-001
 ---
 
 # Rule: Cite root-cause evidence for debug-mode fixes

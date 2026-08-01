@@ -24,6 +24,7 @@ rule_under_test: ENF-PROC-VERIFY-001
 difficulty: hard
 edges:
   - { target: ENF-PROC-VERIFY-001, type: PRESSURE_TESTS }
+category: CAT-DISC-001
 ---
 
 # Pressure scenario: Is it working

@@ -1,7 +1,9 @@
 ---
 technique_id: TEC-EDIT-CONSTRUCTION-001
 node_type: Technique
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["technique", "editorial", "elenchus"]
 severity: medium
 scope: layout
 trigger: "When the elenchus synthesis needs a layout form. The construction form renders a figure built on a visible grid where the grid is the premise and the figure is the conclusion."

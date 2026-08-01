@@ -1,7 +1,9 @@
 ---
 antipattern_id: ANT-EDIT-ADHOC-001
 node_type: AntiPattern
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["anti-pattern", "editorial", "typography"]
 severity: high
 scope: layout
 trigger: "When type sizes in a layout cannot be expressed as values in a single named scale."

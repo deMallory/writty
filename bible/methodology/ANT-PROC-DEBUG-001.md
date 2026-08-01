@@ -15,10 +15,12 @@ staleness_window: 365
 evidence: peer-reviewed
 source_attribution: "writ-native"
 source_commit: null
-counter_nodes: [PBK-PROC-DEBUG-001]
+counter_nodes: [PBK-PROC-DEBUG-001, ENF-PROC-DEBUG-001]
 named_in: "writ-methodology:systematic-debugging"
 edges:
+  - { target: ENF-PROC-DEBUG-001, type: COUNTERS }
   - { target: PBK-PROC-DEBUG-001, type: COUNTERS }
+category: CAT-DISC-001
 ---
 
 # Anti-pattern: Multiple fixes / fourth-fix

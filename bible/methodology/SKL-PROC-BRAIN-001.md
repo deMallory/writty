@@ -17,10 +17,12 @@ always_on: true
 source_attribution: "writ-native"
 source_commit: null
 edges:
+  - { target: ENF-PROC-BRAIN-001, type: TEACHES }
   - { target: PBK-PROC-BRAIN-001, type: TEACHES }
-  - { target: ENF-PROC-BRAIN-001, type: GATES }
-  - { target: SKL-PROC-VISUAL-001, type: DEMONSTRATES }
   - { target: SKL-PROC-PLAN-001, type: PRECEDES }
+category: CAT-PROC-001
+floor_modes: [conversation, debug, review, work, investigate]
+trigger_keywords: ["new feature", "refactor", "brainstorm", "design", "approval"]
 ---
 
 # Skill: Brainstorm before writing code

@@ -2,6 +2,7 @@
 ## Rule SCALE-CONFIG-001
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -28,6 +29,8 @@ Code review.
 ### Rationale
 Hardcoded environment values force a build per environment and produce drift between staging and prod. Config-driven behavior eliminates the rebuild.
 
+Related rules: ARCH-ENV-001, ERR-TIMEOUT-002, SEC-CRYPTO-KEY-002.
+
 <!-- RULE END: SCALE-CONFIG-001 -->
 ---
 
@@ -35,6 +38,7 @@ Hardcoded environment values force a build per environment and produce drift bet
 ## Rule SCALE-DB-001
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -67,6 +71,8 @@ Code review.
 ### Rationale
 Per-request connections are slow (handshake overhead), exhaust the DB's connection limit at peak, and fail under load. Pooling is the structural defense.
 
+Related rules: SCALE-DB-002.
+
 <!-- RULE END: SCALE-DB-001 -->
 ---
 
@@ -74,6 +80,7 @@ Per-request connections are slow (handshake overhead), exhaust the DB's connecti
 ## Rule SCALE-DB-002
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -102,6 +109,8 @@ Code review. ORM router config (Django DATABASES + DATABASE_ROUTERS, SQLAlchemy 
 ### Rationale
 Reads dominate most workloads. Routing them to replicas offloads the primary and lets read capacity scale independently.
 
+Related rules: SCALE-DB-001.
+
 <!-- RULE END: SCALE-DB-002 -->
 ---
 
@@ -109,6 +118,7 @@ Reads dominate most workloads. Routing them to replicas offloads the primary and
 ## Rule SCALE-HEALTH-001
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -141,6 +151,8 @@ Code review.
 ### Rationale
 A trivial health check turns 'service ready' into 'process running' -- the load balancer keeps sending traffic to a worker that cannot serve.
 
+Related rules: SCALE-HEALTH-002.
+
 <!-- RULE END: SCALE-HEALTH-001 -->
 ---
 
@@ -148,6 +160,7 @@ A trivial health check turns 'service ready' into 'process running' -- the load 
 ## Rule SCALE-HEALTH-002
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -179,6 +192,8 @@ Code review.
 ### Rationale
 Conflating ready and live causes spurious pod restarts (DB blip restarts every replica) or zombie rotation (process is hung but health says ok). Separation matches Kubernetes semantics.
 
+Related rules: SCALE-HEALTH-001.
+
 <!-- RULE END: SCALE-HEALTH-002 -->
 ---
 
@@ -186,6 +201,7 @@ Conflating ready and live causes spurious pod restarts (DB blip restarts every r
 ## Rule SCALE-MIGRATE-001
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -214,6 +230,8 @@ Code review.
 ### Rationale
 Forward-only migrations break rolling deploys: half the pods see the new schema, half the old. Phased migrations preserve the invariant that any code version works.
 
+Related rules: API-BREAKING-001, ARCH-MIGRATION-001, ARCH-MIGRATION-002.
+
 <!-- RULE END: SCALE-MIGRATE-001 -->
 ---
 
@@ -221,6 +239,7 @@ Forward-only migrations break rolling deploys: half the pods see the new schema,
 ## Rule SCALE-QUEUE-001
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -253,6 +272,8 @@ Code review.
 ### Rationale
 Long-running synchronous work blocks the worker, hits client timeouts, and risks loss on deploy. Background queues decouple submission from completion.
 
+Related rules: ENF-OPS-002, SCALE-QUEUE-002.
+
 <!-- RULE END: SCALE-QUEUE-001 -->
 ---
 
@@ -260,6 +281,7 @@ Long-running synchronous work blocks the worker, hits client timeouts, and risks
 ## Rule SCALE-QUEUE-002
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -293,6 +315,8 @@ Code review.
 ### Rationale
 Message redelivery is normal in distributed queues. Idempotent consumers handle it; non-idempotent consumers produce silent data corruption.
 
+Related rules: ARCH-IDEMPOTENT-001, ERR-GRACEFUL-002, SCALE-QUEUE-001.
+
 <!-- RULE END: SCALE-QUEUE-002 -->
 ---
 
@@ -300,10 +324,13 @@ Message redelivery is normal in distributed queues. Idempotent consumers handle 
 ## Rule SCALE-STATELESS-001
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_scaling_stateless
+**Applicability_Scope**: write
+**Trigger_Keywords**: module-level global, in-memory session, stateless, global mutable, process memory
 
 ### Trigger
 When implementing application processes that handle multiple requests (web servers, API handlers, queue workers).
@@ -334,6 +361,8 @@ Code review. Look for module-level mutable dicts/lists that grow with users.
 ### Rationale
 Stateless processes scale horizontally: any worker can serve any request. Stateful processes pin the user to one machine, lose state on restart, and fail to scale beyond one node.
 
+Related rules: SCALE-STATELESS-002, SEC-AUTH-LOGOUT-001.
+
 <!-- RULE END: SCALE-STATELESS-001 -->
 ---
 
@@ -341,6 +370,7 @@ Stateless processes scale horizontally: any worker can serve any request. Statef
 ## Rule SCALE-STATELESS-002
 
 **Domain**: scaling
+**Category**: CAT-CODE-SCALING-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -370,5 +400,10 @@ Code review.
 
 ### Rationale
 Local filesystem storage is invisible to other workers and disappears on container restart. Object storage is the structural fix.
+
+Related rules: SCALE-STATELESS-001.
+
+### Edges
+- SUPPLEMENTS: SCALE-STATELESS-001
 
 <!-- RULE END: SCALE-STATELESS-002 -->

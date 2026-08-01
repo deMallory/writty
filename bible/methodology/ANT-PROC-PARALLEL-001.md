@@ -19,6 +19,7 @@ counter_nodes: [SKL-PROC-PARALLEL-001]
 named_in: "writ-methodology:dispatching-parallel-agents"
 edges:
   - { target: SKL-PROC-PARALLEL-001, type: COUNTERS }
+category: CAT-DISC-001
 ---
 
 # Anti-pattern: Broad scope per parallel agent

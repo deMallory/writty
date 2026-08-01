@@ -1,7 +1,8 @@
 <!-- RULE START: FW-M2-001 -->
 ## Rule FW-M2-001
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -48,7 +49,8 @@ Format-based validation creates false positives (entities that look valid but do
 <!-- RULE START: FW-M2-002 -->
 ## Rule FW-M2-002
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -85,7 +87,8 @@ Factory/model-load patterns bypass service contracts, skip event dispatching, ig
 <!-- RULE START: FW-M2-003 -->
 ## Rule FW-M2-003
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -142,7 +145,8 @@ Quote totals are computed lazily and cached. Reading them before collection retu
 <!-- RULE START: FW-M2-004 -->
 ## Rule FW-M2-004
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: High
 **Scope**: Entity
 **Mandatory**: false
@@ -181,7 +185,8 @@ Interface-level plugins intercept all implementations, which may include interna
 <!-- RULE START: FW-M2-005 -->
 ## Rule FW-M2-005
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -250,7 +255,8 @@ Totals collectors run multiple times per request (item add, address change, ship
 <!-- RULE START: FW-M2-006 -->
 ## Rule FW-M2-006
 
-**Domain**: Frameworks / Magento 2
+**Domain**: frameworks
+**Category**: CAT-CODE-FW-MAGENTO-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -284,5 +290,7 @@ Self-enforced via code review.
 
 ### Rationale
 Assuming `collectTotals()` runs in all REST paths leads to implementations that appear to work in testing (where mutations precede totals retrieval) but fail in production when totals are fetched without a preceding mutation.
+
+Related rules: FW-M2-003, FW-M2-005.
 
 <!-- RULE END: FW-M2-006 -->

@@ -1,7 +1,9 @@
 ---
 antipattern_id: ANT-EDIT-RESIDUAL-001
 node_type: AntiPattern
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["anti-pattern", "editorial", "whitespace"]
 severity: high
 scope: layout
 trigger: "When a layout contains empty regions where no one can name what the whitespace is doing."

@@ -1,7 +1,8 @@
 ---
 phase_id: PHA-EDIT-ELENCHUS-005
 node_type: Phase
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
 scope: task
 trigger: "Fifth phase of PBK-EDIT-ELENCHUS-001. Fires after form-assignment. The only rule that matters."
 statement: "Refuse to design until moves 1-4 are done. No Figma, no CSS, no typeface, no margin, no column. The grid is the architecture of an argument that exists; it cannot be the architecture of an argument that does not yet exist."

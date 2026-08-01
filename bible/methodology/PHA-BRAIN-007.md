@@ -19,6 +19,7 @@ name: "Synthesize design"
 description: "Collapse approaches + constraints + clarifications into one coherent design. Resolve trade-offs. Name the chosen approach and why."
 parent_playbook_id: PBK-PROC-BRAIN-001
 edges: []
+category: CAT-PROC-001
 ---
 
 # Phase 7: Synthesize design

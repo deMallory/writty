@@ -1,7 +1,9 @@
 ---
 technique_id: TEC-EDIT-PROSE-001
 node_type: Technique
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["technique", "editorial", "elenchus"]
 severity: medium
 scope: layout
 trigger: "When the elenchus development section needs a layout form. The prose form renders multi-column body text with sidenotes for the long middle of the argument."

@@ -18,6 +18,9 @@ source_commit: null
 edges:
   - { target: PBK-PROC-DEBUG-001, type: DEMONSTRATES }
   - { target: PBK-PROC-TDD-001, type: DEMONSTRATES }
+category: CAT-PROC-001
+floor_modes: [debug]
+trigger_keywords: ["hypothesis", "falsifiable", "root cause"]
 ---
 
 # Technique: Hypothesis testing in debugging

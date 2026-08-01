@@ -1,7 +1,8 @@
 ---
 antipattern_id: ANT-ANIM-DELAYCHAINING-001
 node_type: AntiPattern
-domain: animation
+domain: frameworks
+category: CAT-CODE-FW-001
 severity: medium
 scope: component
 trigger: "When multiple independent gsap.to/from calls are sequenced using calculated delay offsets instead of a timeline."

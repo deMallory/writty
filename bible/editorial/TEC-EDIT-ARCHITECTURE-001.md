@@ -1,7 +1,9 @@
 ---
 technique_id: TEC-EDIT-ARCHITECTURE-001
 node_type: Technique
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["technique", "editorial", "elenchus"]
 severity: medium
 scope: layout
 trigger: "When the elenchus question or answer needs a layout form. The architecture form renders a single sentence at page scale so the reader is enclosed by it."

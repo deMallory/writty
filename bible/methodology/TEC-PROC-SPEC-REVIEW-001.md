@@ -16,8 +16,10 @@ evidence: peer-reviewed
 source_attribution: "writ-native"
 source_commit: null
 edges:
-  - { target: SKL-PROC-PLAN-001, type: DEMONSTRATES }
   - { target: SKL-PROC-BRAIN-001, type: DEMONSTRATES }
+  - { target: SKL-PROC-PLAN-001, type: DEMONSTRATES }
+category: CAT-PROC-001
+trigger_keywords: ["self-review", "spec", "ambiguity", "placeholder"]
 ---
 
 # Technique: Inline self-review

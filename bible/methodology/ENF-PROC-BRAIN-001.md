@@ -30,11 +30,12 @@ red_flag_thoughts:
 tags: [approval-gate, brainstorming, enforcement, process, work-mode]
 source_attribution: "writ-native"
 source_commit: null
-body: "Rationalization counters are also represented as standalone Rationalization nodes (RAT-BRAIN-001 through RAT-BRAIN-004) attached via ATTACHED_TO edges — the graph representation is canonical; the inline rationalization_counters field above is a render convenience for always-on summary injection per schema proposal rationalization-representation section."
+body: "Rationalization counters are also represented as standalone Rationalization nodes (the RAT-BRAIN rationalization family, e.g. RAT-BRAIN-001) attached via ATTACHED_TO edges — the graph representation is canonical; the inline rationalization_counters field above is a render convenience for always-on summary injection per schema proposal rationalization-representation section."
 edges:
-  - { target: SKL-PROC-BRAIN-001, type: TEACHES }
-  - { target: PBK-PROC-BRAIN-001, type: TEACHES }
   - { target: ENF-PROC-PLAN-001, type: PRECEDES }
+  - { target: PBK-PROC-BRAIN-001, type: GATES }
+  - { target: SKL-PROC-BRAIN-001, type: GATES }
+category: CAT-PROC-001
 ---
 
 # Rule: Brainstorm before code (mandatory in Work mode)

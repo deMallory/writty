@@ -1,7 +1,8 @@
 ---
 phase_id: PHA-EDIT-ELENCHUS-004
 node_type: Phase
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
 scope: task
 trigger: "Fourth phase of PBK-EDIT-ELENCHUS-001. Fires after the three sentences are clear."
 statement: "Assign form. Each part of the argument binds to one form: question to architecture form, antinomy to tension form, development to prose form, synthesis to construction form. These are bridges into spread-archetypes and editorial-grid."
@@ -25,10 +26,10 @@ description: |
   See TEC-EDIT-ARCHITECTURE-001, TEC-EDIT-TENSION-001, TEC-EDIT-PROSE-001, TEC-EDIT-CONSTRUCTION-001.
 parent_playbook_id: PBK-EDIT-ELENCHUS-001
 edges:
-  - { target: TEC-EDIT-ARCHITECTURE-001, type: DISPATCHES }
-  - { target: TEC-EDIT-TENSION-001, type: DISPATCHES }
-  - { target: TEC-EDIT-PROSE-001, type: DISPATCHES }
-  - { target: TEC-EDIT-CONSTRUCTION-001, type: DISPATCHES }
+  - { target: TEC-EDIT-ARCHITECTURE-001, type: INVOKES }
+  - { target: TEC-EDIT-TENSION-001, type: INVOKES }
+  - { target: TEC-EDIT-PROSE-001, type: INVOKES }
+  - { target: TEC-EDIT-CONSTRUCTION-001, type: INVOKES }
 ---
 
 # Phase 4: Assign form

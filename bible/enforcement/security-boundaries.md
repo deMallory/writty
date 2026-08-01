@@ -1,11 +1,14 @@
 <!-- RULE START: ENF-SEC-001 -->
 ## Rule ENF-SEC-001
 
-**Domain**: Security
+**Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Slice
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh:78 (PHPStan ownership check)
+**Applicability_Scope**: write
+**Trigger_Keywords**: REST route, GraphQL resolver, admin controller, storefront controller, CLI command, API endpoint
 
 ### Trigger
 When generating code for any externally accessible endpoint (REST route, GraphQL resolver, admin controller, storefront controller, CLI command).

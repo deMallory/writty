@@ -21,6 +21,7 @@ result: "Test written first (tests/test_api.py::test_fetch_handles_empty_body). 
 linked_skill: PBK-PROC-TDD-001
 edges:
   - { target: PBK-PROC-TDD-001, type: DEMONSTRATES }
+category: CAT-DISC-001
 ---
 
 # Worked example: TDD applied to empty-body bug

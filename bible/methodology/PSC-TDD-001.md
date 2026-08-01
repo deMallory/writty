@@ -24,6 +24,8 @@ rule_under_test: ENF-PROC-TDD-001
 difficulty: medium
 edges:
   - { target: ENF-PROC-TDD-001, type: PRESSURE_TESTS }
+  - { target: PBK-AUTHOR-001, type: PRESSURE_TESTS }
+category: CAT-DISC-001
 ---
 
 # Pressure scenario: Bug fix test-first discipline

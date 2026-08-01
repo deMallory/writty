@@ -17,7 +17,8 @@ source_attribution: "writ-native"
 source_commit: null
 edges:
   - { target: SKL-PROC-BRAIN-001, type: DEMONSTRATES }
-  - { target: PBK-PROC-BRAIN-001, type: DISPATCHES }
+category: CAT-PROC-001
+trigger_keywords: ["visual", "diagram", "spatial", "UI"]
 ---
 
 # Skill: Offer visual companion

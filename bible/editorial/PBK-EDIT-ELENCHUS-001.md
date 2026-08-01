@@ -1,7 +1,9 @@
 ---
 playbook_id: PBK-EDIT-ELENCHUS-001
 node_type: Playbook
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["elenchus", "editorial", "philosophy"]
 severity: high
 scope: task
 trigger: "When starting an article, essay, spread, or page-scale visual artifact intended to argue rather than display. When stuck in pre-design circling and unable to commit to a grid, scale, or composition because the argument underneath has not been named."
@@ -30,10 +32,10 @@ edges:
   - { target: PHA-EDIT-ELENCHUS-003, type: CONTAINS }
   - { target: PHA-EDIT-ELENCHUS-004, type: CONTAINS }
   - { target: PHA-EDIT-ELENCHUS-005, type: CONTAINS }
-  - { target: TEC-EDIT-ARCHITECTURE-001, type: DISPATCHES }
-  - { target: TEC-EDIT-TENSION-001, type: DISPATCHES }
-  - { target: TEC-EDIT-PROSE-001, type: DISPATCHES }
-  - { target: TEC-EDIT-CONSTRUCTION-001, type: DISPATCHES }
+  - { target: TEC-EDIT-ARCHITECTURE-001, type: INVOKES }
+  - { target: TEC-EDIT-TENSION-001, type: INVOKES }
+  - { target: TEC-EDIT-PROSE-001, type: INVOKES }
+  - { target: TEC-EDIT-CONSTRUCTION-001, type: INVOKES }
   - { target: EDIT-ARCH-IDENTIFY-001, type: TEACHES }
   - { target: EDIT-GRID-PROPORTION-001, type: PRECEDES }
 ---

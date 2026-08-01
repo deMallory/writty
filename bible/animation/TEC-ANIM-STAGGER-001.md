@@ -1,7 +1,8 @@
 ---
 technique_id: TEC-ANIM-STAGGER-001
 node_type: Technique
-domain: animation
+domain: frameworks
+category: CAT-CODE-FW-001
 severity: medium
 scope: component
 trigger: "When animating a set of elements with offset start times in GSAP."

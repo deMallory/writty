@@ -20,6 +20,7 @@ attached_to: ENF-PROC-VERIFY-001
 edges:
   - { target: ENF-PROC-VERIFY-001, type: ATTACHED_TO }
   - { target: SKL-PROC-VERIFY-001, type: COUNTERS }
+category: CAT-DISC-001
 ---
 
 # Rationalization: Earlier-in-session evidence is enough

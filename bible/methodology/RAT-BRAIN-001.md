@@ -20,6 +20,7 @@ attached_to: ENF-PROC-BRAIN-001
 edges:
   - { target: ENF-PROC-BRAIN-001, type: ATTACHED_TO }
   - { target: SKL-PROC-BRAIN-001, type: COUNTERS }
+category: CAT-DISC-001
 ---
 
 # Rationalization: "This task is obviously simple"

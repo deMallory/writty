@@ -1,7 +1,8 @@
 ---
 phase_id: PHA-EDIT-ELENCHUS-003
 node_type: Phase
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
 scope: task
 trigger: "Third phase of PBK-EDIT-ELENCHUS-001. Fires after the antinomy is named."
 statement: "Find the answer. One sentence. Declarative. The shape of the synthesis the article will earn. This is provisional; the writing may discover it is wrong, and that is welcome."

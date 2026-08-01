@@ -20,8 +20,9 @@ counter_nodes:
   - ENF-PROC-TDD-001
 named_in: "writ-methodology:testing-anti-patterns"
 edges:
-  - { target: PBK-PROC-TDD-001, type: COUNTERS }
   - { target: ENF-PROC-TDD-001, type: COUNTERS }
+  - { target: PBK-PROC-TDD-001, type: COUNTERS }
+category: CAT-DISC-001
 ---
 
 # Anti-pattern: Test passes on first run

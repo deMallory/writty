@@ -19,6 +19,7 @@ name: "Wait for approval"
 description: "Wait for the user's explicit approval word ('approved', 'yes go ahead', or equivalent explicit signal). Do not infer approval from silence, tone, or paraphrase."
 parent_playbook_id: PBK-PROC-BRAIN-001
 edges: []
+category: CAT-PROC-001
 ---
 
 # Phase 9: Wait for approval

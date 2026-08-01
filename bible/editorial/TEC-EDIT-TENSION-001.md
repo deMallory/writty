@@ -1,7 +1,9 @@
 ---
 technique_id: TEC-EDIT-TENSION-001
 node_type: Technique
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["technique", "editorial", "elenchus"]
 severity: medium
 scope: layout
 trigger: "When the elenchus antinomy needs a layout form. The tension form renders two clauses held apart on the page, refusing to resolve."

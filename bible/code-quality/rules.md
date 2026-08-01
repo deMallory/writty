@@ -2,6 +2,7 @@
 ## Rule CLEAN-ASSERT-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -35,6 +36,8 @@ Code review.
 ### Rationale
 Stripped assertions in production silently let the bad path proceed. Real validation belongs in real checks; assertions are for developer-facing 'this should be impossible' guards.
 
+Related rules: PHP-ERR-001.
+
 <!-- RULE END: CLEAN-ASSERT-001 -->
 ---
 
@@ -42,6 +45,7 @@ Stripped assertions in production silently let the bad path proceed. Real valida
 ## Rule CLEAN-BOOL-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -70,6 +74,8 @@ Linter rules (pylint comparison-with-callable / eqeq, eslint eqeqeq).
 ### Rationale
 Explicit comparison with a literal adds noise without adding precision. The truthy/falsy interpretation is the convention.
 
+Related rules: CLEAN-NAME-002.
+
 <!-- RULE END: CLEAN-BOOL-001 -->
 ---
 
@@ -77,6 +83,7 @@ Explicit comparison with a literal adds noise without adding precision. The trut
 ## Rule CLEAN-COMMENT-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -106,6 +113,8 @@ Code review.
 ### Rationale
 Restating-the-code comments rot the moment the code changes. WHY-comments stay useful because the constraint outlives the syntax.
 
+Related rules: DOC-INLINE-001.
+
 <!-- RULE END: CLEAN-COMMENT-001 -->
 ---
 
@@ -113,6 +122,7 @@ Restating-the-code comments rot the moment the code changes. WHY-comments stay u
 ## Rule CLEAN-COMMENT-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -141,6 +151,8 @@ Pre-commit hook can flag large commented-out blocks. Code review.
 ### Rationale
 Commented-out code is dead weight that confuses readers and bloats diffs. Git remembers; the file does not need to.
 
+Related rules: CLEAN-DEAD-001.
+
 <!-- RULE END: CLEAN-COMMENT-002 -->
 ---
 
@@ -148,6 +160,7 @@ Commented-out code is dead weight that confuses readers and bloats diffs. Git re
 ## Rule CLEAN-COUPLING-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -178,6 +191,8 @@ Code review.
 ### Rationale
 Hard-coded dependencies make code untestable and untransferable. Abstractions let the module work against any conforming implementation.
 
+Related rules: SOLID-DIP-001, SOLID-DIP-002.
+
 <!-- RULE END: CLEAN-COUPLING-001 -->
 ---
 
@@ -185,6 +200,7 @@ Hard-coded dependencies make code untestable and untransferable. Abstractions le
 ## Rule CLEAN-COUPLING-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -219,6 +235,7 @@ Cycles make the dependency graph un-orderable and the modules un-testable in iso
 ## Rule CLEAN-DEAD-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -252,6 +269,8 @@ Linter rules (ruff F401/F841, eslint no-unused-vars/no-unreachable, gosec deadco
 ### Rationale
 Dead code distracts readers and rots over time. Removing it is free.
 
+Related rules: CLEAN-COMMENT-002.
+
 <!-- RULE END: CLEAN-DEAD-001 -->
 ---
 
@@ -259,6 +278,7 @@ Dead code distracts readers and rots over time. Removing it is free.
 ## Rule CLEAN-ERR-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -292,6 +312,8 @@ Linter rules (eslint no-empty, ruff S110, pylint bare-except, PHPCS Generic.Code
 ### Rationale
 Silent exception swallowing turns a stack-trace-in-monitoring into a mystery failure that surfaces minutes or hours later. Logging or re-raising preserves the signal.
 
+Related rules: CLEAN-ERR-002, ERR-HANDLE-002.
+
 <!-- RULE END: CLEAN-ERR-001 -->
 ---
 
@@ -299,6 +321,7 @@ Silent exception swallowing turns a stack-trace-in-monitoring into a mystery fai
 ## Rule CLEAN-ERR-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -331,6 +354,8 @@ Linter rules.
 ### Rationale
 Bare `except` catches AttributeError, KeyError, NameError, KeyboardInterrupt -- everything. Specific catches keep programming bugs visible.
 
+Related rules: CLEAN-ERR-001.
+
 <!-- RULE END: CLEAN-ERR-002 -->
 ---
 
@@ -338,6 +363,7 @@ Bare `except` catches AttributeError, KeyError, NameError, KeyboardInterrupt -- 
 ## Rule CLEAN-ERR-003
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -364,6 +390,8 @@ Code review.
 ### Rationale
 Context-rich errors are the on-call engineer's first line of defense. Bare messages force a code dive to figure out what went wrong.
 
+Related rules: API-ERROR-002, ERR-HANDLE-003.
+
 <!-- RULE END: CLEAN-ERR-003 -->
 ---
 
@@ -371,6 +399,7 @@ Context-rich errors are the on-call engineer's first line of defense. Bare messa
 ## Rule CLEAN-FORMAT-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Low
 **Scope**: Component
 **Mandatory**: false
@@ -392,7 +421,7 @@ Formatting is enforced by a configured formatter (Prettier, Black, rustfmt, gofm
 ```
 
 ### Enforcement
-Pre-commit hook. CI gate.
+Pre-commit hook. CI gate. Related: CLEAN-COMMENT-001.
 
 ### Rationale
 Formatter wars consume engineering time without product value. Delegate the entire decision to a tool and move on.
@@ -404,6 +433,7 @@ Formatter wars consume engineering time without product value. Delegate the enti
 ## Rule CLEAN-FUNC-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -439,6 +469,8 @@ Code review.
 ### Rationale
 CQS makes side effects visible at the call site. A 'getter' that mutates is a landmine: every caller now has hidden persistence semantics it must reason about.
 
+Related rules: CLEAN-SIDE-001.
+
 <!-- RULE END: CLEAN-FUNC-001 -->
 ---
 
@@ -446,6 +478,7 @@ CQS makes side effects visible at the call site. A 'getter' that mutates is a la
 ## Rule CLEAN-FUNC-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -480,6 +513,8 @@ Linter rules (eslint complexity/max-lines-per-function, pylint too-many-statemen
 ### Rationale
 Long functions hide the shape of the work. Decomposed code reads like a table of contents at the entry point and lets the reader drill in only where needed.
 
+Related rules: CLEAN-NEST-001.
+
 <!-- RULE END: CLEAN-FUNC-002 -->
 ---
 
@@ -487,6 +522,7 @@ Long functions hide the shape of the work. Decomposed code reads like a table of
 ## Rule CLEAN-FUNC-003
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -519,6 +555,8 @@ Code review.
 ### Rationale
 Long parameter lists are positional-coupling hazards: callers easily mis-order arguments, and adding a new parameter ripples through every call site.
 
+Related rules: ARCH-DTO-001.
+
 <!-- RULE END: CLEAN-FUNC-003 -->
 ---
 
@@ -526,6 +564,7 @@ Long parameter lists are positional-coupling hazards: callers easily mis-order a
 ## Rule CLEAN-FUNC-004
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -559,6 +598,8 @@ Code review.
 ### Rationale
 Flag arguments hide that the function is two functions in disguise. Named alternatives make the choice explicit at the call site.
 
+Related rules: CLEAN-FUNC-001.
+
 <!-- RULE END: CLEAN-FUNC-004 -->
 ---
 
@@ -566,6 +607,7 @@ Flag arguments hide that the function is two functions in disguise. Named altern
 ## Rule CLEAN-LOG-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -592,6 +634,8 @@ Linter rule (ruff T201 for `print`, eslint no-console). Code review.
 ### Rationale
 Structured logs are queryable, filterable, and routable. print()-style logs require regex parsing and lose context when handlers change.
 
+Related rules: CLEAN-LOG-002, SEC-INJ-LOG-001.
+
 <!-- RULE END: CLEAN-LOG-001 -->
 ---
 
@@ -599,6 +643,7 @@ Structured logs are queryable, filterable, and routable. print()-style logs requ
 ## Rule CLEAN-LOG-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -629,6 +674,8 @@ Middleware that injects the correlation ID into the logger's contextvars. Code r
 ### Rationale
 Distributed systems are only debuggable when logs across services share an identifier. The correlation ID is the join key for an incident.
 
+Related rules: CLEAN-LOG-001, ERR-HANDLE-003.
+
 <!-- RULE END: CLEAN-LOG-002 -->
 ---
 
@@ -636,6 +683,7 @@ Distributed systems are only debuggable when logs across services share an ident
 ## Rule CLEAN-MAGIC-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -672,6 +720,7 @@ A named constant explains the value at the use site and at its definition. Magic
 ## Rule CLEAN-NAME-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -700,6 +749,8 @@ Code review.
 ### Rationale
 Names are the readers' shortest path to intent. Cryptic names force re-deriving meaning from context every time the code is read.
 
+Related rules: CLEAN-NAME-002.
+
 <!-- RULE END: CLEAN-NAME-001 -->
 ---
 
@@ -707,6 +758,7 @@ Names are the readers' shortest path to intent. Cryptic names force re-deriving 
 ## Rule CLEAN-NAME-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -735,6 +787,8 @@ Code review.
 ### Rationale
 Predicate names let the reader scan the condition as English. `if user.active:` reads correctly; `if user.status:` could mean anything.
 
+Related rules: CLEAN-BOOL-001, CLEAN-NAME-001.
+
 <!-- RULE END: CLEAN-NAME-002 -->
 ---
 
@@ -742,6 +796,7 @@ Predicate names let the reader scan the condition as English. `if user.active:` 
 ## Rule CLEAN-NEST-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -783,6 +838,8 @@ Linter rules (eslint complexity/max-depth, pylint too-many-nested-blocks). Code 
 ### Rationale
 Deeply nested code forces the reader to track too many simultaneous conditions. Early-returns flatten the structure into the happy path.
 
+Related rules: CLEAN-FUNC-002, CLEAN-TERNARY-001.
+
 <!-- RULE END: CLEAN-NEST-001 -->
 ---
 
@@ -790,6 +847,7 @@ Deeply nested code forces the reader to track too many simultaneous conditions. 
 ## Rule CLEAN-RETURN-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -824,6 +882,8 @@ Type checker (mypy strict, pyright). Code review.
 ### Rationale
 Multiple return types push the caller into ad-hoc type checks at every call site. Single-type returns let the type system carry the contract.
 
+Related rules: DOC-TYPE-002.
+
 <!-- RULE END: CLEAN-RETURN-001 -->
 ---
 
@@ -831,6 +891,7 @@ Multiple return types push the caller into ad-hoc type checks at every call site
 ## Rule CLEAN-SIDE-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -861,6 +922,8 @@ Code review.
 ### Rationale
 When name and behavior disagree, the caller's mental model is wrong. Side-effect-free getters are safe to call anywhere; side-effecting getters create implicit dependencies.
 
+Related rules: CLEAN-FUNC-001.
+
 <!-- RULE END: CLEAN-SIDE-001 -->
 ---
 
@@ -868,6 +931,7 @@ When name and behavior disagree, the caller's mental model is wrong. Side-effect
 ## Rule CLEAN-TERNARY-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Low
 **Scope**: Component
 **Mandatory**: false
@@ -903,6 +967,8 @@ Code review.
 ### Rationale
 Nested ternaries collapse intent into a riddle. Block form is verbose but legible.
 
+Related rules: CLEAN-NEST-001.
+
 <!-- RULE END: CLEAN-TERNARY-001 -->
 ---
 
@@ -910,6 +976,7 @@ Nested ternaries collapse intent into a riddle. Block form is verbose but legibl
 ## Rule CLEAN-TODO-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Low
 **Scope**: Component
 **Mandatory**: false
@@ -932,7 +999,7 @@ TODO comments include a tracking reference (issue/ticket number) or an author + 
 ```
 
 ### Enforcement
-Linter rule, code review.
+Linter rule, code review. Related: CLEAN-COMMENT-002.
 
 ### Rationale
 Untracked TODOs accumulate into a graveyard that no one cleans. Tracking forces the comment to either become work or be deleted.
@@ -944,6 +1011,7 @@ Untracked TODOs accumulate into a graveyard that no one cleans. Tracking forces 
 ## Rule DRY-CONFIG-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -973,6 +1041,8 @@ Code review.
 ### Rationale
 Config drift breaks the assumption that one place controls behavior. A single source of truth restores the invariant.
 
+Related rules: DRY-CONFIG-002, DRY-DUP-002, ERR-TIMEOUT-002.
+
 <!-- RULE END: DRY-CONFIG-001 -->
 ---
 
@@ -980,6 +1050,7 @@ Config drift breaks the assumption that one place controls behavior. A single so
 ## Rule DRY-CONFIG-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1008,6 +1079,8 @@ Code review.
 ### Rationale
 Scattered flag checks lose the ability to flip a flag in one place. Centralization is the structural defense for the next change.
 
+Related rules: ARCH-ENV-001, ARCH-FEATURE-001, DRY-CONFIG-001.
+
 <!-- RULE END: DRY-CONFIG-002 -->
 ---
 
@@ -1015,6 +1088,7 @@ Scattered flag checks lose the ability to flip a flag in one place. Centralizati
 ## Rule DRY-DUP-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1051,6 +1125,8 @@ Code review. Duplicate-detection tools (jscpd, pylint duplicate-code).
 ### Rationale
 Duplication multiplies bug surface: a fix in one copy leaves the others wrong. Extraction is the structural defense.
 
+Related rules: DRY-DUP-002, DRY-QUERY-001, DRY-TEMPLATE-001.
+
 <!-- RULE END: DRY-DUP-001 -->
 ---
 
@@ -1058,6 +1134,7 @@ Duplication multiplies bug surface: a fix in one copy leaves the others wrong. E
 ## Rule DRY-DUP-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1094,6 +1171,7 @@ Scattered constants drift the moment business needs change. One canonical defini
 ## Rule DRY-DUP-003
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1122,6 +1200,8 @@ Code review.
 ### Rationale
 Validation drift across endpoints leads to one endpoint accepting input another rejects. Shared schemas keep the contract uniform.
 
+Related rules: PY-PYDANTIC-001.
+
 <!-- RULE END: DRY-DUP-003 -->
 ---
 
@@ -1129,6 +1209,7 @@ Validation drift across endpoints leads to one endpoint accepting input another 
 ## Rule DRY-QUERY-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1157,6 +1238,8 @@ Code review.
 ### Rationale
 Inlined queries duplicate filter logic and indexing assumptions. A repository method holds the canonical form.
 
+Related rules: ARCH-BOUNDARY-001, DRY-DUP-001, SEC-AUTHZ-TENANT-001.
+
 <!-- RULE END: DRY-QUERY-001 -->
 ---
 
@@ -1164,6 +1247,7 @@ Inlined queries duplicate filter logic and indexing assumptions. A repository me
 ## Rule DRY-TEMPLATE-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1190,6 +1274,8 @@ Code review.
 ### Rationale
 Copy-pasted UI fragments drift visually and behaviorally. A shared component anchors the pattern.
 
+Related rules: DRY-DUP-001.
+
 <!-- RULE END: DRY-TEMPLATE-001 -->
 ---
 
@@ -1197,6 +1283,7 @@ Copy-pasted UI fragments drift visually and behaviorally. A shared component anc
 ## Rule DRY-TYPE-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1226,6 +1313,8 @@ Code review.
 ### Rationale
 Drifting type definitions create silent mismatches at module boundaries. A single source aligns every consumer.
 
+Related rules: ARCH-DTO-001, DRY-DUP-001.
+
 <!-- RULE END: DRY-TYPE-001 -->
 ---
 
@@ -1233,6 +1322,7 @@ Drifting type definitions create silent mismatches at module boundaries. A singl
 ## Rule ERR-CIRCUIT-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1260,6 +1350,8 @@ Code review. Breaker libraries with metrics.
 ### Rationale
 Without a breaker, every request waits the timeout before failing; the failing service drags down everything that calls it. The breaker turns a slow failure into a fast failure.
 
+Related rules: ERR-FALLBACK-001, ERR-RETRY-002, ERR-TIMEOUT-001.
+
 <!-- RULE END: ERR-CIRCUIT-001 -->
 ---
 
@@ -1267,6 +1359,7 @@ Without a breaker, every request waits the timeout before failing; the failing s
 ## Rule ERR-FALLBACK-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1298,6 +1391,8 @@ Code review.
 ### Rationale
 Fallback decisions are part of the design, not an emergent property. Documented fallback paths preserve the critical workflow under partial outage.
 
+Related rules: ERR-CIRCUIT-001, ERR-RETRY-002.
+
 <!-- RULE END: ERR-FALLBACK-001 -->
 ---
 
@@ -1305,6 +1400,7 @@ Fallback decisions are part of the design, not an emergent property. Documented 
 ## Rule ERR-GRACEFUL-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1336,6 +1432,8 @@ Code review.
 ### Rationale
 Graceful shutdown preserves in-flight requests and avoids dropped writes on deployment. Hard-kill turns every deploy into a small outage.
 
+Related rules: ERR-GRACEFUL-002.
+
 <!-- RULE END: ERR-GRACEFUL-001 -->
 ---
 
@@ -1343,6 +1441,7 @@ Graceful shutdown preserves in-flight requests and avoids dropped writes on depl
 ## Rule ERR-GRACEFUL-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1370,6 +1469,8 @@ Code review.
 ### Rationale
 Dropped jobs on shutdown produce silent data inconsistency. Acknowledgement-after-complete plus shutdown hooks preserve the at-least-once contract.
 
+Related rules: ERR-GRACEFUL-001, SCALE-QUEUE-002.
+
 <!-- RULE END: ERR-GRACEFUL-002 -->
 ---
 
@@ -1377,6 +1478,7 @@ Dropped jobs on shutdown produce silent data inconsistency. Acknowledgement-afte
 ## Rule ERR-HANDLE-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1408,6 +1510,8 @@ Code review.
 ### Rationale
 Unhandled external failures propagate as raw library exceptions to callers that cannot recover or even identify them. Wrapping is the structural defense.
 
+Related rules: CLEAN-ERR-001, ERR-HANDLE-002, ERR-TIMEOUT-001.
+
 <!-- RULE END: ERR-HANDLE-001 -->
 ---
 
@@ -1415,6 +1519,7 @@ Unhandled external failures propagate as raw library exceptions to callers that 
 ## Rule ERR-HANDLE-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1447,6 +1552,8 @@ Code review.
 ### Rationale
 Unchained exceptions hide the root cause behind a generic wrapper. The original stack trace is the most valuable artifact in an incident.
 
+Related rules: CLEAN-ERR-001, ERR-HANDLE-001.
+
 <!-- RULE END: ERR-HANDLE-002 -->
 ---
 
@@ -1454,6 +1561,7 @@ Unchained exceptions hide the root cause behind a generic wrapper. The original 
 ## Rule ERR-HANDLE-003
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1480,6 +1588,8 @@ Code review.
 ### Rationale
 Internal-detail leaks aid reconnaissance and confuse legitimate users. A clear public message + an internal correlation ID balances both audiences.
 
+Related rules: API-ERROR-001, CLEAN-LOG-002.
+
 <!-- RULE END: ERR-HANDLE-003 -->
 ---
 
@@ -1487,6 +1597,7 @@ Internal-detail leaks aid reconnaissance and confuse legitimate users. A clear p
 ## Rule ERR-RETRY-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1522,6 +1633,8 @@ Code review. Retry libraries (tenacity, retry, polly) implement this correctly.
 ### Rationale
 Fixed-interval retries synchronize and amplify upstream failures. Exponential backoff with jitter spreads the retry load and gives upstream room to recover.
 
+Related rules: ERR-CIRCUIT-001, ERR-RETRY-002.
+
 <!-- RULE END: ERR-RETRY-001 -->
 ---
 
@@ -1529,6 +1642,7 @@ Fixed-interval retries synchronize and amplify upstream failures. Exponential ba
 ## Rule ERR-RETRY-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1560,6 +1674,8 @@ Code review.
 ### Rationale
 Unbounded retries hang the request, consume the worker, and never surface the failure to the caller.
 
+Related rules: ERR-CIRCUIT-001, ERR-FALLBACK-001, ERR-RETRY-001.
+
 <!-- RULE END: ERR-RETRY-002 -->
 ---
 
@@ -1567,6 +1683,7 @@ Unbounded retries hang the request, consume the worker, and never surface the fa
 ## Rule ERR-TIMEOUT-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1593,6 +1710,8 @@ Code review. Linter rule (ruff S113 for requests without timeout).
 ### Rationale
 Bare external calls inherit library defaults that are often 'no timeout' or 'minutes'. One slow upstream stalls the whole worker pool.
 
+Related rules: ERR-CIRCUIT-001, ERR-HANDLE-001, ERR-TIMEOUT-002.
+
 <!-- RULE END: ERR-TIMEOUT-001 -->
 ---
 
@@ -1600,6 +1719,7 @@ Bare external calls inherit library defaults that are often 'no timeout' or 'min
 ## Rule ERR-TIMEOUT-002
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1626,6 +1746,8 @@ Code review.
 ### Rationale
 Tuning timeouts during an incident is a 1-line config change when timeouts are configurable. Otherwise it is a code change, a deploy, and a delay.
 
+Related rules: DRY-CONFIG-001, ERR-TIMEOUT-001.
+
 <!-- RULE END: ERR-TIMEOUT-002 -->
 ---
 
@@ -1633,6 +1755,7 @@ Tuning timeouts during an incident is a 1-line config change when timeouts are c
 ## Rule ERR-VALIDATION-001
 
 **Domain**: code-quality
+**Category**: CAT-CODE-QUALITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1661,5 +1784,7 @@ Code review. Pydantic + FastAPI produces this shape automatically.
 
 ### Rationale
 Structured validation errors let UIs highlight the bad field and let integrations handle errors programmatically. A bare string forces every consumer to parse.
+
+Related rules: API-ERROR-001, API-STATUS-002.
 
 <!-- RULE END: ERR-VALIDATION-001 -->

@@ -19,6 +19,7 @@ name: "Propose 2-3 approaches"
 description: "Propose 2-3 genuinely different approaches to the problem. Variations of the same idea do not count — each approach should rest on a different core decision."
 parent_playbook_id: PBK-PROC-BRAIN-001
 edges: []
+category: CAT-PROC-001
 ---
 
 # Phase 3: Propose 2-3 approaches

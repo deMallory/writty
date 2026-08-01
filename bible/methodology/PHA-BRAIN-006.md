@@ -19,6 +19,7 @@ name: "Ask clarifying questions"
 description: "Batch all clarifying questions about scope, edge cases, constraints, or trade-off preferences into a single message. If no questions: state so explicitly — silence is not the same as confirmed."
 parent_playbook_id: PBK-PROC-BRAIN-001
 edges: []
+category: CAT-PROC-001
 ---
 
 # Phase 6: Ask clarifying questions

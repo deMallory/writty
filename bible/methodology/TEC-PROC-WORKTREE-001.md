@@ -16,12 +16,28 @@ evidence: peer-reviewed
 source_attribution: "writ-native"
 source_commit: null
 edges:
-  - { target: ENF-PROC-WORKTREE-001, type: GATES }
+  - { target: ENF-PROC-WORKTREE-001, type: TEACHES }
   - { target: PBK-PROC-SDD-001, type: PRECEDES }
   - { target: SKL-PROC-EXEC-001, type: PRECEDES }
+category: CAT-PROC-001
+action_triggers: ["worktree"]
+trigger_keywords: ["worktree", "isolation", "gitignore", "git"]
 ---
 
 # Technique: Create a safe worktree
+
+## Step 0: detect existing isolation (first)
+
+Are you ALREADY in a linked worktree? Compare `git rev-parse --git-dir` with `--git-common-dir`;
+if they differ you are likely isolated -- unless `git rev-parse --show-superproject-working-tree`
+returns a path (a submodule: treat as a normal repo). If already in a worktree, do NOT nest
+another; skip to setup.
+
+## Prefer native tools over `git worktree add`
+
+If a native worktree tool exists (`EnterWorktree`, a `/worktree` command, a `--worktree` flag),
+use it and skip to setup -- it keeps placement, branch, and cleanup in sync with the harness.
+Raw `git worktree add` behind a native tool leaves phantom state; use it only as the fallback.
 
 ## Directory selection priority
 

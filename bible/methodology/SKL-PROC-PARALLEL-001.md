@@ -17,6 +17,8 @@ source_attribution: "writ-native"
 source_commit: null
 edges:
   - { target: PBK-PROC-SDD-001, type: DEMONSTRATES }
+category: CAT-PROC-DISPATCH-001
+trigger_keywords: ["independent", "parallel", "shared state"]
 ---
 
 # Skill: Dispatch parallel agents

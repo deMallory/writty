@@ -16,9 +16,10 @@ evidence: peer-reviewed
 source_attribution: "writ-native"
 source_commit: null
 edges:
-  - { target: SKL-PROC-PLAN-001, type: PRECEDES }
   - { target: PBK-PROC-SDD-001, type: DEMONSTRATES }
   - { target: SKL-PROC-VERIFY-001, type: DEMONSTRATES }
+category: CAT-PROC-001
+trigger_keywords: ["execute", "verification", "blocker", "plan"]
 ---
 
 # Skill: Execute an approved plan

@@ -1,7 +1,8 @@
 <!-- RULE START: ENF-OPS-001 -->
 ## Rule ENF-OPS-001
 
-**Domain**: Operations
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -44,7 +45,8 @@ Performance claims create expectations that influence architecture decisions, ca
 <!-- RULE START: ENF-OPS-002 -->
 ## Rule ENF-OPS-002
 
-**Domain**: Operations
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false

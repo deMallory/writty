@@ -1,11 +1,14 @@
 <!-- RULE START: ENF-CTX-003 -->
 ## Rule ENF-CTX-003
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: High
 **Scope**: Entity
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh (PHPCS lint)
+**Applicability_Scope**: write
+**Trigger_Keywords**: Model::load, service contract, repository pattern, factory pattern, active record
 
 ### Trigger
 When generated code uses patterns that appear frequently in training data but conflict with the project's rules -- specifically: factory patterns over repositories, Model::load() over service contracts, string inference over persistence verification.
@@ -35,10 +38,52 @@ AI models are statistically biased toward deprecated patterns that appear freque
 <!-- RULE END: ENF-CTX-003 -->
 ---
 
+<!-- RULE START: ENF-GATE-006 -->
+## Rule ENF-GATE-006
+
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
+**Severity**: High
+**Scope**: Slice
+**Mandatory**: true
+**Mechanical_Enforcement_Path**: .claude/hooks/validate-handoff.sh
+**Applicability_Scope**: write
+**Trigger_Keywords**: handoff, handoffs
+
+### Trigger
+When writing a sub-agent / phase handoff file (`.claude/handoffs/*`) for dependency-ordered slice execution.
+
+### Statement
+A handoff file must be valid JSON and contain the required keys. A malformed or incomplete handoff is rejected: downstream slices depend on a well-formed handoff, so a broken one is blocked at the gate rather than silently consumed.
+
+### Violation
+```
+.claude/handoffs/slice-2.json:
+{ "summary": "did the thing"      <- truncated / invalid JSON, missing required keys
+```
+
+### Pass
+```
+.claude/handoffs/slice-2.json parses as JSON and contains every required key
+(the downstream slice can consume it deterministically).
+```
+
+### Enforcement
+.claude/hooks/validate-handoff.sh (PostToolUse on the handoff file) parses the JSON and checks required keys; on failure it emits an ENF-GATE-006 violation and blocks.
+
+### Rationale
+A dependency-ordered pipeline is only as reliable as the handoff between slices. Validating shape at the gate turns a late, confusing downstream failure into an immediate, local one.
+
+Related rules: ENF-POST-006.
+
+<!-- RULE END: ENF-GATE-006 -->
+---
+
 <!-- RULE START: ENF-GATE-007 -->
 ## Rule ENF-GATE-007
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Slice
 **Mandatory**: true
@@ -95,17 +140,22 @@ Mechanically enforced by bin/lib/writ-session.py:1125-1370 (the test-skeletons g
 ### Rationale
 Tests generated after implementation become afterthought -- they validate what was built, not what was approved. Test-first makes it structurally harder to drift.
 
+Related rules: ENF-PROC-TDD-001.
+
 <!-- RULE END: ENF-GATE-007 -->
 ---
 
 <!-- RULE START: ENF-POST-003 -->
 ## Rule ENF-POST-003
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh (PHPStan level 8)
+**Applicability_Scope**: write
+**Trigger_Keywords**: implements interface, abstract method, method signature, interface contract
 
 ### Trigger
 After generating a class that implements an interface, or after generating an interface and its implementation.
@@ -143,7 +193,8 @@ Interface-implementation mismatches cause subtle runtime errors that surface onl
 <!-- RULE START: ENF-POST-004 -->
 ## Rule ENF-POST-004
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -183,7 +234,8 @@ Happy-path-only tests create false confidence. Without a hard gate tying tests t
 <!-- RULE START: ENF-POST-005 -->
 ## Rule ENF-POST-005
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: High
 **Scope**: Entity
 **Mandatory**: false
@@ -217,17 +269,63 @@ Code review of test files. Reviewers should verify boundary tests for threshold 
 ### Rationale
 Off-by-one errors at boundaries are among the most common bugs in threshold-based logic.
 
+Related rules: ENF-POST-004, TEST-EDGE-002.
+
 <!-- RULE END: ENF-POST-005 -->
+---
+
+<!-- RULE START: ENF-POST-006 -->
+## Rule ENF-POST-006
+
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
+**Severity**: High
+**Scope**: Slice
+**Mandatory**: true
+**Mechanical_Enforcement_Path**: .claude/hooks/validate-handoff.sh
+**Applicability_Scope**: write
+**Trigger_Keywords**: handoff, handoffs
+
+### Trigger
+Post-generation verification, before a handoff file is finalized.
+
+### Statement
+A handoff must carry no unresolved "I cannot verify" items. Every claim is verified, explicitly flagged for human review, or removed before handoff -- an unverifiable assertion must never be passed downstream as if settled.
+
+### Violation
+```
+.claude/handoffs/slice-3.json:
+{ "findings": ["I cannot verify the migration ran"] }   <- unresolved, passed downstream
+```
+
+### Pass
+```
+{ "findings": ["migration 0042 applied (verified: SELECT confirms column exists)"],
+  "needs_human_review": [] }
+```
+
+### Enforcement
+.claude/hooks/validate-handoff.sh scans the handoff for unresolved "I cannot verify" strings and emits an ENF-POST-006 violation until each is resolved or flagged.
+
+### Rationale
+"I cannot verify" is honest in-flight, but a handoff is a commitment. Carrying an unverified claim forward launders a guess into an apparent fact for the next slice.
+
+Related rules: ENF-GATE-006, ENF-OPS-001, ENF-PROC-VERIFY-001.
+
+<!-- RULE END: ENF-POST-006 -->
 ---
 
 <!-- RULE START: ENF-POST-007 -->
 ## Rule ENF-POST-007
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Slice
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh (PHPStan level 8)
+**Applicability_Scope**: write
+**Trigger_Keywords**: PHPStan, static analysis, phpcs, mypy
 
 ### Trigger
 After generating code, before marking a slice as complete.
@@ -263,7 +361,8 @@ Static analysis tools are an independent verifier with no reasoning bias. PHPSta
 <!-- RULE START: ENF-PRE-001 -->
 ## Rule ENF-PRE-001
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -300,13 +399,16 @@ Self-enforced via design review. When writing a Magento plugin/observer/event li
 ### Rationale
 Plugins and observers that appear correct in one context often fail silently in others. A written call-path declaration forces the AI to reason about coverage before committing to an implementation.
 
+Related rules: ENF-PRE-003, ENF-PRE-004, FW-M2-004.
+
 <!-- RULE END: ENF-PRE-001 -->
 ---
 
 <!-- RULE START: ENF-PRE-002 -->
 ## Rule ENF-PRE-002
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -349,7 +451,8 @@ Validation logic that infers legitimacy from format alone (string matching, pref
 <!-- RULE START: ENF-PRE-003 -->
 ## Rule ENF-PRE-003
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -393,7 +496,8 @@ Incorrect plugin seam selection causes silent failures that are extremely diffic
 <!-- RULE START: ENF-PRE-004 -->
 ## Rule ENF-PRE-004
 
-**Domain**: AI Enforcement
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
 **Severity**: Critical
 **Scope**: Entity
 **Mandatory**: false
@@ -436,4 +540,41 @@ Self-enforced via code review. Static analysis (custom PHPStan rule) can flag Me
 ### Rationale
 Dependencies that assume UI context cause fatal errors or undefined behavior in headless execution contexts (REST, GraphQL, CLI). This is a common source of production incidents.
 
+Related rules: ENF-PRE-001.
+
 <!-- RULE END: ENF-PRE-004 -->
+---
+
+<!-- RULE START: ENF-TEST-001 -->
+## Rule ENF-TEST-001
+
+**Domain**: enforcement
+**Category**: CAT-CODE-AIENF-001
+**Severity**: Critical
+**Scope**: Slice
+**Mandatory**: true
+**Mechanical_Enforcement_Path**: .claude/hooks/writ-run-pending-tests.sh
+
+### Trigger
+At session Stop, when test files written or modified during the session have not been run to a passing result.
+
+### Statement
+Tests written in a session must actually pass before the work is claimed complete. Pending or failing tests block completion: a written-but-unrun test is not evidence, and a failing test is a defect, not a footnote.
+
+### Violation
+```
+"Implemented the feature and added tests."   <- tests never executed, or executed and failing
+```
+
+### Pass
+```
+"pytest tests/test_feature.py: 7 passed in 0.4s"   <- the session's tests run green before completion.
+```
+
+### Enforcement
+.claude/hooks/writ-run-pending-tests.sh runs the session's pending tests at Stop and emits an ENF-TEST-001 violation summary on any failure.
+
+### Rationale
+A test that was written but never run is a claim, not a check. ENF-PROC-VERIFY-001 forbids completion claims without fresh evidence; this is its mechanical counterpart for session-authored tests.
+
+<!-- RULE END: ENF-TEST-001 -->

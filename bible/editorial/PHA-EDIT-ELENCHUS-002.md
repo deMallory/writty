@@ -1,7 +1,8 @@
 ---
 phase_id: PHA-EDIT-ELENCHUS-002
 node_type: Phase
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
 scope: task
 trigger: "Second phase of PBK-EDIT-ELENCHUS-001. Fires after the question is named."
 statement: "Find the antinomy. One line, two clauses. The contradiction the question exists to circle. Both clauses must be true. The article is the work of showing how both are true."

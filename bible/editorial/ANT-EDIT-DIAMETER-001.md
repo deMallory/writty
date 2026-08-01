@@ -1,7 +1,9 @@
 ---
 antipattern_id: ANT-EDIT-DIAMETER-001
 node_type: AntiPattern
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["anti-pattern", "editorial", "visualization"]
 severity: critical
 scope: component
 trigger: "When proportional shapes (circles, bubbles, squares) in a data visualization are scaled by diameter or radius rather than by area."

@@ -1,7 +1,8 @@
 ---
 antipattern_id: ANT-ANIM-LAYOUT-001
 node_type: AntiPattern
-domain: animation
+domain: frameworks
+category: CAT-CODE-FW-001
 severity: high
 scope: component
 trigger: "When a GSAP tween animates width, height, top, left, margin, or padding on a DOM element."

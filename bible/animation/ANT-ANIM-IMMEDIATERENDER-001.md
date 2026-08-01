@@ -1,7 +1,8 @@
 ---
 antipattern_id: ANT-ANIM-IMMEDIATERENDER-001
 node_type: AntiPattern
-domain: animation
+domain: frameworks
+category: CAT-CODE-FW-001
 severity: high
 scope: component
 trigger: "When a second from() or fromTo() tween on the same property of the same element renders its start state before the first tween runs."

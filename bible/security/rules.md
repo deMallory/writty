@@ -2,6 +2,7 @@
 ## Rule SEC-AUTH-BRUTE-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -37,6 +38,8 @@ Code review. Look for auth endpoints without rate-limit decorators or middleware
 ### Rationale
 Credential stuffing is automated and cheap. Without a per-account limit, an attacker tries a billion known-password pairs in hours. Per-IP plus per-account limits are the structural defense.
 
+Related rules: SEC-AUTH-ENUM-001, SEC-RATE-LOGIN-001.
+
 <!-- RULE END: SEC-AUTH-BRUTE-001 -->
 ---
 
@@ -44,6 +47,7 @@ Credential stuffing is automated and cheap. Without a per-account limit, an atta
 ## Rule SEC-AUTH-ENUM-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -74,6 +78,8 @@ Code review. Look for branched error messages or distinct status codes on auth f
 ### Rationale
 Account enumeration powers targeted phishing, credential stuffing prioritization, and abuse reporting workflows. Uniform responses remove the oracle.
 
+Related rules: SEC-AUTH-BRUTE-001, SEC-AUTH-TIMING-001.
+
 <!-- RULE END: SEC-AUTH-ENUM-001 -->
 ---
 
@@ -81,10 +87,13 @@ Account enumeration powers targeted phishing, credential stuffing prioritization
 ## Rule SEC-AUTH-HASH-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_auth_authz
+**Applicability_Scope**: write
+**Trigger_Keywords**: password, bcrypt, argon2, scrypt, password hash
 
 ### Trigger
 When persisting user passwords, password-equivalent secrets, or any credential that must withstand offline cracking.
@@ -112,6 +121,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_auth_authz: regex
 ### Rationale
 Fast hashes are designed for throughput; password hashes must be slow on purpose. GPU rigs crack billions of SHA-256 per second; bcrypt at cost 12 caps adversary throughput by roughly six orders of magnitude. The choice of algorithm is structural, not optional.
 
+Related rules: SEC-AUTH-HASH-002.
+
 <!-- RULE END: SEC-AUTH-HASH-001 -->
 ---
 
@@ -119,6 +130,7 @@ Fast hashes are designed for throughput; password hashes must be slow on purpose
 ## Rule SEC-AUTH-HASH-002
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -147,6 +159,8 @@ Code review. Static checks for module-level salt constants or salt = '<literal>'
 ### Rationale
 Per-user salts defeat rainbow tables and force the attacker to mount a separate attack per credential. Library-generated salts come from a CSPRNG; hand-rolled salts are routinely weak.
 
+Related rules: SEC-AUTH-HASH-001, SEC-AUTH-TOKEN-001, SEC-CRYPTO-RAND-001.
+
 <!-- RULE END: SEC-AUTH-HASH-002 -->
 ---
 
@@ -154,6 +168,7 @@ Per-user salts defeat rainbow tables and force the attacker to mount a separate 
 ## Rule SEC-AUTH-LOGOUT-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -189,6 +204,8 @@ Code review.
 ### Rationale
 A cookie-only logout leaves the session valid on any other device or in any captured copy of the cookie. Server-side invalidation makes the credential genuinely unusable.
 
+Related rules: SEC-AUTH-RESET-001, SEC-AUTH-TOKEN-002.
+
 <!-- RULE END: SEC-AUTH-LOGOUT-001 -->
 ---
 
@@ -196,6 +213,7 @@ A cookie-only logout leaves the session valid on any other device or in any capt
 ## Rule SEC-AUTH-MFA-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -228,6 +246,8 @@ Schema review (encrypted column type), code review (valid_window argument).
 ### Rationale
 A wide TOTP window expands the brute-force keyspace; plaintext secrets give a database leak full account takeover. Both undermine the second factor.
 
+Related rules: SEC-AUTHZ-PRIV-001, SEC-DATA-ENCRYPT-001.
+
 <!-- RULE END: SEC-AUTH-MFA-001 -->
 ---
 
@@ -235,6 +255,7 @@ A wide TOTP window expands the brute-force keyspace; plaintext secrets give a da
 ## Rule SEC-AUTH-RESET-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -269,6 +290,9 @@ Schema review (expiry column, consumed flag), code review (consumption logic).
 ### Rationale
 A reset token without expiry is a permanent backdoor that survives token exposure (email leak, browser history). A non-single-use token can be replayed after the user thinks they have rotated credentials.
 
+### Edges
+- DEPENDS_ON: SEC-AUTH-TOKEN-001
+
 <!-- RULE END: SEC-AUTH-RESET-001 -->
 ---
 
@@ -276,6 +300,7 @@ A reset token without expiry is a permanent backdoor that survives token exposur
 ## Rule SEC-AUTH-TIMING-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -305,6 +330,8 @@ Code review. Grep for ` == ` or ` === ` adjacent to identifiers containing 'toke
 ### Rationale
 Timing attacks let a remote attacker peel a secret one byte at a time by observing micro-latency. Constant-time comparison closes the side channel structurally.
 
+Related rules: SEC-AUTH-ENUM-001, SEC-AUTH-TOKEN-001.
+
 <!-- RULE END: SEC-AUTH-TIMING-001 -->
 ---
 
@@ -312,10 +339,13 @@ Timing attacks let a remote attacker peel a secret one byte at a time by observi
 ## Rule SEC-AUTH-TOKEN-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_auth_authz
+**Applicability_Scope**: write
+**Trigger_Keywords**: session token, reset token, verification token, API key, OAuth state, CSRF token
 
 ### Trigger
 When generating session tokens, password-reset tokens, email-verification tokens, API keys, OAuth state values, CSRF tokens, or any other security-sensitive random value.
@@ -348,6 +378,7 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_auth_authz: regex
 ## Rule SEC-AUTH-TOKEN-002
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -378,6 +409,8 @@ Framework config review (Django SESSION_COOKIE_SECURE/HTTPONLY/SAMESITE, Flask S
 ### Rationale
 Secure stops MITM credential theft on shared networks. HttpOnly stops XSS-driven cookie exfiltration. SameSite stops cross-site CSRF and some token-leak vectors. All three are zero-cost browser-level defenses.
 
+Related rules: SEC-AUTH-LOGOUT-001, SEC-AUTH-TOKEN-001, SEC-INJ-CSRF-001.
+
 <!-- RULE END: SEC-AUTH-TOKEN-002 -->
 ---
 
@@ -385,10 +418,13 @@ Secure stops MITM credential theft on shared networks. HttpOnly stops XSS-driven
 ## Rule SEC-AUTHZ-DEFAULT-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_auth_authz
+**Applicability_Scope**: write
+**Trigger_Keywords**: new endpoint, permission policy, default deny, authorization policy
 
 ### Trigger
 When adding a new endpoint, GraphQL field, server action, or admin tool to the application.
@@ -419,6 +455,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_auth_authz: prese
 ### Rationale
 Deny-by-default is the only configuration that fails safe when a developer forgets to think about authorization. Inverting the default turns absence-of-thought into a security finding instead of a silent leak.
 
+Related rules: SEC-AUTHZ-ENFORCE-001, SEC-AUTHZ-FUNC-001.
+
 <!-- RULE END: SEC-AUTHZ-DEFAULT-001 -->
 ---
 
@@ -426,10 +464,13 @@ Deny-by-default is the only configuration that fails safe when a developer forge
 ## Rule SEC-AUTHZ-ENFORCE-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_auth_authz
+**Applicability_Scope**: write
+**Trigger_Keywords**: authorization check, auth decorator, auth middleware, RPC handler, server action
 
 ### Trigger
 When defining any HTTP route, RPC handler, GraphQL resolver, or server action.
@@ -460,6 +501,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_auth_authz: prese
 ### Rationale
 Authorization missed by default is the most common access-control bug. The defense is structural: every endpoint declares its policy explicitly, and CI flags handlers that do not.
 
+Related rules: SEC-AUTHZ-DEFAULT-001, SEC-AUTHZ-IDOR-001, SEC-AUTHZ-RBAC-001.
+
 <!-- RULE END: SEC-AUTHZ-ENFORCE-001 -->
 ---
 
@@ -467,6 +510,7 @@ Authorization missed by default is the most common access-control bug. The defen
 ## Rule SEC-AUTHZ-FUNC-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -504,6 +548,8 @@ Code review of route registration, middleware coverage.
 ### Rationale
 Hidden-not-disabled controls are routinely discovered by inspecting JS bundles or by curling the API directly. Path-and-middleware separation is mechanically enforceable; UI hiding is not enforcement at all.
 
+Related rules: SEC-AUTHZ-ENFORCE-001, SEC-AUTHZ-MASS-001, SEC-AUTHZ-RBAC-001.
+
 <!-- RULE END: SEC-AUTHZ-FUNC-001 -->
 ---
 
@@ -511,10 +557,13 @@ Hidden-not-disabled controls are routinely discovered by inspecting JS bundles o
 ## Rule SEC-AUTHZ-IDOR-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_auth_authz
+**Applicability_Scope**: write
+**Trigger_Keywords**: current_user, params[:id], find(params, object ownership, IDOR
 
 ### Trigger
 When loading or mutating any record where the record ID is supplied by the request (URL path param, query string, body field).
@@ -547,6 +596,8 @@ Code review. Look for `.get(pk=...)`, `Model.find(...)`, `.objects.get(id=...)` 
 ### Rationale
 Insecure direct object reference is one of the OWASP Top 10 staples because record-by-ID is the default ORM pattern and the permission check is easy to omit. Every loader of user-influenced IDs must also gate access.
 
+Related rules: SEC-AUTHZ-ENFORCE-001, SEC-AUTHZ-RBAC-001, SEC-AUTHZ-TENANT-001.
+
 <!-- RULE END: SEC-AUTHZ-IDOR-001 -->
 ---
 
@@ -554,10 +605,13 @@ Insecure direct object reference is one of the OWASP Top 10 staples because reco
 ## Rule SEC-AUTHZ-MASS-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_auth_authz
+**Applicability_Scope**: write
+**Trigger_Keywords**: mass assignment, strong parameters, permit(, request body, ModelForm
 
 ### Trigger
 When constructing or updating a model instance from a request body (REST POST/PATCH, GraphQL mutation, form submission).
@@ -586,7 +640,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     name: str
 
-user = User(**UserCreate(**request.json).dict())
+user = User(**UserCreate(**request.json).model_dump())
 user.save()
 ```
 ```ruby
@@ -599,6 +653,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_auth_authz: regex
 ### Rationale
 Mass assignment lets the caller set fields the developer never meant to be writable: role, is_admin, balance, password_hash. The structural defense is an explicit allowlist at the request-binding layer, not field-by-field deny logic.
 
+Related rules: SEC-AUTHZ-PRIV-001, SEC-DATA-PII-002, SEC-VAL-TYPE-001.
+
 <!-- RULE END: SEC-AUTHZ-MASS-001 -->
 ---
 
@@ -606,6 +662,7 @@ Mass assignment lets the caller set fields the developer never meant to be writa
 ## Rule SEC-AUTHZ-PRIV-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -641,6 +698,8 @@ Code review. Look for role/permission mutations without reauth gating.
 ### Rationale
 A stolen session cookie is a credential. Re-auth on privilege-changing actions limits the damage: the attacker may read but cannot escalate without the original password.
 
+Related rules: SEC-AUTH-MFA-001, SEC-AUTHZ-MASS-001.
+
 <!-- RULE END: SEC-AUTHZ-PRIV-001 -->
 ---
 
@@ -648,6 +707,7 @@ A stolen session cookie is a credential. Re-auth on privilege-changing actions l
 ## Rule SEC-AUTHZ-RBAC-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -684,6 +744,8 @@ Code review. Look for privileged operations whose only guard is a route decorato
 ### Rationale
 Route-only authorization breaks the moment another caller (background job, internal RPC, another endpoint) reuses the underlying function. Defense-in-depth places the check on the operation itself.
 
+Related rules: SEC-AUTHZ-ENFORCE-001, SEC-AUTHZ-FUNC-001, SEC-AUTHZ-TENANT-001.
+
 <!-- RULE END: SEC-AUTHZ-RBAC-001 -->
 ---
 
@@ -691,6 +753,7 @@ Route-only authorization breaks the moment another caller (background job, inter
 ## Rule SEC-AUTHZ-SCOPE-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -717,6 +780,8 @@ Token issuance code review, scope-enforcement middleware review.
 ### Rationale
 Wildcard scopes guarantee that any token leak is a full account takeover. Minimum scopes contain the blast radius of a compromise.
 
+Related rules: SEC-DATA-EXPORT-001.
+
 <!-- RULE END: SEC-AUTHZ-SCOPE-001 -->
 ---
 
@@ -724,6 +789,7 @@ Wildcard scopes guarantee that any token leak is a full account takeover. Minimu
 ## Rule SEC-AUTHZ-TENANT-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -770,6 +836,7 @@ Cross-tenant data leaks are the highest-impact authorization bug in SaaS systems
 ## Rule SEC-CRYPTO-ALGO-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -801,6 +868,8 @@ Code review. Static analysis flags AES.MODE_ECB, AES.MODE_CBC without an HMAC, D
 ### Rationale
 ECB mode preserves plaintext patterns and is famously broken (the 'ECB penguin'). Unauthenticated modes allow ciphertext modification. AEAD modes are the structural defense; they bundle confidentiality and integrity.
 
+Related rules: SEC-CRYPTO-ALGO-002, SEC-CRYPTO-IV-001, SEC-DATA-ENCRYPT-001.
+
 <!-- RULE END: SEC-CRYPTO-ALGO-001 -->
 ---
 
@@ -808,6 +877,7 @@ ECB mode preserves plaintext patterns and is famously broken (the 'ECB penguin')
 ## Rule SEC-CRYPTO-ALGO-002
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -836,6 +906,8 @@ Code review of key-generation call sites. Audit of stored key material for legac
 ### Rationale
 1024-bit RSA is within practical attack reach of well-funded adversaries. Modern minimums ensure keys remain secure across the lifetime of the data they protect.
 
+Related rules: SEC-CRYPTO-ALGO-001, SEC-CRYPTO-TLS-001.
+
 <!-- RULE END: SEC-CRYPTO-ALGO-002 -->
 ---
 
@@ -843,6 +915,7 @@ Code review of key-generation call sites. Audit of stored key material for legac
 ## Rule SEC-CRYPTO-CERT-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -869,6 +942,8 @@ Static analysis. Linter rules: ruff S501 (Python), eslint-plugin-security (Node)
 ### Rationale
 Disabling certificate validation removes the entire point of HTTPS: there is no longer any guarantee about who is on the other end. MITM attacks become trivial on any network the attacker can influence.
 
+Related rules: SEC-CRYPTO-TLS-001, SEC-INJ-SSRF-001.
+
 <!-- RULE END: SEC-CRYPTO-CERT-001 -->
 ---
 
@@ -876,6 +951,7 @@ Disabling certificate validation removes the entire point of HTTPS: there is no 
 ## Rule SEC-CRYPTO-IV-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -906,6 +982,8 @@ Code review. Look for module-level IV/nonce constants or fixed-byte assignments.
 ### Rationale
 Nonce reuse in GCM is one of the most catastrophic crypto failures: an attacker who sees two GCM messages with the same key+nonce can recover plaintexts and forge new authenticated messages. Per-message randomness is non-negotiable.
 
+Related rules: SEC-CRYPTO-ALGO-001, SEC-CRYPTO-RAND-001.
+
 <!-- RULE END: SEC-CRYPTO-IV-001 -->
 ---
 
@@ -913,10 +991,13 @@ Nonce reuse in GCM is one of the most catastrophic crypto failures: an attacker 
 ## Rule SEC-CRYPTO-KEY-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_crypto_headers
+**Applicability_Scope**: write
+**Trigger_Keywords**: hardcoded secret, API key, private key, client secret, signing secret, bearer token
 
 ### Trigger
 When any string literal in source code matches the shape of a credential: API keys, passwords, private keys, OAuth client secrets, bearer tokens, database passwords, signing secrets.
@@ -949,6 +1030,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_crypto_headers: r
 ### Rationale
 Hardcoded secrets end up in git history, CI logs, error messages, container images, and any system that processes the codebase. Once committed, a secret is effectively public and must be rotated. The structural defense is to never commit them.
 
+Related rules: SEC-CRYPTO-KEY-002.
+
 <!-- RULE END: SEC-CRYPTO-KEY-001 -->
 ---
 
@@ -956,6 +1039,7 @@ Hardcoded secrets end up in git history, CI logs, error messages, container imag
 ## Rule SEC-CRYPTO-KEY-002
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -987,6 +1071,8 @@ CI check that no config file matching common secret-file names is tracked in git
 ### Rationale
 Even a 'private' git repo is a much wider blast surface than a secrets manager. Pulling secrets at runtime keeps the credential out of the build artifact and the version history.
 
+Related rules: SEC-CRYPTO-KEY-001, SEC-DATA-ENCRYPT-001.
+
 <!-- RULE END: SEC-CRYPTO-KEY-002 -->
 ---
 
@@ -994,10 +1080,13 @@ Even a 'private' git repo is a much wider blast surface than a secrets manager. 
 ## Rule SEC-CRYPTO-RAND-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_crypto_headers
+**Applicability_Scope**: write
+**Trigger_Keywords**: secrets, urandom, randomBytes, SecureRandom, random_bytes, token_hex, Math.random
 
 ### Trigger
 When generating any value used for security: encryption keys, IVs, nonces, salts, signing keys, password-reset tokens, MFA codes, session IDs.
@@ -1032,6 +1121,7 @@ Predictable IVs and salts collapse the security of AEAD encryption (nonce reuse 
 ## Rule SEC-CRYPTO-TLS-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1060,6 +1150,8 @@ Server config review (nginx ssl_protocols, Apache SSLProtocol, Go tls.Config Min
 ### Rationale
 TLS 1.0 and 1.1 carry known weaknesses (BEAST, POODLE, weak MACs). Modern servers and clients all support 1.2+. Raising the floor is configuration only -- no application impact.
 
+Related rules: SEC-CRYPTO-ALGO-002, SEC-CRYPTO-CERT-001, SEC-HDR-HSTS-001.
+
 <!-- RULE END: SEC-CRYPTO-TLS-001 -->
 ---
 
@@ -1067,6 +1159,7 @@ TLS 1.0 and 1.1 carry known weaknesses (BEAST, POODLE, weak MACs). Modern server
 ## Rule SEC-DATA-ENCRYPT-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1097,6 +1190,8 @@ Schema review. Database-level encryption (PostgreSQL pgcrypto, MySQL transparent
 ### Rationale
 Database leaks are the highest-impact security event a service can suffer: a single backup snapshot reveals every user's data. Field-level encryption raises the bar so that a leak yields ciphertext, not records.
 
+Related rules: SEC-CRYPTO-ALGO-001, SEC-CRYPTO-KEY-002.
+
 <!-- RULE END: SEC-DATA-ENCRYPT-001 -->
 ---
 
@@ -1104,6 +1199,7 @@ Database leaks are the highest-impact security event a service can suffer: a sin
 ## Rule SEC-DATA-EXPORT-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1140,6 +1236,8 @@ Code review.
 ### Rationale
 Bulk-export endpoints are the highest-leverage exfiltration paths in a compromised account. Explicit permissions plus audit logging plus rate limits provide defense-in-depth.
 
+Related rules: SEC-AUTHZ-SCOPE-001, SEC-DATA-PII-002, SEC-RATE-QUERY-001.
+
 <!-- RULE END: SEC-DATA-EXPORT-001 -->
 ---
 
@@ -1147,6 +1245,7 @@ Bulk-export endpoints are the highest-leverage exfiltration paths in a compromis
 ## Rule SEC-DATA-MASK-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1186,10 +1285,13 @@ Stack traces in HTTP responses leak file paths, library versions, and code struc
 ## Rule SEC-DATA-PII-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_data_protection
+**Applicability_Scope**: write
+**Trigger_Keywords**: PII, personally identifiable, redact, plaintext log
 
 ### Trigger
 When logging any value that may contain personally identifiable information: emails, phone numbers, addresses, SSNs, government IDs, credit-card numbers, dates of birth, full names paired with other identifiers.
@@ -1216,6 +1318,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_data_protection: 
 ### Rationale
 Logs are the most-replicated artifact a production system produces: they flow through stdout, CloudWatch, Splunk, S3, backups, devops laptops, and incident-response snapshots. PII in logs is functionally a permanent leak.
 
+Related rules: SEC-DATA-PII-002, SEC-INJ-LOG-001.
+
 <!-- RULE END: SEC-DATA-PII-001 -->
 ---
 
@@ -1223,6 +1327,7 @@ Logs are the most-replicated artifact a production system produces: they flow th
 ## Rule SEC-DATA-PII-002
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1251,7 +1356,7 @@ class UserPublic(BaseModel):
 @app.get('/users/{user_id}')
 def get_user(user_id):
     user = User.query.get(user_id)
-    return UserPublic.from_orm(user)
+    return UserPublic.model_validate(user, from_attributes=True)
 ```
 
 ### Enforcement
@@ -1260,6 +1365,8 @@ Code review. Look for `to_dict()`, `model_dump()`, `__dict__` returned directly 
 ### Rationale
 Over-fetching is one of the most common privacy bugs and a frequent source of customer-data leaks: developers add a field for one consumer (admin UI) and forget the same response shape ships to every other consumer (public profile, mobile app, third-party integration). Explicit serializers contain the blast radius of new fields and prevent PII exposure on REST and GraphQL endpoints.
 
+Related rules: SEC-AUTHZ-MASS-001, SEC-DATA-PII-001, SEC-VAL-TYPE-001, SEC-UNI-003.
+
 <!-- RULE END: SEC-DATA-PII-002 -->
 ---
 
@@ -1267,6 +1374,7 @@ Over-fetching is one of the most common privacy bugs and a frequent source of cu
 ## Rule SEC-DATA-RETAIN-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1290,7 +1398,7 @@ Data retention must follow a documented policy with explicit lifetimes. Indefini
 ```
 
 ### Enforcement
-Schema review documenting retention per table. Audit job logs deletion counts.
+Schema review documenting retention per table. Audit job logs deletion counts. Related: SEC-DATA-ENCRYPT-001.
 
 ### Rationale
 Long-retained data is a long-running liability: a leak today exposes data from years past. A retention policy bounds the exposure window structurally.
@@ -1302,6 +1410,7 @@ Long-retained data is a long-running liability: a leak today exposes data from y
 ## Rule SEC-DEP-AUDIT-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1329,6 +1438,8 @@ CI gate (npm audit, pip-audit, cargo audit). Dependabot/Renovate auto-PRs for vu
 ### Rationale
 Most exploited vulnerabilities in modern services are dependency CVEs (Log4Shell, Spring4Shell, prototype-pollution chains). The audit step is mechanical and prevents the regression.
 
+Related rules: SEC-DEP-LOCK-001, SEC-DEP-PIN-001, SEC-DEP-REVIEW-001.
+
 <!-- RULE END: SEC-DEP-AUDIT-001 -->
 ---
 
@@ -1336,6 +1447,7 @@ Most exploited vulnerabilities in modern services are dependency CVEs (Log4Shell
 ## Rule SEC-DEP-LOCK-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1364,6 +1476,8 @@ CI/build config review.
 ### Rationale
 Lockfiles make installs deterministic: identical inputs produce identical outputs. A typosquat or compromised version published mid-window cannot enter the build without an explicit lockfile update.
 
+Related rules: SEC-DEP-AUDIT-001, SEC-DEP-PIN-001.
+
 <!-- RULE END: SEC-DEP-LOCK-001 -->
 ---
 
@@ -1371,6 +1485,7 @@ Lockfiles make installs deterministic: identical inputs produce identical output
 ## Rule SEC-DEP-PIN-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1407,6 +1522,8 @@ Manifest review.
 ### Rationale
 Open-ended versions silently take new releases on every install, which has historically included malicious or breaking changes. Narrow ranges plus a lockfile bound the surprise.
 
+Related rules: SEC-DEP-AUDIT-001, SEC-DEP-LOCK-001.
+
 <!-- RULE END: SEC-DEP-PIN-001 -->
 ---
 
@@ -1414,6 +1531,7 @@ Open-ended versions silently take new releases on every install, which has histo
 ## Rule SEC-DEP-REVIEW-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Low
 **Scope**: Component
 **Mandatory**: false
@@ -1443,6 +1561,8 @@ PR template + reviewer checklist. CODEOWNERS for manifest files routes adds to s
 ### Rationale
 Adding a dependency is a long-term commitment to a third party's security posture. The review forces a deliberate choice and creates an artifact for incident response when the dep is later compromised.
 
+Related rules: SEC-DEP-AUDIT-001, SEC-DEP-PIN-001.
+
 <!-- RULE END: SEC-DEP-REVIEW-001 -->
 ---
 
@@ -1450,6 +1570,7 @@ Adding a dependency is a long-term commitment to a third party's security postur
 ## Rule SEC-HDR-CORS-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -1483,6 +1604,8 @@ Middleware config review.
 ### Rationale
 Wildcard origins with credentials let any malicious site read authenticated API responses. The explicit-origin requirement is the only structural defense.
 
+Related rules: SEC-AUTH-TOKEN-002, SEC-INJ-CSRF-001.
+
 <!-- RULE END: SEC-HDR-CORS-001 -->
 ---
 
@@ -1490,6 +1613,7 @@ Wildcard origins with credentials let any malicious site read authenticated API 
 ## Rule SEC-HDR-CSP-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1523,6 +1647,8 @@ Middleware review. Browsers expose CSP violations via report-uri; track those in
 ### Rationale
 CSP is defense-in-depth against XSS that survives a bypass of input escaping. A well-formed CSP downgrades an XSS that did slip through from full account takeover to a script that cannot load resources.
 
+Related rules: SEC-HDR-FRAME-001, SEC-INJ-XSS-001, SEC-INJ-XSS-003.
+
 <!-- RULE END: SEC-HDR-CSP-001 -->
 ---
 
@@ -1530,6 +1656,7 @@ CSP is defense-in-depth against XSS that survives a bypass of input escaping. A 
 ## Rule SEC-HDR-FRAME-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1558,6 +1685,8 @@ Middleware config review.
 ### Rationale
 Clickjacking overlays a transparent frame of the target site over a decoy page and tricks the user into clicking the framed UI. Frame-Options blocks the structural prerequisite.
 
+Related rules: SEC-HDR-CSP-001.
+
 <!-- RULE END: SEC-HDR-FRAME-001 -->
 ---
 
@@ -1565,6 +1694,7 @@ Clickjacking overlays a transparent frame of the target site over a decoy page a
 ## Rule SEC-HDR-HSTS-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1593,6 +1723,8 @@ Middleware config review. Verify with securityheaders.com.
 ### Rationale
 HSTS instructs browsers to never speak HTTP to the host again, which kills downgrade attacks. The header is zero-cost once HTTPS coverage is complete.
 
+Related rules: SEC-AUTH-TOKEN-002, SEC-CRYPTO-TLS-001.
+
 <!-- RULE END: SEC-HDR-HSTS-001 -->
 ---
 
@@ -1600,6 +1732,7 @@ HSTS instructs browsers to never speak HTTP to the host again, which kills downg
 ## Rule SEC-HDR-REFERRER-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Low
 **Scope**: Component
 **Mandatory**: false
@@ -1626,6 +1759,8 @@ Middleware config review.
 ### Rationale
 Referrer headers carry full URLs by default, which routinely leak password-reset tokens, search queries, and internal page paths to advertising and analytics endpoints.
 
+Related rules: SEC-AUTH-RESET-001.
+
 <!-- RULE END: SEC-HDR-REFERRER-001 -->
 ---
 
@@ -1633,6 +1768,7 @@ Referrer headers carry full URLs by default, which routinely leak password-reset
 ## Rule SEC-HDR-TYPE-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1659,6 +1795,8 @@ Middleware config review.
 ### Rationale
 MIME sniffing turns user-uploaded files into XSS vectors by reinterpreting a misdeclared file as something else. The nosniff header structurally disables the sniff.
 
+Related rules: SEC-VAL-FILE-001.
+
 <!-- RULE END: SEC-HDR-TYPE-001 -->
 ---
 
@@ -1666,10 +1804,13 @@ MIME sniffing turns user-uploaded files into XSS vectors by reinterpreting a mis
 ## Rule SEC-INJ-CMD-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_injection
+**Applicability_Scope**: write
+**Trigger_Keywords**: subprocess, shell=True, shell_exec, child_process, os.system
 
 ### Trigger
 When invoking shell commands from application code, especially when any argument could derive from user input.
@@ -1699,6 +1840,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_injection: regex 
 ### Rationale
 Shell command injection lets an attacker execute arbitrary OS commands. The argument-list invocation removes the shell as an interpreter, which removes the entire injection class.
 
+Related rules: SEC-INJ-CMD-002, SEC-INJ-SQL-001.
+
 <!-- RULE END: SEC-INJ-CMD-001 -->
 ---
 
@@ -1706,6 +1849,7 @@ Shell command injection lets an attacker execute arbitrary OS commands. The argu
 ## Rule SEC-INJ-CMD-002
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1740,6 +1884,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_injection: regex 
 ### Rationale
 Dynamic code evaluation is a worse form of command injection: it gives the attacker the full execution environment of your process, including database connections and secrets. The lookup-table pattern covers nearly every legitimate dynamic-dispatch case.
 
+Related rules: SEC-INJ-CMD-001, SEC-INJ-DESER-001, SEC-INJ-SSTI-001.
+
 <!-- RULE END: SEC-INJ-CMD-002 -->
 ---
 
@@ -1747,10 +1893,13 @@ Dynamic code evaluation is a worse form of command injection: it gives the attac
 ## Rule SEC-INJ-CSRF-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_injection
+**Applicability_Scope**: write
+**Trigger_Keywords**: CSRF, anti-CSRF, SameSite, csrf token
 
 ### Trigger
 When implementing any HTTP endpoint that mutates server state (POST, PUT, PATCH, DELETE) and is reachable from a browser session.
@@ -1781,6 +1930,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_injection: framew
 ### Rationale
 Cross-site request forgery is the inverse of XSS: a malicious site causing the victim's authenticated browser to submit a request on their behalf. The token defense is universally available in modern frameworks; missing it is a clear violation.
 
+Related rules: SEC-AUTH-TOKEN-001, SEC-AUTH-TOKEN-002, SEC-INJ-XSS-001.
+
 <!-- RULE END: SEC-INJ-CSRF-001 -->
 ---
 
@@ -1788,10 +1939,13 @@ Cross-site request forgery is the inverse of XSS: a malicious site causing the v
 ## Rule SEC-INJ-DESER-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_injection
+**Applicability_Scope**: write
+**Trigger_Keywords**: pickle, unserialize, yaml.load, ObjectInputStream, Marshal.load, deserialize
 
 ### Trigger
 When deserializing data received from any external or untrusted source (cookies, request bodies, files, queues, databases populated by other tenants).
@@ -1826,6 +1980,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_injection: regex 
 ### Rationale
 Insecure deserialization is one of the OWASP top categories because the impact is full RCE with very little attacker effort. The safe formats (JSON, typed schemas) cover every legitimate use case.
 
+Related rules: SEC-INJ-CMD-002, SEC-INJ-SSTI-001, SEC-VAL-TYPE-001.
+
 <!-- RULE END: SEC-INJ-DESER-001 -->
 ---
 
@@ -1833,6 +1989,7 @@ Insecure deserialization is one of the OWASP top categories because the impact i
 ## Rule SEC-INJ-HEADER-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1871,6 +2028,8 @@ Code review. Custom check: response.headers[X] = Y where Y derives from request 
 ### Rationale
 Header injection (CRLF injection) lets attackers inject Set-Cookie or split the response into two responses. Modern frameworks generally reject it, but custom header writes bypass the framework's check.
 
+Related rules: SEC-INJ-LOG-001, SEC-INJ-REDIR-001.
+
 <!-- RULE END: SEC-INJ-HEADER-001 -->
 ---
 
@@ -1878,6 +2037,7 @@ Header injection (CRLF injection) lets attackers inject Set-Cookie or split the 
 ## Rule SEC-INJ-LDAP-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -1908,6 +2068,8 @@ Code review. Custom ruff plugin or grep for LDAP search calls with non-constant 
 ### Rationale
 LDAP injection is less common than SQL injection but the same shape: user input becomes filter syntax. `(uid=*)` is the LDAP equivalent of `1=1`. Escaping is mandatory when constants aren't an option.
 
+Related rules: SEC-INJ-CMD-001, SEC-INJ-SQL-001.
+
 <!-- RULE END: SEC-INJ-LDAP-001 -->
 ---
 
@@ -1915,6 +2077,7 @@ LDAP injection is less common than SQL injection but the same shape: user input 
 ## Rule SEC-INJ-LOG-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -1943,6 +2106,8 @@ Code review. Custom check on print()/logger calls with f-strings containing user
 ### Rationale
 Forged log entries undermine incident response: an attacker can simulate evidence of someone else's actions. Structured logging removes the ambiguity by treating values as values, not as line content.
 
+Related rules: SEC-DATA-PII-001, SEC-INJ-HEADER-001.
+
 <!-- RULE END: SEC-INJ-LOG-001 -->
 ---
 
@@ -1950,6 +2115,7 @@ Forged log entries undermine incident response: an attacker can simulate evidenc
 ## Rule SEC-INJ-PATH-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -1986,6 +2152,8 @@ Code review. Static analysis can flag `os.path.join` followed by `open(` with no
 ### Rationale
 Path traversal is the simplest form of arbitrary file disclosure, and it consistently appears in real incidents. The realpath + prefix-check pattern is the only structurally safe form; everything else is filtering that misses cases (URL-encoded `..`, double encoding, Windows path separators).
 
+Related rules: SEC-VAL-ENCODING-001, SEC-VAL-FILE-001.
+
 <!-- RULE END: SEC-INJ-PATH-001 -->
 ---
 
@@ -1993,6 +2161,7 @@ Path traversal is the simplest form of arbitrary file disclosure, and it consist
 ## Rule SEC-INJ-REDIR-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2031,6 +2200,8 @@ Code review. Framework-specific redirect helpers (Django's `url_has_allowed_host
 ### Rationale
 Open redirect is a phishing accelerator: attackers send links that look like they go to your domain and bounce the user to a credential-harvesting site. The allowlist pattern prevents that.
 
+Related rules: SEC-INJ-HEADER-001, SEC-INJ-SSRF-001, SEC-VAL-ALLOW-001.
+
 <!-- RULE END: SEC-INJ-REDIR-001 -->
 ---
 
@@ -2038,10 +2209,13 @@ Open redirect is a phishing accelerator: attackers send links that look like the
 ## Rule SEC-INJ-SQL-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_injection
+**Applicability_Scope**: write
+**Trigger_Keywords**: sql, cursor, parameterized, sql injection, db.query
 
 ### Trigger
 When writing SQL strings that include any variable, user input, or function return value.
@@ -2071,6 +2245,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_injection: regex 
 ### Rationale
 SQL injection remains the single most common high-severity web vulnerability. Parameterization is the only structurally safe pattern: it removes the user-input-as-code attack surface entirely instead of trying to sanitize it.
 
+Related rules: SEC-INJ-CMD-001, SEC-INJ-SQL-002, SEC-INJ-SQL-003.
+
 <!-- RULE END: SEC-INJ-SQL-001 -->
 ---
 
@@ -2078,6 +2254,7 @@ SQL injection remains the single most common high-severity web vulnerability. Pa
 ## Rule SEC-INJ-SQL-002
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -2110,6 +2287,8 @@ Code review. Static analysis (custom ruff plugin or grep for ORM raw-method name
 ### Rationale
 ORM raw-query methods are an injection vector hidden by a layer that usually protects the developer. The pattern is dangerous precisely because it looks like ORM code.
 
+Related rules: SEC-INJ-SQL-001, SEC-INJ-SQL-003.
+
 <!-- RULE END: SEC-INJ-SQL-002 -->
 ---
 
@@ -2117,6 +2296,7 @@ ORM raw-query methods are an injection vector hidden by a layer that usually pro
 ## Rule SEC-INJ-SQL-003
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2145,6 +2325,8 @@ Code review. Same SQL-concat detector flags the procedure-call form.
 ### Rationale
 Stored procedures do not magically sanitize their inputs. Concatenation into a CALL statement is just SQL injection with a procedure name.
 
+Related rules: SEC-INJ-SQL-001, SEC-INJ-SQL-002.
+
 <!-- RULE END: SEC-INJ-SQL-003 -->
 ---
 
@@ -2152,10 +2334,13 @@ Stored procedures do not magically sanitize their inputs. Concatenation into a C
 ## Rule SEC-INJ-SSRF-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_injection
+**Applicability_Scope**: write
+**Trigger_Keywords**: SSRF, outbound request, webhook, user-supplied URL, requests.get
 
 ### Trigger
 When making outbound HTTP/network requests where the destination URL or host derives from user input (webhooks, URL previews, profile-image fetches, ingest jobs that follow a user-supplied link).
@@ -2191,6 +2376,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_injection: regex 
 ### Rationale
 SSRF is the canonical way attackers reach internal services from a public web app. Cloud metadata services (AWS IMDSv1, GCP, Azure) are the highest-impact target: they hand out credentials with no authentication. An allowlist is the only structurally safe pattern.
 
+Related rules: SEC-INJ-REDIR-001, SEC-VAL-ALLOW-001.
+
 <!-- RULE END: SEC-INJ-SSRF-001 -->
 ---
 
@@ -2198,6 +2385,7 @@ SSRF is the canonical way attackers reach internal services from a public web ap
 ## Rule SEC-INJ-SSTI-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -2229,6 +2417,8 @@ Code review. Static analysis: flag `Template(`/`new Template(`/`compile_template
 ### Rationale
 Server-side template injection often gives full RCE because template engines expose object internals (Python `.__class__.__mro__`, Java reflection). Treating the template body as code, not data, removes the entire class.
 
+Related rules: SEC-INJ-CMD-002, SEC-INJ-DESER-001.
+
 <!-- RULE END: SEC-INJ-SSTI-001 -->
 ---
 
@@ -2236,10 +2426,13 @@ Server-side template injection often gives full RCE because template engines exp
 ## Rule SEC-INJ-XSS-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_injection
+**Applicability_Scope**: write
+**Trigger_Keywords**: XSS, innerHTML, dangerouslySetInnerHTML, v-html, autoescape
 
 ### Trigger
 When user-supplied content is rendered in HTML, including server-rendered templates, JSX, and Vue/Svelte/Blade templates.
@@ -2269,6 +2462,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_injection: regex 
 ### Rationale
 Cross-site scripting is endemic on the public web. Every modern framework provides automatic context-aware escaping; bypassing it removes the structural defense and falls back to manual sanitization, which is almost never done correctly.
 
+Documented exception: when rendering raw HTML is a genuine product requirement (not an ordinary user-supplied string), SEC-INJ-XSS-004 defines the sanctioned sanitize-then-render carve-out. The escape mandate above still binds every other user-supplied value; the carve-out is narrow and conditional on allowlist sanitization at the render seam.
+
 <!-- RULE END: SEC-INJ-XSS-001 -->
 ---
 
@@ -2276,6 +2471,7 @@ Cross-site scripting is endemic on the public web. Every modern framework provid
 ## Rule SEC-INJ-XSS-002
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -2315,6 +2511,7 @@ The unsafe-render APIs exist for legitimate cases (already-sanitized HTML from a
 ## Rule SEC-INJ-XSS-003
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2344,13 +2541,60 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_injection.
 ### Rationale
 Manual DOM manipulation is rarely tested as carefully as the framework-rendered paths. The textContent/createElement form is both safe and clearer about its intent.
 
+Related rules: SEC-HDR-CSP-001, SEC-INJ-XSS-001, SEC-INJ-XSS-002.
+
 <!-- RULE END: SEC-INJ-XSS-003 -->
+---
+
+<!-- RULE START: SEC-INJ-XSS-004 -->
+## Rule SEC-INJ-XSS-004
+
+**Domain**: security
+**Category**: CAT-CODE-SECURITY-001
+**Severity**: High
+**Scope**: Component
+**Mandatory**: false
+**Trigger_Keywords**: XSS, innerHTML, unsafeHTML, dangerouslySetInnerHTML, sanitize, allowlist, raw HTML, rich text, DOMPurify
+
+### Trigger
+When rendering raw HTML is a genuine product requirement (rich-text editor output, CMS or LLM-generated marketing HTML shown in an internal viewer), so the framework auto-escape mandated by SEC-INJ-XSS-001/002/003 would render the markup as visible text and break the feature.
+
+### Statement
+Bypassing the framework's auto-escape (React `dangerouslySetInnerHTML`, Lit `unsafeHTML` / `.innerHTML=`, Vue `v-html`, Blade `{!! !!}`) is permitted ONLY when both hold: (1) rendering real HTML is a deliberate product requirement, not the rendering of an arbitrary user string such as a comment, name, or search term; AND (2) the content is passed through an allowlist sanitizer at the render seam that drops every non-allowlisted element, strips all `on*` event-handler attributes, and neutralizes `javascript:` / scriptable URLs, BEFORE it reaches the unsafe-render API. The escape mandate of SEC-INJ-XSS-001 continues to bind every value that does not meet both conditions. This is a narrow carve-out, not a relaxation.
+
+### Violation
+```ts
+// Lit: raw column value bound straight to innerHTML — no sanitization.
+html`<div .innerHTML=${row.summary}></div>`
+```
+
+### Pass
+```ts
+// Sanitize through an allowlist, THEN render via the unsafe API.
+import { unsafeHTML } from "lit/directives/unsafe-html.js";
+import { sanitizeHtml } from "../utils/sanitize-html.js";
+html`<div>${unsafeHTML(sanitizeHtml(row.summary))}</div>`
+```
+
+### Enforcement
+Code review at the seam: the reviewer must confirm an allowlist sanitizer wraps the value before the unsafe-render call, and that the source is a genuine-HTML field. The sanctioned implementation is DOMPurify with a tight allowlist config, already established in ai-stack at `apps/shopping/src/util/sanitize-html.ts` (HIGH-1 / WEB-9206): `ALLOWED_TAGS` + `ALLOWED_ATTR` + `ALLOWED_URI_REGEXP` (drops `javascript:` / `vbscript:` / `data:`) plus an `afterSanitizeAttributes` hook that hardens anchors (`target=_blank`, `rel="noopener noreferrer nofollow"`). Reuse that pattern; do not hand-roll a scrubber when DOMPurify is available. A `DOMParser`-based allowlist (e.g. `SvgContentDisplayComponent.sanitizeSvg`) is a fallback only where a vetted library genuinely cannot be added. Originating finding: HIGH-21 (`DataFileDisplayComponent` CSV-summary XSS), the direct analog of HIGH-1.
+
+### Rationale
+SEC-INJ-XSS-001 is absolute by design ("never bypass framework escaping"), but a class of legitimate features must render trusted-but-rich HTML; without a documented carve-out, every such case looks like a flat violation and the rule gets either ignored or worked around silently. Naming the two conditions (genuine-HTML requirement AND allowlist sanitization at the seam) keeps the exception auditable and prevents it from being stretched to cover ordinary user strings, which remain governed by SEC-INJ-XSS-001/002/003. SEC-INJ-XSS-002 already names DOMPurify as the vetted sanitizer; this node records the two conditions that license the bypass and points at the in-repo reference implementation (`apps/shopping/src/util/sanitize-html.ts`), so the carve-out is reused rather than re-derived or hand-rolled per site.
+
+### Edges
+- SUPPLEMENTS: SEC-INJ-XSS-001
+- SUPPLEMENTS: SEC-INJ-XSS-002
+- SUPPLEMENTS: SEC-INJ-XSS-003
+
+<!-- RULE END: SEC-INJ-XSS-004 -->
 ---
 
 <!-- RULE START: SEC-RATE-API-001 -->
 ## Rule SEC-RATE-API-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2383,6 +2627,8 @@ Middleware config review. API gateways (Kong, Tyk, AWS API Gateway) provide nati
 ### Rationale
 Without rate limits, a single client can exhaust capacity for everyone else. Per-identity limits provide fairness and a per-tenant denial-of-service floor.
 
+Related rules: SEC-RATE-BATCH-001, SEC-RATE-LOGIN-001, SEC-RATE-QUERY-001.
+
 <!-- RULE END: SEC-RATE-API-001 -->
 ---
 
@@ -2390,6 +2636,7 @@ Without rate limits, a single client can exhaust capacity for everyone else. Per
 ## Rule SEC-RATE-BATCH-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -2415,7 +2662,7 @@ MAX_BATCH = 100
 def bulk_create(users: list[UserCreate]):
     if len(users) > MAX_BATCH:
         abort(400)
-    return [User.create(**u.dict()) for u in users]
+    return [User.create(**u.model_dump()) for u in users]
 ```
 
 ### Enforcement
@@ -2424,6 +2671,8 @@ Code review.
 ### Rationale
 Batch endpoints amplify request cost without amplifying client cost; capping batch size keeps cost ratio bounded.
 
+Related rules: SEC-RATE-API-001, SEC-RATE-QUERY-001.
+
 <!-- RULE END: SEC-RATE-BATCH-001 -->
 ---
 
@@ -2431,6 +2680,7 @@ Batch endpoints amplify request cost without amplifying client cost; capping bat
 ## Rule SEC-RATE-LOGIN-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2465,6 +2715,8 @@ Code review.
 ### Rationale
 Login endpoints are the highest-value attack surface; a per-account limit defeats stuffing of a target user, and a per-IP limit defeats horizontal sweeps.
 
+Related rules: SEC-AUTH-BRUTE-001, SEC-AUTH-ENUM-001, SEC-RATE-API-001.
+
 <!-- RULE END: SEC-RATE-LOGIN-001 -->
 ---
 
@@ -2472,6 +2724,7 @@ Login endpoints are the highest-value attack surface; a per-account limit defeat
 ## Rule SEC-RATE-QUERY-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -2484,9 +2737,10 @@ Database queries triggered by user input must apply pagination with a maximum pa
 
 ### Violation
 ```python
-@app.get('/api/orders')
-def list_orders():
-    return Order.query.all()  # could be 10 million rows
+@app.get('/api/orders/search')
+def search_orders():
+    q = request.args.get('q', '')
+    return Order.query.filter(Order.ref.contains(q)).all()  # unbounded, user-driven
 ```
 
 ### Pass
@@ -2504,6 +2758,8 @@ Code review. GraphQL: depth-limit / cost-analysis plugins.
 ### Rationale
 An unbounded query is a database DoS waiting to happen: one user with a wide filter holds a worker and a connection for minutes. Bounded pagination caps the worst case.
 
+Related rules: PERF-QUERY-004, SEC-RATE-API-001.
+
 <!-- RULE END: SEC-RATE-QUERY-001 -->
 ---
 
@@ -2511,6 +2767,7 @@ An unbounded query is a database DoS waiting to happen: one user with a wide fil
 ## Rule SEC-RATE-UPLOAD-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2546,6 +2803,8 @@ Framework config review (Flask MAX_CONTENT_LENGTH, Django DATA_UPLOAD_MAX_MEMORY
 ### Rationale
 Unbounded upload endpoints are a direct DoS vector: a single 4GB POST can exhaust memory or fill disk. Application-layer caps prevent the request from ever reaching that state.
 
+Related rules: SEC-RATE-API-001, SEC-VAL-FILE-001.
+
 <!-- RULE END: SEC-RATE-UPLOAD-001 -->
 ---
 
@@ -2553,6 +2812,7 @@ Unbounded upload endpoints are a direct DoS vector: a single 4GB POST can exhaus
 ## Rule SEC-VAL-ALLOW-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2582,6 +2842,8 @@ Code review. Look for negative-pattern checks (blocklists) on fields with an enu
 ### Rationale
 Allowlists fail closed: anything not on the list is rejected. Blocklists fail open: anything the author did not anticipate is allowed. The asymmetry favors allowlists structurally.
 
+Related rules: SEC-INJ-REDIR-001, SEC-INJ-SSRF-001, SEC-VAL-FILE-001.
+
 <!-- RULE END: SEC-VAL-ALLOW-001 -->
 ---
 
@@ -2589,6 +2851,7 @@ Allowlists fail closed: anything not on the list is rejected. Blocklists fail op
 ## Rule SEC-VAL-ENCODING-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2620,6 +2883,8 @@ Code review. Look for validation followed by decoding/normalization rather than 
 ### Rationale
 Encoding bypass is one of the oldest WAF-evasion tricks. Canonical-form validation removes the trick by collapsing all encodings to a single representation before the check runs.
 
+Related rules: SEC-INJ-PATH-001, SEC-VAL-ALLOW-001, SEC-VAL-SERVER-001.
+
 <!-- RULE END: SEC-VAL-ENCODING-001 -->
 ---
 
@@ -2627,10 +2892,13 @@ Encoding bypass is one of the oldest WAF-evasion tricks. Canonical-form validati
 ## Rule SEC-VAL-FILE-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_auth_authz
+**Applicability_Scope**: write
+**Trigger_Keywords**: file upload, uploaded file, multipart, magic bytes, libmagic, Content-Disposition
 
 ### Trigger
 When accepting file uploads from users (avatars, attachments, documents, media).
@@ -2667,6 +2935,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_auth_authz: regex
 ### Rationale
 Extension-only and MIME-only checks are trivially spoofed. Content sniffing closes the spoof; out-of-web-root storage closes the direct-execute vector; sanitized filenames close the path-traversal vector. All three are required.
 
+Related rules: SEC-HDR-TYPE-001, SEC-INJ-PATH-001, SEC-RATE-UPLOAD-001.
+
 <!-- RULE END: SEC-VAL-FILE-001 -->
 ---
 
@@ -2674,6 +2944,7 @@ Extension-only and MIME-only checks are trivially spoofed. Content sniffing clos
 ## Rule SEC-VAL-LENGTH-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2693,7 +2964,7 @@ class Comment(BaseModel):
 ### Pass
 ```python
 class Comment(BaseModel):
-    body: constr(min_length=1, max_length=10_000)
+    body: str = Field(min_length=1, max_length=10_000)
 ```
 
 ### Enforcement
@@ -2702,6 +2973,8 @@ Schema review. Look for `str`, `Optional[str]`, `TEXT`/`VARCHAR` columns without
 ### Rationale
 Unbounded input fields are a denial-of-service vector (gigabyte payloads) and a database-bloat vector. Length caps are zero-cost and prevent both.
 
+Related rules: SEC-VAL-RANGE-001, SEC-VAL-TYPE-001.
+
 <!-- RULE END: SEC-VAL-LENGTH-001 -->
 ---
 
@@ -2709,6 +2982,7 @@ Unbounded input fields are a denial-of-service vector (gigabyte payloads) and a 
 ## Rule SEC-VAL-RANGE-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -2729,8 +3003,8 @@ class Order(BaseModel):
 ### Pass
 ```python
 class Order(BaseModel):
-    quantity: conint(ge=1, le=10_000)
-    discount_percent: confloat(ge=0.0, le=100.0)
+    quantity: int = Field(ge=1, le=10_000)
+    discount_percent: float = Field(ge=0.0, le=100.0)
 ```
 
 ### Enforcement
@@ -2746,6 +3020,7 @@ Unbounded numeric inputs are the root of many business-logic bugs: negative-quan
 ## Rule SEC-VAL-REGEX-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -2779,6 +3054,8 @@ Code review. Look for `re.compile(user_input)` or equivalent patterns.
 ### Rationale
 A catastrophic-backtracking regex can hang a worker for minutes on a single short input. Without a non-backtracking engine or a timeout, this is a single-request denial of service.
 
+Related rules: SEC-RATE-QUERY-001.
+
 <!-- RULE END: SEC-VAL-REGEX-001 -->
 ---
 
@@ -2786,10 +3063,13 @@ A catastrophic-backtracking regex can hang a worker for minutes on a single shor
 ## Rule SEC-VAL-SERVER-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_security_auth_authz
+**Applicability_Scope**: write
+**Trigger_Keywords**: server-side validation, validate input, request payload, client-side validation, untrusted input
 
 ### Trigger
 When accepting any data from a client (HTTP request, form, file upload, websocket message, mobile-app payload, third-party webhook).
@@ -2823,6 +3103,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_security_auth_authz: prese
 ### Rationale
 Every byte from the client is hostile until validated. Server-side validation is the only trust boundary that matters; client validation is an accessibility helper, not a security control.
 
+Related rules: SEC-AUTHZ-MASS-001, SEC-VAL-ENCODING-001, SEC-VAL-TYPE-001.
+
 <!-- RULE END: SEC-VAL-SERVER-001 -->
 ---
 
@@ -2830,6 +3112,7 @@ Every byte from the client is hostile until validated. Server-side validation is
 ## Rule SEC-VAL-TYPE-001
 
 **Domain**: security
+**Category**: CAT-CODE-SECURITY-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -2853,12 +3136,12 @@ def create_user():
 ```python
 class UserCreate(BaseModel):
     email: EmailStr
-    name: constr(max_length=120)
+    name: str = Field(max_length=120)
 
 @app.route('/api/users', methods=['POST'])
 def create_user():
     payload = UserCreate(**request.json)
-    User.create(**payload.dict())
+    User.create(**payload.model_dump())
 ```
 
 ### Enforcement
@@ -2866,5 +3149,7 @@ Code review. Look for handler functions that read request.json/request.body with
 
 ### Rationale
 Schemas turn validation from a manually-maintained pile of `if` statements into a single declarative source of truth that also generates docs, types, and OpenAPI. The structural win is enormous.
+
+Related rules: SEC-AUTHZ-MASS-001, SEC-VAL-LENGTH-001, SEC-VAL-SERVER-001.
 
 <!-- RULE END: SEC-VAL-TYPE-001 -->

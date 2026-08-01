@@ -28,10 +28,7 @@ phase_ids:
 preconditions: []
 dispatched_roles: []
 edges:
-  - { target: SKL-PROC-BRAIN-001, type: TEACHES }
-  - { target: SKL-PROC-VISUAL-001, type: DISPATCHES }
-  - { target: SKL-PROC-PLAN-001, type: PRECEDES }
-  - { target: ENF-PROC-BRAIN-001, type: GATES }
+  - { target: ENF-PROC-BRAIN-001, type: TEACHES }
   - { target: PHA-BRAIN-001, type: CONTAINS }
   - { target: PHA-BRAIN-002, type: CONTAINS }
   - { target: PHA-BRAIN-003, type: CONTAINS }
@@ -41,6 +38,10 @@ edges:
   - { target: PHA-BRAIN-007, type: CONTAINS }
   - { target: PHA-BRAIN-008, type: CONTAINS }
   - { target: PHA-BRAIN-009, type: CONTAINS }
+  - { target: SKL-PROC-PLAN-001, type: PRECEDES }
+  - { target: SKL-PROC-VISUAL-001, type: INVOKES }
+category: CAT-PROC-001
+trigger_keywords: ["brainstorming", "understand intent", "clarify constraints", "trade-offs", "approval"]
 ---
 
 # Playbook: Brainstorm-before-code process

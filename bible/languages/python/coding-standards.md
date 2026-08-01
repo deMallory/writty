@@ -1,7 +1,8 @@
 <!-- RULE START: PY-ASYNC-001 -->
 ## Rule PY-ASYNC-001
 
-**Domain**: Python / Async
+**Domain**: languages
+**Category**: CAT-CODE-LANG-PYTHON-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: false
@@ -42,7 +43,8 @@ A single sync call in an async chain blocks the entire event loop thread. In a F
 <!-- RULE START: PY-IMPORT-001 -->
 ## Rule PY-IMPORT-001
 
-**Domain**: Python / Module Design
+**Domain**: languages
+**Category**: CAT-CODE-LANG-PYTHON-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -81,13 +83,16 @@ Python raises `ImportError` on circular imports at module load time. ruff rule T
 ### Rationale
 Circular imports cause `ImportError` at module load, produce `None` references to partially-loaded modules, and indicate that the module boundary is wrong. Extracting shared types to a common module fixes the dependency direction.
 
+Related rules: CLEAN-COUPLING-002, DRY-TYPE-001.
+
 <!-- RULE END: PY-IMPORT-001 -->
 ---
 
 <!-- RULE START: PY-PROTO-001 -->
 ## Rule PY-PROTO-001
 
-**Domain**: Python / Type System
+**Domain**: languages
+**Category**: CAT-CODE-LANG-PYTHON-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -129,7 +134,8 @@ Protocol enables structural subtyping. The hnswlib-to-Qdrant swap in `embeddings
 <!-- RULE START: PY-PYDANTIC-001 -->
 ## Rule PY-PYDANTIC-001
 
-**Domain**: Python / Data Validation
+**Domain**: languages
+**Category**: CAT-CODE-LANG-PYTHON-001
 **Severity**: High
 **Scope**: Entity
 **Mandatory**: false

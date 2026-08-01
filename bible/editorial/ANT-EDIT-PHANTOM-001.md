@@ -1,7 +1,9 @@
 ---
 antipattern_id: ANT-EDIT-PHANTOM-001
 node_type: AntiPattern
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["anti-pattern", "editorial", "tufte"]
 severity: medium
 scope: layout
 trigger: "When heavy adjacent visual elements (thick rules, dark borders, dense columns) create unintended phantom visual elements in the space between them."

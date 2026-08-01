@@ -1,7 +1,8 @@
 ---
 technique_id: TEC-ANIM-DEFAULTS-001
 node_type: Technique
-domain: animation
+domain: frameworks
+category: CAT-CODE-FW-001
 severity: low
 scope: task
 trigger: "When multiple tweens across a project share the same duration, ease, or other common vars."

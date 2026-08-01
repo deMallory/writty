@@ -22,6 +22,7 @@ linked_skill: PBK-PROC-DEBUG-001
 edges:
   - { target: PBK-PROC-DEBUG-001, type: DEMONSTRATES }
   - { target: TEC-PROC-ROOTCAUSE-001, type: DEMONSTRATES }
+category: CAT-DISC-001
 ---
 
 # Worked example: Totals-collector race condition

@@ -17,9 +17,11 @@ always_on: false
 source_attribution: "writ-native"
 source_commit: null
 edges:
-  - { target: TEC-PROC-WORKTREE-001, type: TEACHES }
-  - { target: ENF-PROC-WORKTREE-001, type: GATES }
   - { target: SKL-PROC-EXEC-001, type: PRECEDES }
+  - { target: TEC-PROC-WORKTREE-001, type: TEACHES }
+category: CAT-PROC-001
+action_triggers: ["worktree"]
+trigger_keywords: ["worktree", "isolation"]
 ---
 
 # Skill: Use a worktree for isolated feature work

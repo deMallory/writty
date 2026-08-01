@@ -2,6 +2,7 @@
 ## Rule PERF-ASYNC-001
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -32,6 +33,8 @@ Code review. Linter rules (asyncio-blocker check, eslint async-no-floating-promi
 ### Rationale
 Sync I/O in an async loop stalls every other concurrent request on that worker. Async preserves the concurrency model.
 
+Related rules: ARCH-ASYNC-002, PERF-IO-001, PY-ASYNC-001.
+
 <!-- RULE END: PERF-ASYNC-001 -->
 ---
 
@@ -39,6 +42,7 @@ Sync I/O in an async loop stalls every other concurrent request on that worker. 
 ## Rule PERF-BATCH-001
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -72,6 +76,8 @@ Code review.
 ### Rationale
 Sequential awaiting is N*latency when the work is parallelizable. Parallel I/O is max(latency).
 
+Related rules: PERF-ASYNC-001, PERF-QUERY-001.
+
 <!-- RULE END: PERF-BATCH-001 -->
 ---
 
@@ -79,6 +85,7 @@ Sequential awaiting is N*latency when the work is parallelizable. Parallel I/O i
 ## Rule PERF-BUNDLE-001
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -105,6 +112,8 @@ CI gate (asset-size budget; lighthouse score).
 ### Rationale
 Unbundled assets multiply HTTP round-trips and shipping bytes. Bundling and minification are zero-effort wins at deploy time.
 
+Related rules: PERF-IMAGE-001.
+
 <!-- RULE END: PERF-BUNDLE-001 -->
 ---
 
@@ -112,6 +121,7 @@ Unbundled assets multiply HTTP round-trips and shipping bytes. Bundling and mini
 ## Rule PERF-CACHE-001
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -142,6 +152,8 @@ Code review.
 ### Rationale
 Stale cross-user cache hits are at best a wrong-data bug and at worst a data-leak vulnerability. Complete cache keys close the gap.
 
+Related rules: SEC-AUTHZ-TENANT-001.
+
 <!-- RULE END: PERF-CACHE-001 -->
 ---
 
@@ -149,6 +161,7 @@ Stale cross-user cache hits are at best a wrong-data bug and at worst a data-lea
 ## Rule PERF-CACHE-002
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -175,6 +188,8 @@ Code review.
 ### Rationale
 Indefinite cache becomes a parallel database that drifts. TTL provides a freshness ceiling even when explicit invalidation fails.
 
+Related rules: PERF-CACHE-003, PERF-CACHE-004.
+
 <!-- RULE END: PERF-CACHE-002 -->
 ---
 
@@ -182,6 +197,7 @@ Indefinite cache becomes a parallel database that drifts. TTL provides a freshne
 ## Rule PERF-CACHE-003
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -212,6 +228,8 @@ Code review.
 ### Rationale
 TTL-only invalidation leaves staleness windows that produce visible bugs (user updates name, sees old name). Explicit invalidation closes the window.
 
+Related rules: PERF-CACHE-002.
+
 <!-- RULE END: PERF-CACHE-003 -->
 ---
 
@@ -219,6 +237,7 @@ TTL-only invalidation leaves staleness windows that produce visible bugs (user u
 ## Rule PERF-CACHE-004
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -252,6 +271,8 @@ Code review. Cache libraries (cachetools, django-cacheops) implement stampede pr
 ### Rationale
 A stampeded cache turns the protected resource into the bottleneck precisely when it most needs protection.
 
+Related rules: PERF-CACHE-002.
+
 <!-- RULE END: PERF-CACHE-004 -->
 ---
 
@@ -259,6 +280,7 @@ A stampeded cache turns the protected resource into the bottleneck precisely whe
 ## Rule PERF-IMAGE-001
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Low
 **Scope**: Component
 **Mandatory**: false
@@ -290,6 +312,8 @@ Image-optimization pipeline (next/image, Cloudinary, ImgIX).
 ### Rationale
 Image bytes dominate frontend payload. Modern formats and right-sizing cut payload by 50-80%; lazy loading defers off-screen cost.
 
+Related rules: PERF-BUNDLE-001.
+
 <!-- RULE END: PERF-IMAGE-001 -->
 ---
 
@@ -297,6 +321,7 @@ Image bytes dominate frontend payload. Modern formats and right-sizing cut paylo
 ## Rule PERF-MEM-001
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -325,6 +350,8 @@ Code review.
 ### Rationale
 In-memory loading scales with the data size; streaming scales with the working-set size. The difference is the difference between OOM and steady operation.
 
+Related rules: PERF-MEM-002, PERF-QUERY-004.
+
 <!-- RULE END: PERF-MEM-001 -->
 ---
 
@@ -332,6 +359,7 @@ In-memory loading scales with the data size; streaming scales with the working-s
 ## Rule PERF-MEM-002
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -365,6 +393,8 @@ Memory profiling. Code review.
 ### Rationale
 Memory leaks turn long-running processes into delayed crashes. Bounded structures keep memory predictable.
 
+Related rules: PERF-CACHE-002, PERF-MEM-001.
+
 <!-- RULE END: PERF-MEM-002 -->
 ---
 
@@ -372,10 +402,13 @@ Memory leaks turn long-running processes into delayed crashes. Bounded structure
 ## Rule PERF-QUERY-001
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Critical
 **Scope**: Component
 **Mandatory**: true
 **Mechanical_Enforcement_Path**: bin/run-analysis.sh::analyze_performance_n_plus_one
+**Applicability_Scope**: write
+**Trigger_Keywords**: N+1, select_related, prefetch_related, joinedload, eager loading
 
 ### Trigger
 When iterating over a collection and accessing a related entity inside the loop body.
@@ -403,6 +436,8 @@ Mechanically enforced by bin/run-analysis.sh::analyze_performance_n_plus_one: re
 ### Rationale
 N+1 is the single most common database performance bug. A list page with 100 items can issue 100+ extra queries, scaling with traffic. Eager loading or batch fetching is the structural defense.
 
+Related rules: PERF-BATCH-001, PERF-QBUDGET-001, PERF-QUERY-002.
+
 <!-- RULE END: PERF-QUERY-001 -->
 ---
 
@@ -410,6 +445,7 @@ N+1 is the single most common database performance bug. A list page with 100 ite
 ## Rule PERF-QUERY-002
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -438,6 +474,8 @@ Schema review during migration PRs. Query plans (EXPLAIN) for new queries.
 ### Rationale
 Unindexed queries are O(N) on table size; indexed queries are O(log N). The difference becomes catastrophic as data grows.
 
+Related rules: PERF-QUERY-001.
+
 <!-- RULE END: PERF-QUERY-002 -->
 ---
 
@@ -445,6 +483,7 @@ Unindexed queries are O(N) on table size; indexed queries are O(log N). The diff
 ## Rule PERF-QUERY-003
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -466,7 +505,7 @@ Order.query.with_entities(Order.id, Order.status, Order.total).all()
 ```
 
 ### Enforcement
-Code review.
+Code review. Related: PERF-BATCH-001.
 
 ### Rationale
 Wide selects compound at scale: 50KB rows fetched 1000 times is 50MB of unused data on the wire. Narrow selects are free wins.
@@ -478,6 +517,7 @@ Wide selects compound at scale: 50KB rows fetched 1000 times is 50MB of unused d
 ## Rule PERF-QUERY-004
 
 **Domain**: performance
+**Category**: CAT-CODE-PERF-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -508,5 +548,7 @@ Code review.
 
 ### Rationale
 An unbounded list endpoint is a database DoS waiting to happen. Bounded pagination caps the worst case at the API layer.
+
+Related rules: API-PAGINATION-002, PERF-MEM-001, SEC-RATE-QUERY-001.
 
 <!-- RULE END: PERF-QUERY-004 -->

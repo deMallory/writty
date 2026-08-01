@@ -19,12 +19,11 @@ phase_ids: []
 preconditions: []
 dispatched_roles: []
 edges:
-  - { target: ENF-PROC-TDD-001, type: GATES }
-  - { target: ANT-PROC-TDD-001, type: COUNTERS }
-  - { target: ANT-PROC-TDD-002, type: COUNTERS }
-  - { target: ANT-PROC-TDD-003, type: COUNTERS }
-  - { target: ANT-PROC-TDD-004, type: COUNTERS }
-  - { target: ANT-PROC-TDD-005, type: COUNTERS }
+  - { target: ENF-PROC-TDD-001, type: TEACHES }
+  - { target: META-AUTH-002, type: TEACHES }
+category: CAT-PROC-001
+floor_modes: [work]
+trigger_keywords: ["failing test", "red-green-refactor", "refactor"]
 ---
 
 # Playbook: TDD

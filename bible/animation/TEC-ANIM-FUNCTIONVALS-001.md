@@ -1,7 +1,8 @@
 ---
 technique_id: TEC-ANIM-FUNCTIONVALS-001
 node_type: Technique
-domain: animation
+domain: frameworks
+category: CAT-CODE-FW-001
 severity: medium
 scope: component
 trigger: "When each target in a GSAP tween needs a different animation value based on its index, element, or context."

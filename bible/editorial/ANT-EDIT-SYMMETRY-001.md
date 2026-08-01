@@ -1,7 +1,9 @@
 ---
 antipattern_id: ANT-EDIT-SYMMETRY-001
 node_type: AntiPattern
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
+trigger_keywords: ["anti-pattern", "editorial", "symmetry"]
 severity: high
 scope: layout
 trigger: "When a contemporary editorial layout uses centered/symmetric composition without stated ceremonial intent."

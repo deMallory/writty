@@ -20,10 +20,13 @@ phase_ids: []
 preconditions: [META-AUTH-001, META-AUTH-002]
 dispatched_roles: []
 edges:
-  - { target: META-AUTH-001, type: GATES }
-  - { target: META-AUTH-002, type: GATES }
   - { target: PBK-PROC-TDD-001, type: TEACHES }
-  - { target: PSC-TDD-001, type: DEMONSTRATES }
+  - { target: TEC-META-KEYWORDS-001, type: TEACHES }
+  - { target: TEC-META-PERSUASION-001, type: TEACHES }
+  - { target: META-AUTH-001, type: DEPENDS_ON }
+category: CAT-META-001
+action_triggers: ["bible-authoring"]
+trigger_keywords: ["red-green-refactor", "pressure scenario", "pressure-test", "authoring"]
 ---
 
 # Playbook: Author a methodology node
@@ -39,6 +42,14 @@ A scenario specifies:
 - (Optional) follow-up prompts that probe rationalization paths
 
 File: `bible/methodology/PSC-<DOMAIN>-<NAME>-001.md` with `node_type: PressureScenario`.
+
+**Pressure craft (discipline nodes).** A weak scenario asks politely and the agent complies
+trivially, proving nothing. Combine at least 3 pressures from the taxonomy so the scenario
+actually probes the failure: time ("ship in 10 minutes"), sunk cost ("you already wrote it"),
+authority ("the senior engineer said skip it"), economic ("the client is waiting"),
+exhaustion (late in a long task), social ("everyone here does it this way"), pragmatic ("just
+this once"). Give concrete A/B/C options, real file paths, and end with "What do you do?".
+See TEC-META-PERSUASION-001 for the levers the node then uses to win that scenario.
 
 If you cannot describe the scenario, you cannot describe the node. Stop here until you can.
 
@@ -88,6 +99,12 @@ Common reasons GREEN fails on first try:
 - The node isn't being retrieved at all -- confirm Stage 4 graph traversal and BM25/vector indexes have it. Check `analyze-friction --skill-usage` post-run.
 
 Re-draft, re-migrate, re-run.
+
+**Meta-test when GREEN keeps failing.** Ask the agent directly: "how should this node have
+been written so you would have complied?" Route the answer by type: "it was clear, I just
+didn't apply it" -> add a foundational principle (e.g. "violating the letter is violating the
+spirit"); "it should have said X" -> add X verbatim; "I didn't see / couldn't find it" ->
+reorganize and apply TEC-META-KEYWORDS-001 so retrieval surfaces it.
 
 ## Step 6 -- Link the scenario via the graph
 

@@ -17,17 +17,19 @@ source_attribution: "writ-native"
 source_commit: null
 phase_ids: []
 preconditions: []
-dispatched_roles: [ROL-CODE-REVIEWER-001]
+dispatched_roles: [ROL-REVIEWER-001]
 edges:
-  - { target: ROL-CODE-REVIEWER-001, type: DISPATCHES }
+  - { target: ROL-REVIEWER-001, type: DISPATCHES }
   - { target: SKL-PROC-REVRECV-001, type: PRECEDES }
+category: CAT-PROC-001
+trigger_keywords: ["code-review", "external review", "fresh context", "merge"]
 ---
 
 # Playbook: Request code review
 
 ## Dispatch
 
-Task tool, subagent type matching `ROL-CODE-REVIEWER-001`. Provide: base SHA, head SHA, spec summary.
+Task tool, subagent type matching `ROL-REVIEWER-001`. Provide: base SHA, head SHA, spec summary.
 
 ## Handle findings
 

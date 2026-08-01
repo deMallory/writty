@@ -1,7 +1,8 @@
 ---
 phase_id: PHA-EDIT-ELENCHUS-001
 node_type: Phase
-domain: editorial
+domain: communication
+category: CAT-COMM-EDIT-001
 scope: task
 trigger: "First phase of PBK-EDIT-ELENCHUS-001. Fires when elenchus begins."
 statement: "Find the question. One sentence. Interrogative. Specific enough that it can be wrong. The question commits to an answer; a topic does not."

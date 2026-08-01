@@ -16,7 +16,11 @@ evidence: "bin/lib/writ-session.py implements the mode state machine; .claude/ho
 always_on: false
 source_attribution: writ-1.4.0-migration
 source_commit: pending
-edges: []
+edges:
+  - { target: PBK-PROC-WORK-WORKFLOW-001, type: RELATED_TO }
+category: CAT-PROC-001
+floor_modes: [conversation, work]
+trigger_keywords: ["mode", "code generation", "gate"]
 ---
 
 # Skill: Set the session mode before generating code

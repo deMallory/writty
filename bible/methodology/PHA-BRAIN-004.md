@@ -19,6 +19,7 @@ name: "Name trade-offs"
 description: "For each proposed approach, name what it's good at and what it costs. At minimum: one pro, one con. Preferred: pro and con tied to the user's stated constraints."
 parent_playbook_id: PBK-PROC-BRAIN-001
 edges: []
+category: CAT-PROC-001
 ---
 
 # Phase 4: Name trade-offs

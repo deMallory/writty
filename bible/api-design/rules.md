@@ -2,6 +2,7 @@
 ## Rule API-BREAKING-001
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -30,6 +31,8 @@ Code review. API diff tools (openapi-diff) detect breaking changes in CI.
 ### Rationale
 Silent breakage is invisible to the team that ships and disastrous to the team that consumes. Versioning makes the contract visible.
 
+Related rules: API-CONTRACT-001, API-VERSION-001.
+
 <!-- RULE END: API-BREAKING-001 -->
 ---
 
@@ -37,6 +40,7 @@ Silent breakage is invisible to the team that ships and disastrous to the team t
 ## Rule API-CONTRACT-001
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -63,6 +67,8 @@ CI gate: generated spec is committed; CI verifies it matches code.
 ### Rationale
 Hand-written docs drift. Generated docs stay in sync because they are the code.
 
+Related rules: API-BREAKING-001, DOC-API-001.
+
 <!-- RULE END: API-CONTRACT-001 -->
 ---
 
@@ -70,6 +76,7 @@ Hand-written docs drift. Generated docs stay in sync because they are the code.
 ## Rule API-ERROR-001
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -100,6 +107,8 @@ Code review. Pydantic-based response models enforce the shape.
 ### Rationale
 Consistent error schemas let one client error-handler work everywhere. Inconsistent schemas force per-endpoint parsing.
 
+Related rules: API-ERROR-002, API-STATUS-001.
+
 <!-- RULE END: API-ERROR-001 -->
 ---
 
@@ -107,6 +116,7 @@ Consistent error schemas let one client error-handler work everywhere. Inconsist
 ## Rule API-ERROR-002
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -133,6 +143,8 @@ Code review.
 ### Rationale
 Actionable errors halve the time-to-fix for integration partners. Bare messages force them to grep the source.
 
+Related rules: API-ERROR-001, CLEAN-ERR-003.
+
 <!-- RULE END: API-ERROR-002 -->
 ---
 
@@ -140,6 +152,7 @@ Actionable errors halve the time-to-fix for integration partners. Bare messages 
 ## Rule API-IDEMPOTENT-001
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -175,6 +188,8 @@ Code review.
 ### Rationale
 Network retries are universal. Idempotent PUT/DELETE makes retries safe; non-idempotent versions risk duplicate-state bugs.
 
+Related rules: API-REST-001, ARCH-IDEMPOTENT-001.
+
 <!-- RULE END: API-IDEMPOTENT-001 -->
 ---
 
@@ -182,6 +197,7 @@ Network retries are universal. Idempotent PUT/DELETE makes retries safe; non-ide
 ## Rule API-PAGINATION-001
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -213,6 +229,8 @@ Code review.
 ### Rationale
 Pagination contains the API's worst-case response size. Consistent schemes let one client library work across every endpoint.
 
+Related rules: API-PAGINATION-002, PERF-QUERY-004, SEC-RATE-QUERY-001.
+
 <!-- RULE END: API-PAGINATION-001 -->
 ---
 
@@ -220,6 +238,7 @@ Pagination contains the API's worst-case response size. Consistent schemes let o
 ## Rule API-PAGINATION-002
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -246,6 +265,8 @@ Code review.
 ### Rationale
 Server-side caps prevent a single request from exhausting capacity. The default keeps responses fast for the common case.
 
+Related rules: API-PAGINATION-001.
+
 <!-- RULE END: API-PAGINATION-002 -->
 ---
 
@@ -253,6 +274,7 @@ Server-side caps prevent a single request from exhausting capacity. The default 
 ## Rule API-REST-001
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -281,6 +303,8 @@ Code review.
 ### Rationale
 Method semantics drive correctness for caches, retries, and CSRF protections. A GET that deletes can be triggered by a link preview.
 
+Related rules: API-IDEMPOTENT-001, API-REST-002.
+
 <!-- RULE END: API-REST-001 -->
 ---
 
@@ -288,6 +312,7 @@ Method semantics drive correctness for caches, retries, and CSRF protections. A 
 ## Rule API-REST-002
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -316,6 +341,8 @@ Code review.
 ### Rationale
 Noun-based URLs let the method carry the verb. The URL identifies the resource; the method says what to do with it.
 
+Related rules: API-REST-001.
+
 <!-- RULE END: API-REST-002 -->
 ---
 
@@ -323,6 +350,7 @@ Noun-based URLs let the method carry the verb. The URL identifies the resource; 
 ## Rule API-STATUS-001
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: High
 **Scope**: Component
 **Mandatory**: false
@@ -349,6 +377,8 @@ Code review.
 ### Rationale
 Status codes are the integration contract for clients, monitors, and load balancers. Mismatched codes break retries, alerts, and circuit breakers.
 
+Related rules: API-ERROR-001, API-STATUS-002.
+
 <!-- RULE END: API-STATUS-001 -->
 ---
 
@@ -356,6 +386,7 @@ Status codes are the integration contract for clients, monitors, and load balanc
 ## Rule API-STATUS-002
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -384,6 +415,8 @@ Code review. Monitoring should track 5xx separately from 4xx.
 ### Rationale
 5xx tagging triggers paging and dashboard alerts. Misclassifying 4xx as 5xx floods the incident channel with non-incidents.
 
+Related rules: API-STATUS-001.
+
 <!-- RULE END: API-STATUS-002 -->
 ---
 
@@ -391,6 +424,7 @@ Code review. Monitoring should track 5xx separately from 4xx.
 ## Rule API-VERSION-001
 
 **Domain**: api-design
+**Category**: CAT-CODE-API-001
 **Severity**: Medium
 **Scope**: Component
 **Mandatory**: false
@@ -416,5 +450,7 @@ Code review.
 
 ### Rationale
 Versioning lets the API evolve without breaking existing clients. Unversioned APIs make every change a coordinated client upgrade.
+
+Related rules: API-BREAKING-001, API-CONTRACT-001.
 
 <!-- RULE END: API-VERSION-001 -->

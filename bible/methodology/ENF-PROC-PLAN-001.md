@@ -30,9 +30,10 @@ source_attribution: "writ-native"
 source_commit: null
 body: "Standalone Rationalization nodes attached via ATTACHED_TO edges complement the inline rationalization_counters field per schema proposal."
 edges:
-  - { target: SKL-PROC-PLAN-001, type: TEACHES }
-  - { target: PBK-PROC-PLAN-001, type: TEACHES }
-  - { target: ANT-PROC-PLAN-001, type: COUNTERS }
+  - { target: PBK-PROC-PLAN-001, type: GATES }
+  - { target: PBK-PROC-WORK-WORKFLOW-001, type: GATES }
+  - { target: SKL-PROC-PLAN-001, type: GATES }
+category: CAT-PROC-001
 ---
 
 # Rule: No placeholder content in plans
