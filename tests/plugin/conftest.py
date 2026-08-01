@@ -13,7 +13,11 @@ from pathlib import Path
 import pytest
 
 
-REPO_ROOT = (Path.home() / ".claude/skills/writ")
+# The repo the tests belong to, derived from this file's location. A previous
+# hardcoding to ~/.claude/skills/writ (the standalone install path) made the
+# suite validate a stale installed clone on dev machines and skip wholesale in
+# CI, where that path does not exist.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _expand_plugin_root(path: str, root: Path) -> Path:

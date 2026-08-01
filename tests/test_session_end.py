@@ -218,8 +218,8 @@ class TestLogSessionMetricsRemoval:
     """log-session-metrics.sh must be removed from Stop hooks in settings.json."""
 
     def _load_settings(self) -> dict[str, Any]:
-        home = os.path.expanduser("~")
-        settings_path = os.path.join(home, ".claude", "settings.json")
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        settings_path = os.path.join(repo, "templates", "settings.json")
         with open(settings_path) as f:
             return json.load(f)
 
@@ -264,8 +264,8 @@ class TestSessionEndRegistration:
     """writ-session-end.sh must be registered under SessionEnd in settings.json."""
 
     def _load_settings(self) -> dict[str, Any]:
-        home = os.path.expanduser("~")
-        settings_path = os.path.join(home, ".claude", "settings.json")
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        settings_path = os.path.join(repo, "templates", "settings.json")
         with open(settings_path) as f:
             return json.load(f)
 

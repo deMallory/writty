@@ -102,7 +102,7 @@ class TestMarketplaceManifestStructure:
             f"marketplace.json must have exactly one plugin entry, found {len(plugins)}"
         )
         entry = plugins[0]
-        assert entry.get("name") == "writ", "Plugin entry name must be 'writ'"
+        assert entry.get("name") == "writty", "Plugin entry name must be 'writty'"
         assert entry.get("source") == "./", "Plugin entry source must be './'"
         assert "description" in entry, "Plugin entry must have a 'description' field"
         expected_version = _pyproject_version()

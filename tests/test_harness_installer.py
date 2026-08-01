@@ -154,7 +154,7 @@ class TestInstallerPreconditions:
         clean_bin = tmp_path / "bin"
         clean_bin.mkdir()
         # Include a minimal set of tools the script needs but NOT envsubst
-        for tool in ["bash", "cp", "diff", "date", "mkdir", "cat", "printf"]:
+        for tool in ["bash", "cp", "diff", "date", "mkdir", "cat", "printf", "dirname"]:
             found = shutil.which(tool)
             if found:
                 os.symlink(found, clean_bin / tool)

@@ -218,9 +218,16 @@ class TestBootstrapPrerequisiteChecks:
     def _run_with_limited_path(
         self, tmp_path: Path, include_tools: list[str]
     ) -> subprocess.CompletedProcess:
-        """Run bootstrap with a PATH containing only the tools we specify."""
+        """Run bootstrap with a PATH containing only the tools we specify.
+
+        Coreutils the script needs before its prerequisite checks run
+        (dirname for path resolution, envsubst's friends uname/mkdir/cat
+        are builtins or unused pre-check) are always included; the point
+        of the limited PATH is the named prerequisites, not coreutils.
+        """
         fake_bin = tmp_path / "bin"
         fake_bin.mkdir()
+        include_tools = [*include_tools, "dirname"]
         for tool in include_tools:
             found = shutil.which(tool)
             if found:

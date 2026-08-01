@@ -96,6 +96,10 @@ dev = [
     # runtime (writ/) never imports optimum. Kept out of core deps
     # to avoid bloating production installs with build-time tooling.
     "optimum[onnxruntime]>=2.0,<3",
+    # writ/compression/clusters.py (maintainer-only `writ compress` path)
+    # imports sklearn; tests/test_compression.py imports that module at
+    # collection time, so the suite cannot even collect without it.
+    "scikit-learn>=1.5,<2",
 ]
 fallback = [
     # Opt-in only. Required by:

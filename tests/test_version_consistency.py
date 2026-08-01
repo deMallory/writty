@@ -14,7 +14,9 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = (Path.home() / ".claude/skills/writ")
+# The repo under test, derived from this file's location. The previous
+# hardcoding to ~/.claude/skills/writ validated a stale installed clone.
+SKILL_DIR = Path(__file__).resolve().parent.parent
 EXPECTED_VERSION = "1.5.0"
 
 

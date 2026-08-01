@@ -439,8 +439,8 @@ class TestSettingsJsonCompactionHooks:
 
     def _load_settings(self) -> dict[str, Any]:
         import os
-        home = os.path.expanduser("~")
-        settings_path = os.path.join(home, ".claude", "settings.json")
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        settings_path = os.path.join(repo, "templates", "settings.json")
         with open(settings_path) as f:
             return json.load(f)
 
