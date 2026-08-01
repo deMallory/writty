@@ -244,7 +244,7 @@ class TestProposalWorkflow:
         )
         mock_db = AsyncMock()
         candidate = _make_candidate()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             propose_rule(candidate, mock, mock_db)
         )
         assert result["accepted"] is True
@@ -259,7 +259,7 @@ class TestProposalWorkflow:
         candidate = _make_candidate()
         candidate["authority"] = "human"
         candidate["confidence"] = "battle-tested"
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             propose_rule(candidate, mock, mock_db)
         )
         assert result["accepted"] is True
@@ -272,7 +272,7 @@ class TestProposalWorkflow:
         )
         mock_db = AsyncMock()
         candidate = _make_candidate(statement="Consider doing this")
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             propose_rule(candidate, mock, mock_db)
         )
         assert result["accepted"] is False
@@ -285,7 +285,7 @@ class TestProposalWorkflow:
         )
         mock_db = AsyncMock()
         candidate = _make_candidate()
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             propose_rule(
                 candidate, mock, mock_db,
                 origin_db_path=tmp_path / "ctx.db",

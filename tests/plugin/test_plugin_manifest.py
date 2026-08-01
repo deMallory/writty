@@ -67,9 +67,9 @@ class TestPluginManifestSchema:
                 )
 
     def test_plugin_json_required_name(self, manifest: dict) -> None:
-        """name field must equal 'writ'."""
-        assert manifest.get("name") == "writ", (
-            f"plugin.json name must be 'writ', got '{manifest.get('name')}'"
+        """name field must equal 'writty' (renamed from 'writ', see commit history)."""
+        assert manifest.get("name") == "writty", (
+            f"plugin.json name must be 'writty', got '{manifest.get('name')}'"
         )
 
     def test_plugin_json_metadata_fields(self, manifest: dict) -> None:
@@ -102,14 +102,14 @@ class TestPluginManifestSchema:
         )
 
     def test_plugin_json_homepage_repository_match_remote(self, manifest: dict) -> None:
-        """Both homepage and repository must reference infinri/Writ on github."""
+        """Both homepage and repository must reference deMallory/writty on github."""
         homepage = manifest.get("homepage", "")
         repository = manifest.get("repository", "")
-        assert "infinri/Writ" in homepage or "infinri/writ" in homepage.lower(), (
-            f"homepage '{homepage}' must reference infinri/Writ on github"
+        assert "demallory/writty" in homepage.lower(), (
+            f"homepage '{homepage}' must reference deMallory/writty on github"
         )
-        assert "infinri/Writ" in repository or "infinri/writ" in repository.lower(), (
-            f"repository '{repository}' must reference infinri/Writ on github"
+        assert "demallory/writty" in repository.lower(), (
+            f"repository '{repository}' must reference deMallory/writty on github"
         )
 
     def test_plugin_json_license_spdx(self, manifest: dict) -> None:

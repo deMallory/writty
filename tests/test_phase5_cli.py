@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import datetime, timedelta, timezone
+import sys
 from pathlib import Path
 
 import pytest
@@ -32,15 +34,25 @@ def empty_log(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def synthetic_log(tmp_path: Path) -> Path:
-    """Friction log with one event of each Phase 5 relevant type."""
+    """Friction log with one event of each Phase 5 relevant type.
+
+    Timestamps are generated relative to the real clock: the analyzers
+    window against datetime.now(), so hardcoded dates expire once the
+    calendar moves past them plus the window.
+    """
     p = tmp_path / "synth.log"
+    base = datetime.now(timezone.utc).replace(microsecond=0)
+    ts = [
+        (base + timedelta(seconds=i)).isoformat().replace("+00:00", "Z")
+        for i in range(6)
+    ]
     lines = [
-        '{"ts":"2026-04-30T12:00:00Z","session":"s1","mode":"work","event":"rag_query","rule_id":"ENF-X-001"}',
-        '{"ts":"2026-04-30T12:00:01Z","session":"s1","mode":"work","event":"gate_denial","rule_id":"ENF-X-001","gate":"phase-a"}',
-        '{"ts":"2026-04-30T12:00:02Z","session":"s1","mode":"work","event":"rag_query","skill_id":"SKL-A"}',
-        '{"ts":"2026-04-30T12:00:03Z","session":"s1","mode":"work","event":"playbook_step_complete","playbook_id":"PBK-A","step_id":"s1","step_index":0,"total_steps":2}',
-        '{"ts":"2026-04-30T12:00:04Z","session":"s1","mode":"work","event":"playbook_step_complete","playbook_id":"PBK-A","step_id":"s2","step_index":1,"total_steps":2}',
-        '{"ts":"2026-04-30T12:00:05Z","session":"s1","mode":"work","event":"quality_judgment","judgment_id":"j1","rubric":"R1","decision":"fail","override":true,"latency_ms":120}',
+        f'{{"ts":"{ts[0]}","session":"s1","mode":"work","event":"rag_query","rule_id":"ENF-X-001"}}',
+        f'{{"ts":"{ts[1]}","session":"s1","mode":"work","event":"gate_denial","rule_id":"ENF-X-001","gate":"phase-a"}}',
+        f'{{"ts":"{ts[2]}","session":"s1","mode":"work","event":"rag_query","skill_id":"SKL-A"}}',
+        f'{{"ts":"{ts[3]}","session":"s1","mode":"work","event":"playbook_step_complete","playbook_id":"PBK-A","step_id":"s1","step_index":0,"total_steps":2}}',
+        f'{{"ts":"{ts[4]}","session":"s1","mode":"work","event":"playbook_step_complete","playbook_id":"PBK-A","step_id":"s2","step_index":1,"total_steps":2}}',
+        f'{{"ts":"{ts[5]}","session":"s1","mode":"work","event":"quality_judgment","judgment_id":"j1","rubric":"R1","decision":"fail","override":true,"latency_ms":120}}',
     ]
     p.write_text("\n".join(lines) + "\n")
     return p
@@ -48,7 +60,7 @@ def synthetic_log(tmp_path: Path) -> Path:
 
 def _cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["python3", "-m", "writ.cli", *args],
+        [sys.executable, "-m", "writ.cli", *args],
         capture_output=True, text=True, cwd=str(WRIT_ROOT), timeout=15,
     )
 

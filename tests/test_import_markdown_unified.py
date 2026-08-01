@@ -24,7 +24,10 @@ from pathlib import Path
 
 import pytest
 
-SKILL_DIR = (Path.home() / ".claude/skills/writ")
+# The repo under test, derived from this file's location. The previous
+# hardcoding to ~/.claude/skills/writ ran the import CLI against a stale
+# installed clone instead of the repo the tests belong to.
+SKILL_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Shared resolver -- one source of truth for invoking `writ` from tests.

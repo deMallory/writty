@@ -27,7 +27,7 @@ import pytest
 from pathlib import Path
 
 
-SKILL_DIR = str(Path.home() / ".claude/skills/writ")
+SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 HOOK = f"{SKILL_DIR}/.claude/hooks/writ-rag-inject.sh"
 
 
@@ -101,8 +101,11 @@ class TestOrchestratorMethodologyCompanionEndToEnd:
         rag_query with query_source=methodology."""
         import uuid
         sid = f"orch-method-e2e-{uuid.uuid4().hex[:8]}"
-        # Seed at the server's cache dir, not the test's tmp_path.
-        server_cache_dir = "/tmp"
+        # Seed at the server's cache dir, not the test's tmp_path. The
+        # session helper resolves WRIT_CACHE_DIR or tempfile.gettempdir(),
+        # which on macOS is /var/folders/..., not /tmp.
+        import tempfile
+        server_cache_dir = os.environ.get("WRIT_CACHE_DIR") or tempfile.gettempdir()
         cache_path = os.path.join(server_cache_dir, f"writ-session-{sid}.json")
         self._seed_orchestrator_cache(server_cache_dir, sid)
 

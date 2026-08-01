@@ -35,7 +35,10 @@ def _ev(event: str, ts: datetime, **fields) -> FrictionEvent:
 
 @pytest.fixture
 def now() -> datetime:
-    return datetime(2026, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+    # Real wall-clock time, not a frozen date: the analyzers window against
+    # datetime.now(), so a pinned fixture date expires once the calendar
+    # moves past it plus the window (this suite went red exactly that way).
+    return datetime.now(timezone.utc).replace(microsecond=0)
 
 
 class TestRuleEffectiveness:

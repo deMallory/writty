@@ -111,14 +111,17 @@ class TestHooksJsonStructure:
             "hooks.json must have a top-level 'hooks' key"
         )
 
-    def test_hooks_json_covers_all_36_registrations(self, hooks_data: dict) -> None:
-        """Total registrations must equal 36 (31 Phase B + 1 SessionStart Phase C
-        + 2 v1.2.0 context-watcher + 2 added post-v1.2.0)."""
+    def test_hooks_json_covers_all_39_registrations(self, hooks_data: dict) -> None:
+        """Total registrations must equal 39 (31 Phase B + 1 SessionStart Phase C
+        + 2 v1.2.0 context-watcher + 2 added post-v1.2.0 + 3 from the 2026-07
+        hook audit: writ-agent-hotswap on PreToolUse/Task, writ-output-rewrite
+        on PostToolUse/Bash, writ-bash-failure on PostToolUseFailure/Bash)."""
         registrations = _collect_all_registrations(hooks_data)
-        assert len(registrations) == 36, (
-            f"hooks.json must have 36 total registrations (31 from templates/settings.json "
+        assert len(registrations) == 39, (
+            f"hooks.json must have 39 total registrations (31 from templates/settings.json "
             f"plus the Phase C SessionStart bootstrap entry plus the v1.2.0 writ-context-watcher "
-            f"on UserPromptSubmit + PreToolUse plus 2 post-v1.2.0 additions), "
+            f"on UserPromptSubmit + PreToolUse plus 2 post-v1.2.0 additions plus the 3 "
+            f"2026-07 audit hooks: agent-hotswap, output-rewrite, bash-failure), "
             f"found {len(registrations)}"
         )
 
