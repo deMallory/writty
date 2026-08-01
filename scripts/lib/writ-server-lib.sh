@@ -144,14 +144,27 @@ writ_ensure_server() {
     export WRIT_CACHE_DIR="${WRIT_CACHE_DIR:-$(python3 -c 'import tempfile; print(tempfile.gettempdir())' 2>/dev/null || echo /tmp)}"
 
     local lock="/tmp/writ-server-${WRIT_PORT}.lock"
-    (
-        if ! flock -w 15 9; then
-            # Could not acquire in 15s: another starter is bringing the server up. Best-effort
-            # health check, then yield -- do not start a competing daemon.
+    if command -v flock >/dev/null 2>&1; then
+        (
+            if ! flock -w 15 9; then
+                # Could not acquire in 15s: another starter is bringing the server up. Best-effort
+                # health check, then yield -- do not start a competing daemon.
+                writ_server_health || true
+                exit 0
+            fi
+            _writ_start_locked
+        ) 9>"$lock" || true
+    else
+        # macOS ships no flock(1). mkdir is the portable atomic primitive: the starter that
+        # creates the lock dir runs the critical section; losers wait on health instead of
+        # racing a second launch. Port-bind stays the final backstop either way.
+        local lockdir="${lock}.d"
+        if mkdir "$lockdir" 2>/dev/null; then
+            trap 'rmdir "$lockdir" 2>/dev/null || true' RETURN
+            _writ_start_locked || true
+        else
             writ_server_health || true
-            exit 0
         fi
-        _writ_start_locked
-    ) 9>"$lock" || true
+    fi
     return 0
 }
