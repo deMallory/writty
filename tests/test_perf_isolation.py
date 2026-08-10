@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -76,7 +77,7 @@ class TestTimingTestsCarryTheMarker:
         """Behavioural, not textual: collect with the default options and assert the
         timing test is not among them."""
         proc = subprocess.run(
-            ["python3", "-m", "pytest", "tests/test_hook_perf_floors.py",
+            [sys.executable, "-m", "pytest", "tests/test_hook_perf_floors.py",
              "--collect-only", "-q"],
             capture_output=True, text=True, cwd=str(REPO), timeout=180,
         )
@@ -89,7 +90,7 @@ class TestTimingTestsCarryTheMarker:
         """Deselected by default must not mean unreachable: `-m perf` has to collect
         them, or the gate has been deleted rather than isolated."""
         proc = subprocess.run(
-            ["python3", "-m", "pytest", "tests/test_hook_perf_floors.py",
+            [sys.executable, "-m", "pytest", "tests/test_hook_perf_floors.py",
              "--collect-only", "-q", "-m", "perf", "-o", "addopts="],
             capture_output=True, text=True, cwd=str(REPO), timeout=180,
         )

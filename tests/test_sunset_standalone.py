@@ -79,8 +79,10 @@ class TestBootstrapRepointed:
 class TestHooksJsonIsSoleSource:
     # Fork policy: see feat/upstream-resync migration (option A).
     # hooks.json is NOT the sole source in this fork: registration is split
-    # between hooks/hooks.json (13 pruned entries) and templates/settings.json
-    # (.claude/hooks paths). Events/hooks below are checked across both.
+    # between hooks/hooks.json (pruned plugin entries) and templates/settings.fork.json
+    # (.claude/hooks paths, seeded by install-harness-config.sh). templates/settings.json
+    # is upstream's GENERATED mirror of hooks.json and carries no fork registrations.
+    # Events/hooks below are checked across hooks.json and the fork seed.
     EXPECTED_EVENTS = {
         "SessionStart", "UserPromptSubmit", "SubagentStart", "SubagentStop", "Stop",
         "PostToolUseFailure", "PreCompact", "PostCompact", "SessionEnd", "CwdChanged",
@@ -96,7 +98,7 @@ class TestHooksJsonIsSoleSource:
         return d.get("hooks", d)
 
     def _settings_hooks(self):
-        d = json.loads(_read("templates", "settings.json"))
+        d = json.loads(_read("templates", "settings.fork.json"))
         return d.get("hooks", {})
 
     def test_all_events_present(self):
@@ -111,7 +113,7 @@ class TestHooksJsonIsSoleSource:
 
     def test_critical_hooks_registered(self):
         # Fork policy: see feat/upstream-resync migration (option A).
-        src = _read("hooks", "hooks.json") + _read("templates", "settings.json")
+        src = _read("hooks", "hooks.json") + _read("templates", "settings.fork.json")
         for name in self.CRITICAL_HOOKS:
             assert name in src, f"{name} missing from hook registration surfaces"
 
@@ -128,10 +130,10 @@ class TestPreWriteDispatchConsolidationFromHooksJson:
 
     def _pretooluse_commands(self):
         # Fork policy: see feat/upstream-resync migration (option A).
-        # The pre-write dispatch registers via templates/settings.json in this
-        # fork; scan both registration surfaces.
+        # The pre-write dispatch registers via templates/settings.fork.json in
+        # this fork; scan both registration surfaces.
         cmds = []
-        for parts in (("hooks", "hooks.json"), ("templates", "settings.json")):
+        for parts in (("hooks", "hooks.json"), ("templates", "settings.fork.json")):
             d = json.loads(_read(*parts))
             hooks = d.get("hooks", d) if parts[0] == "hooks" else d.get("hooks", {})
             cmds.extend(self._extract(hooks))

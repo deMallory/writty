@@ -28,7 +28,7 @@ SESSION_ID = "test-instructions-session"
 SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 WRIT_SESSION_PY = f"{SKILL_DIR}/bin/lib/writ-session.py"
 HOOK_PATH = f"{SKILL_DIR}/.claude/hooks/writ-instructions-loaded.sh"
-SETTINGS_PATH = str(Path(__file__).resolve().parent.parent / "templates/settings.json")
+SETTINGS_PATH = str(Path(__file__).resolve().parent.parent / "templates/settings.fork.json")
 
 # Standard Writ rule ID format: [A-Z]+-[A-Z]+-\d{3} (e.g. ARCH-ORG-001, SEC-UNI-001)
 VALID_RULE_IDS = [

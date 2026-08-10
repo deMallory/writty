@@ -63,18 +63,18 @@ class TestDeregistered:
     def test_registered_in_settings_template(self) -> None:
         # Fork policy: see feat/upstream-resync migration (option A).
         # The fork's context-watcher chain deliberately keeps the Stop
-        # context-tracker registered via templates/settings.json.
-        template = SKILL_DIR / "templates" / "settings.json"
+        # context-tracker registered via templates/settings.fork.json.
+        template = SKILL_DIR / "templates" / "settings.fork.json"
         assert NAME in template.read_text(), (
-            "templates/settings.json must register writ-context-tracker (fork chain)"
+            "templates/settings.fork.json must register writ-context-tracker (fork chain)"
         )
 
 
 class TestStopEventIntact:
     def test_stop_still_routes_friction_logger(self) -> None:
         # Fork policy: see feat/upstream-resync migration (option A).
-        # friction-logger registers via templates/settings.json in this fork.
-        data = json.loads((SKILL_DIR / "templates" / "settings.json").read_text())
+        # friction-logger registers via templates/settings.fork.json in this fork.
+        data = json.loads((SKILL_DIR / "templates" / "settings.fork.json").read_text())
         section = data.get("hooks", {})
         assert "Stop" in section, "Stop event must still exist"
         stop_cmds = " ".join(

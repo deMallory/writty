@@ -104,10 +104,10 @@ class TestNotebookEditGateDecision:
 class TestMatchersWired:
     def test_notebookedit_in_pre_and_post_write_matchers(self):
         # Fork policy: see feat/upstream-resync migration (option A).
-        # Write-gating hooks register via templates/settings.json (fork's
+        # Write-gating hooks register via templates/settings.fork.json (fork's
         # authoritative .claude/hooks set) under Write|Edit matchers; the fork
         # does not extend those matchers to NotebookEdit.
-        settings_json = os.path.join(SKILL_ROOT, "templates", "settings.json")
+        settings_json = os.path.join(SKILL_ROOT, "templates", "settings.fork.json")
         data = {}
         for path in (HOOKS_JSON, settings_json):
             for ev, groups in json.loads(open(path).read()).get("hooks", {}).items():

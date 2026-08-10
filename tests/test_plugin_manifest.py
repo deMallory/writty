@@ -257,8 +257,9 @@ class TestRealInstallLoadsEverything:
         assert add.returncode == 0, (
             f"marketplace add failed, so no user can install Writ: {add.stdout}{add.stderr}"
         )
+        # Fork policy: the marketplace and plugin entry are named `writty`.
         inst = subprocess.run(
-            ["claude", "plugin", "install", "writ@writ"],
+            ["claude", "plugin", "install", "writty@writty"],
             capture_output=True, text=True, env=env,
         )
         assert inst.returncode == 0, f"install failed: {inst.stdout}{inst.stderr}"
@@ -268,7 +269,7 @@ class TestRealInstallLoadsEverything:
             capture_output=True, text=True, env=env,
         )
         details = subprocess.run(
-            ["claude", "plugin", "details", "writ"],
+            ["claude", "plugin", "details", "writty@writty"],
             capture_output=True, text=True, env=env,
         )
         return {
@@ -284,12 +285,16 @@ class TestRealInstallLoadsEverything:
             errors.extend(entry.get("errors") or [])
         assert errors == [], f"a marketplace install reported load errors: {errors}"
 
-    def test_all_twelve_hooks_load(self, installed):
-        """Zero hooks means no gate, no injection, no enforcement."""
+    def test_all_nine_hook_events_load(self, installed):
+        """Zero hooks means no gate, no injection, no enforcement.
+
+        Fork policy: see feat/upstream-resync migration (option A). The pruned
+        plugin surface registers 9 events (the CLI counts events, not commands).
+        """
         m = re.search(r"Hooks \((\d+)\)", installed["details"])
         assert m, f"no Hooks count in plugin details:\n{installed['details']}"
-        assert int(m.group(1)) == 12, (
-            f"expected 12 hooks on a marketplace install, got {m.group(1)}"
+        assert int(m.group(1)) == 9, (
+            f"expected 9 hook events on a marketplace install, got {m.group(1)}"
         )
 
     def test_the_documented_install_path_command_prints_the_install_dir(self, installed):
@@ -297,7 +302,7 @@ class TestRealInstallLoadsEverything:
         cmd = (
             "claude plugin list --json | python3 -c "
             "\"import json,sys; print(next(p['installPath'] for p in json.load(sys.stdin) "
-            "if p['id'].split('@')[0] == 'writ'))\""
+            "if p['id'].split('@')[0] == 'writty'))\""
         )
         r = subprocess.run(
             ["bash", "-c", cmd], capture_output=True, text=True, env=installed["env"]

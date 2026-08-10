@@ -59,7 +59,7 @@ EXPECTED_FILE_COUNTS = {
     "ENF": 11,  # Rule companions (+1 INC-3: ENF-META-CONCISE-001; +1 INC-11: ENF-PROC-PRIORITY-001; +1 Phase4-A3: ENF-COMMS-OUTPUT-001)
     "META": 2,  # Meta-authoring nodes
     "TEC": 11,  # Techniques (+2 INC-3: KEYWORDS, PERSUASION; +1 INC-7: RED-VERIFY; +1 INC-8: FILE-STRUCTURE; +2 INC-12: VERIFY-EVIDENCE-MAP, PARALLEL-PROMPT)
-    "CAT": 22,  # Category nodes (Phase 0 Wave B: 22 CAT-*.md membership-target nodes)
+    "CAT": 23,  # Category nodes (Phase 0 Wave B: 22 CAT-*.md membership-target nodes; +1 fork: CAT-COMM-EDIT-001, editorial corpus category)
 }
 
 

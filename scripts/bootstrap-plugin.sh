@@ -48,7 +48,12 @@ readonly MIN_PYTHON_MINOR=11
 if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
     WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"
 else
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    # Pure-bash dirname: --preflight promises to work with only bash/python3/docker/git
+    # on PATH, and under bash >= 5.2 a missing dirname turns into a fatal `cd ""`.
+    case "$0" in
+        */*) SCRIPT_DIR="$(cd "${0%/*}" && pwd)" ;;
+        *)   SCRIPT_DIR="$(pwd)" ;;
+    esac
     WRIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
 

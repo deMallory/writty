@@ -45,10 +45,14 @@ PLUGIN_MANIFEST = SKILL / ".claude-plugin" / "plugin.json"
 BOOTSTRAP = SKILL / "scripts" / "bootstrap.sh"
 
 ROLES = [
+    # Fork policy: see feat/upstream-resync migration (option A). The fork adds
+    # two roles (code-quality/spec reviewers) on top of upstream's five.
+    "writ-code-quality-reviewer",
     "writ-explorer",
     "writ-implementer",
     "writ-planner",
     "writ-reviewer",
+    "writ-spec-reviewer",
     "writ-test-writer",
 ]
 
@@ -79,7 +83,7 @@ class TestLayout:
     def test_each_role_file_is_present(self, role):
         assert (AGENTS_DIR / f"{role}.md").is_file()
 
-    def test_exactly_the_five_roles_are_present(self):
+    def test_exactly_the_seven_roles_are_present(self):
         found = sorted(p.stem for p in AGENTS_DIR.glob("*.md"))
         assert found == sorted(ROLES), f"unexpected role set: {found}"
 
@@ -170,7 +174,7 @@ class TestGraphRoundTripFollowsTheMove:
             f"export writes {mod.AGENTS_DIR}, expected {AGENTS_DIR}"
         )
 
-    def test_ingest_finds_all_five_role_files_there(self):
+    def test_ingest_finds_all_seven_role_files_there(self):
         mod = _load(SKILL / "scripts" / "ingest_subagent_roles.py")
         assert sorted(p.stem for p in mod.AGENTS_DIR.glob("*.md")) == sorted(ROLES)
 
@@ -263,31 +267,34 @@ class TestRealInstallLoadsTheAgents:
         add = subprocess.run(["claude", "plugin", "marketplace", "add", str(mkt)],
                              capture_output=True, text=True, env=env)
         assert add.returncode == 0, f"{add.stdout}{add.stderr}"
-        inst = subprocess.run(["claude", "plugin", "install", "writ@writ"],
+        # Fork policy: the marketplace and plugin entry are named `writty`.
+        inst = subprocess.run(["claude", "plugin", "install", "writty@writty"],
                               capture_output=True, text=True, env=env)
         assert inst.returncode == 0, f"{inst.stdout}{inst.stderr}"
-        details = subprocess.run(["claude", "plugin", "details", "writ"],
+        details = subprocess.run(["claude", "plugin", "details", "writty@writty"],
                                  capture_output=True, text=True, env=env)
         listing = subprocess.run(["claude", "plugin", "list", "--json"],
                                  capture_output=True, text=True, env=env)
         return {"details": details.stdout, "listing": json.loads(listing.stdout)}
 
-    def test_all_five_agents_load(self, installed):
+    def test_all_seven_agents_load(self, installed):
         import re as _re
         m = _re.search(r"Agents \((\d+)\)", installed["details"])
         assert m, f"no Agents count in inventory:\n{installed['details']}"
-        assert int(m.group(1)) == 5, (
-            f"expected 5 agents, got {m.group(1)}\n{installed['details']}"
+        assert int(m.group(1)) == 7, (
+            f"expected 7 agents, got {m.group(1)}\n{installed['details']}"
         )
 
-    def test_the_five_expected_names_are_listed(self, installed):
+    def test_the_seven_expected_names_are_listed(self, installed):
         for role in ROLES:
             assert role in installed["details"], f"{role} missing from the inventory"
 
     def test_the_hooks_fix_from_the_previous_cycle_is_intact(self, installed):
+        # Fork policy: see feat/upstream-resync migration (option A). The pruned
+        # plugin surface registers 9 events (the CLI counts events, not commands).
         import re as _re
         m = _re.search(r"Hooks \((\d+)\)", installed["details"])
-        assert m and int(m.group(1)) == 12, "the agents move broke hook loading"
+        assert m and int(m.group(1)) == 9, "the agents move broke hook loading"
 
     def test_the_install_reports_no_errors(self, installed):
         errors = []
