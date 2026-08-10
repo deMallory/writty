@@ -33,23 +33,36 @@ tests/test_import_markdown_unified.py).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
-import tomllib
 from pathlib import Path
 
 import pytest
+
+from writ.graph.db._common import RECORD_LABELS
+
+# Corpus wipes spare runtime records (Memory/Decision/FileChange/Commit): they have
+# no dump home, so a corpus rebuild must never take them. Mirrors clear_all's default.
+_PRESERVE = ", ".join(f"'{_l}'" for _l in sorted(RECORD_LABELS))
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 from tests._writ_cmd import WRIT_CMD_PREFIX as _WRIT_CMD_PREFIX
 
-with open(REPO_ROOT / "writ.toml", "rb") as _f:
-    _writ_config = tomllib.load(_f)
-NEO4J_PASSWORD = _writ_config["neo4j"]["password"]
-NEO4J_USER = _writ_config["neo4j"]["user"]
+# Credentials via the central loader: env-independent defaults keep CI (no
+# writ.toml checked out) collecting and running; a local writ.toml overrides.
+from writ.config import get_neo4j_password, get_neo4j_user
+
+from tests._bible_guard import requires_bible
+
+pytestmark = requires_bible
+
+
+NEO4J_PASSWORD = get_neo4j_password()
+NEO4J_USER = get_neo4j_user()
 
 # Minimal artifact for the "artifact present" materialization test.
 # Uses two well-known methodology rule_ids that survive every clean ingest.
@@ -76,11 +89,21 @@ _FIXTURE_ARTIFACT: dict = {
 # helpers (shape mirrors tests/test_import_markdown_unified.py)
 # ---------------------------------------------------------------------------
 
+
+# THE CONTAINER NAME IS A SEAM, not a constant. These two files reach Neo4j through
+# `docker exec <container> cypher-shell` rather than through Neo4jConnection, so they are
+# the one place WRIT_NEO4J_URI does NOT redirect: pointing the rest of the suite at a
+# disposable instance would silently leave these hitting production. Reading the name from
+# the environment puts them back under the same switch as everything else.
+def _neo4j_container() -> str:
+    return os.environ.get("WRIT_TEST_NEO4J_CONTAINER", "writ-neo4j")
+
+
 def _cypher(query: str) -> int:
     """Run a read-only Cypher query via docker exec; return the integer result."""
     result = subprocess.run(
         [
-            "docker", "exec", "writ-neo4j", "cypher-shell",
+            "docker", "exec", _neo4j_container(), "cypher-shell",
             "-u", NEO4J_USER, "-p", NEO4J_PASSWORD,
             "--format", "plain",
             query,
@@ -115,10 +138,11 @@ def _clear_graph() -> None:
     """Wipe the graph so each test starts clean."""
     result = subprocess.run(
         [
-            "docker", "exec", "writ-neo4j", "cypher-shell",
+            "docker", "exec", _neo4j_container(), "cypher-shell",
             "-u", NEO4J_USER, "-p", NEO4J_PASSWORD,
             "--format", "plain",
-            "MATCH (n) DETACH DELETE n",
+            f"MATCH (n) WHERE NOT any(l IN labels(n) WHERE l IN [{_PRESERVE}]) "
+            "DETACH DELETE n",
         ],
         capture_output=True,
         text=True,
@@ -160,10 +184,11 @@ class TestImportMarkdownCompressFlag:
         try:
             subprocess.run(
                 [
-                    "docker", "exec", "writ-neo4j", "cypher-shell",
+                    "docker", "exec", _neo4j_container(), "cypher-shell",
                     "-u", NEO4J_USER, "-p", NEO4J_PASSWORD,
                     "--format", "plain",
-                    "MATCH (n) DETACH DELETE n",
+                    f"MATCH (n) WHERE NOT any(l IN labels(n) WHERE l IN [{_PRESERVE}]) "
+            "DETACH DELETE n",
                 ],
                 capture_output=True,
                 text=True,

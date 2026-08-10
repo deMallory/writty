@@ -5,26 +5,26 @@
     "name": "deMallory",
     "url": "https://github.com/deMallory"
   },
-  "description": "writty: hybrid-RAG rule retrieval plus session-aware workflow enforcement for Claude Code",
   "metadata": {
-    "version": "1.5.0"
+    "description": "Single-plugin marketplace for writty (fork of infinri/Writ). The repository root is the plugin, so `source` is './'.",
+    "version": "1.7.0"
   },
   "plugins": [
     {
       "name": "writty",
       "source": "./",
-      "description": "Hybrid RAG rule retrieval (5-stage pipeline over Neo4j) plus mode-based workflow gates (30 hook scripts + session state machine)",
-      "version": "1.5.0",
-      "category": "tooling",
-      "tags": ["rag", "rules", "enforcement", "hooks", "neo4j", "workflow"],
-      "strict": true,
+      "version": "1.7.0",
+      "displayName": "writty",
+      "description": "Hybrid RAG rule retrieval + session-aware workflow enforcement. Injects relevant coding rules via a 5-stage pipeline (BM25 + vector + graph traversal + reciprocal-rank fusion) and enforces mode-based workflow gates (plan -> tests -> implementation).",
+      "category": "workflow",
+      "keywords": ["claude-code", "rag", "rules", "enforcement", "neo4j", "fastapi", "hooks", "workflow"],
+      "homepage": "https://github.com/deMallory/writty",
+      "repository": "https://github.com/deMallory/writty",
+      "license": "MIT",
       "author": {
         "name": "Lucio Saldivar & David de Mallory",
         "url": "https://github.com/infinri"
-      },
-      "homepage": "https://github.com/deMallory/writty",
-      "repository": "https://github.com/deMallory/writty",
-      "license": "MIT"
+      }
     }
   ]
 }

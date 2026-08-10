@@ -7,12 +7,45 @@ at each corpus size. Results logged to SCALE_BENCHMARK_RESULTS.md.
 
 from __future__ import annotations
 
+# THE REFUSAL RUNS BEFORE ANY HEAVY IMPORT, and that ordering is the whole point.
+# This script wipes the live graph, so a bare invocation must refuse and say how to
+# proceed. The check used to sit at the bottom of the file, after `numpy`,
+# `sentence_transformers` and `writ.config` were imported at module scope. On any
+# machine without the optional embedding extra installed, the script therefore died
+# with ModuleNotFoundError before reaching the guard: no refusal, no mention of
+# --run, just a traceback. The safety property survived only because an import that
+# crashes cannot wipe anything either, which is luck rather than design, and luck is
+# not what a destructive-operation guard should rest on. CI caught it on 2026-08-08,
+# where `.[dev]` does not pull the fallback extra.
+#
+# Parsed with stdlib only, so the refusal works on an interpreter that can import
+# nothing else this file needs.
+if __name__ == "__main__":
+    import argparse as _argparse
+
+    _parser = _argparse.ArgumentParser(
+        description=(
+            "Writ scale benchmark. DESTRUCTIVE: snapshots, then repeatedly wipes and "
+            "re-ingests the LIVE Neo4j graph at synthetic scales, restoring on exit. "
+            "A run killed mid-flight leaves the synthetic corpus in place; recover "
+            "with: writ import-cypher var/benchmark-graph-snapshot.cypher"
+        ),
+    )
+    _parser.add_argument(
+        "--run", action="store_true",
+        help="Actually run the destructive benchmark (required).",
+    )
+    if not _parser.parse_args().run:
+        _parser.error("this benchmark wipes the live graph; pass --run to proceed")
+
 import asyncio
 import gc
 import json
 import os
+import platform
 import resource
 import statistics
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -346,6 +379,62 @@ async def benchmark_at_scale(
 # Report generation
 # ---------------------------------------------------------------------------
 
+def _measurement_environment() -> list[str]:
+    """Collect host + Neo4j-container facts so readers know what machine produced
+    these numbers. Every probe fails soft to 'unknown': the report must still be
+    written on hosts without docker access."""
+    def sh(cmd: list[str]) -> str:
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            return out.stdout.strip() if out.returncode == 0 else ""
+        except OSError:
+            return ""
+
+    cpu, mem_gib = "unknown CPU", "unknown"
+    try:
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name"):
+                cpu = line.split(":", 1)[1].strip()
+                break
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemTotal"):
+                mem_gib = f"{int(line.split()[1]) / 1024 / 1024:.0f} GiB"
+                break
+    except OSError:
+        pass
+
+    raw_limit = sh(["docker", "inspect", "--format", "{{.HostConfig.Memory}}", "writ-neo4j"])
+    if raw_limit == "0":
+        limit = "no memory limit (whole host available)"
+    elif raw_limit:
+        limit = f"{int(raw_limit) / 1024 ** 3:.1f} GiB memory limit"
+    else:
+        limit = "unknown memory limit"
+    pagecache = sh([
+        "docker", "exec", "writ-neo4j",
+        "grep", "-E", "^server.memory.pagecache.size", "/var/lib/neo4j/conf/neo4j.conf",
+    ]).rpartition("=")[2] or "unknown"
+    usage = sh([
+        "docker", "stats", "--no-stream", "--format", "{{.MemUsage}}", "writ-neo4j",
+    ]).partition("/")[0].strip() or "unknown"
+
+    return [
+        "## Measurement environment",
+        "",
+        "All numbers below come from this machine; expect different absolute values elsewhere.",
+        "Retrieval latency is CPU-bound (warm in-process indexes), and the Neo4j container",
+        "here runs without a memory cap, so nothing below reflects a memory-constrained setup.",
+        "",
+        f"- Host: {cpu}, {os.cpu_count()} threads, {mem_gib} RAM",
+        f"- Neo4j container `writ-neo4j`: {limit}; pagecache {pagecache}; "
+        f"observed usage {usage} at report time",
+        f"- Python {platform.python_version()}",
+        "",
+        "---",
+        "",
+    ]
+
+
 def write_report(results: dict) -> None:
     """Write results to Markdown file."""
     lines = [
@@ -356,6 +445,7 @@ def write_report(results: dict) -> None:
         "",
         "---",
         "",
+        *_measurement_environment(),
         "## Summary",
         "",
         "| Metric | " + " | ".join(f"{s:,}" for s in sorted(results.keys())) + " |",
@@ -424,7 +514,7 @@ def write_report(results: dict) -> None:
         "Key questions answered by this benchmark:",
         "",
         "1. **Does latency stay under 10ms at scale?** Check E2E p95 column.",
-        "2. **Does context reduction improve at scale?** At 80 rules ~4x; at 10K ~700x.",
+        "2. **Does context reduction improve at scale?** Check the context reduction row.",
         "3. **Does memory stay under 2GB?** Check RSS column.",
         "4. **Does cold start stay under 3s?** Check cold start column.",
         "5. **Does compression improve at scale?** More rules = more clusters = higher compression.",
@@ -470,18 +560,20 @@ async def main() -> None:
     db = Neo4jConnection(get_neo4j_uri(), get_neo4j_user(), get_neo4j_password())
     results: dict = {}
 
-    # Data safety: refuse to wipe if unsaved graph-first nodes exist (no markdown home).
-    from _corpus_safety import assert_safe_to_wipe, restore_full_corpus
+    # Data safety: refuse to wipe if unsaved graph-first nodes exist (no markdown home),
+    # then snapshot the exact live graph so the restore is byte-equivalent, not a
+    # from-source rebuild (which drops Abstractions and inherits flag drift).
+    from _corpus_safety import assert_safe_to_wipe, restore_full_corpus, snapshot_graph
     await assert_safe_to_wipe(db)
+    snapshot = await snapshot_graph(db)
+    print(f"Live graph snapshotted to {snapshot}")
 
     try:
         for scale in SCALE_LEVELS:
             await benchmark_at_scale(scale, db, model, real_rules, results)
     finally:
-        # Restore the FULL bible corpus (Rule + methodology), not Rule-only -- a benchmark
-        # run must never leave the live graph empty or missing the methodology graph.
-        print("\nRestoring the full bible/ corpus (Rule + methodology)...")
-        await restore_full_corpus(db)
+        print("\nRestoring the pre-benchmark graph snapshot...")
+        await restore_full_corpus(db, snapshot)
         print(f"  Restored {await db.count_rules()} rules + the methodology graph")
         await db.close()
 
@@ -500,4 +592,6 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    # Arguments were already parsed and the --run refusal already enforced at the top
+    # of this file, before the heavy imports. Reaching here means --run was given.
     asyncio.run(main())

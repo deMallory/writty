@@ -23,6 +23,7 @@ HOOKS_JSON_PATH = REPO_ROOT / "hooks" / "hooks.json"
 # the remainder register via templates/settings.json.
 EXPECTED_EVENT_SCRIPTS: dict[str, list[str]] = {
     "SessionStart": ["writ-blackbox-capture.sh", "session-start-bootstrap.sh"],
+    "UserPromptSubmit": ["writ-manual-test-grant.sh"],
     "SubagentStop": ["writ-blackbox-capture.sh"],
     "Stop": ["writ-comms-output-gate.sh"],
     "PostToolUseFailure": ["writ-blackbox-capture.sh"],
@@ -33,8 +34,13 @@ EXPECTED_EVENT_SCRIPTS: dict[str, list[str]] = {
         "writ-debug-code-gate.sh",
         "writ-dispatch-discipline.sh",
         "writ-bash-write-gate.sh",
+        "writ-state-write-gate.sh",
     ],
-    "PostToolUse": ["writ-web-capture.sh", "writ-bible-authoring-push.sh"],
+    "PostToolUse": [
+        "writ-web-capture.sh",
+        "writ-bible-authoring-push.sh",
+        "writ-memory-capture.sh",
+    ],
 }
 
 
@@ -109,13 +115,18 @@ class TestHooksJsonStructure:
         #3 removed the dead PostToolUseFailure track-failed-writes gate (40 -> 38);
         #6 added the PreToolUse Bash writ-bash-write-gate (38 -> 39); the token-saving
         read-junk gate added the PreToolUse Read writ-read-junk-gate (39 -> 40); the
-        comms-output gate added the Stop writ-comms-output-gate (40 -> 41)."""
+        comms-output gate added the Stop writ-comms-output-gate (40 -> 41); the
+        manual-testing grant added its UserPromptSubmit minter and the PreToolUse
+        Write|Edit state-write gate (41 -> 43); the auto-memory mirror added the
+        PostToolUse Write|Edit writ-memory-capture (43 -> 44)."""
         registrations = _collect_all_registrations(hooks_data)
         # Fork policy: see feat/upstream-resync migration (option A).
-        # hooks.json carries only the 13 hooks with no .claude/hooks/ counterpart.
-        assert len(registrations) == 13, (
+        # hooks.json carries only the hooks with no .claude/hooks/ counterpart:
+        # 13 at the resync, plus the 1.7.0 manual-test-grant, state-write-gate
+        # and memory-capture registrations (13 -> 16).
+        assert len(registrations) == 16, (
             f"hooks.json registration count drifted; found {len(registrations)}, "
-            f"expected 13. Update this and HANDBOOK if the change is intentional."
+            f"expected 16. Update this and HANDBOOK if the change is intentional."
         )
 
     def test_hooks_json_event_mapping(self, hooks_data: dict) -> None:

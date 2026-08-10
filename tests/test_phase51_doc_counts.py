@@ -9,8 +9,8 @@ Four source-derived counts:
   node types  -- len(NODE_ID_FIELDS)  == 13
   edge types  -- len(ALLOWED_EDGE_TYPES) == 24
   modes       -- len(MODE_CONFIG)     == 5
-  hooks       -- json.load hooks/hooks.json, count "command" leaves == 41
-  endpoints   -- regex @app/@router route decorators across writ/server/**.py == 45
+  hooks       -- json.load hooks/hooks.json, count "command" leaves == 44
+  endpoints   -- regex @app/@router route decorators across writ/server/**.py == 46
 """
 from __future__ import annotations
 
@@ -111,11 +111,14 @@ class TestDocCounts:
     # --- hooks --------------------------------------------------------------
 
     def test_hooks_json_entry_count(self) -> None:
+        # 44 = the 41 long-standing registrations + writ-manual-test-grant.sh +
+        # writ-state-write-gate.sh + writ-memory-capture.sh (the auto-memory mirror).
         source_count = _count_hooks_json_entries()
         # Fork policy: see feat/upstream-resync migration (option A).
-        # hooks.json is pruned to the 13 hooks with no .claude/hooks/ counterpart.
-        assert source_count == 13, (
-            f"hooks/hooks.json has {source_count} 'command' entries; expected 13. "
+        # hooks.json is pruned to the hooks with no .claude/hooks/ counterpart:
+        # 13 at the resync + the three 1.7.0 additions above (13 -> 16).
+        assert source_count == 16, (
+            f"hooks/hooks.json has {source_count} 'command' entries; expected 16. "
             "Bump this (and HANDBOOK 'registers **N hook scripts**') when adding or "
             "removing a registration."
         )
@@ -126,9 +129,14 @@ class TestDocCounts:
         # source_count is derived from writ_server_source(), which scans
         # writ/server/**/*.py and matches both @app.<verb> and @router.<verb>
         # decorators. Bump this when adding/removing a route.
+        # 48 = 46 + the GET and POST halves of /session/{sid}/review-findings
+        # (the reviewer-verdict record behind the commit gate, 2026-08-06).
+        # 49 = 48 + GET /session/{sid}/prompt-state (2026-08-08): should_skip, known,
+        # escalation and the full cache from ONE read, replacing three round trips the
+        # RAG hook made on every prompt.
         source_count = _count_server_endpoints()
         # Fork policy: see feat/upstream-resync migration (option A).
-        # The restored POST /session/{id}/detect-compaction route adds one (45 -> 46).
-        assert source_count == 46, (
-            f"writ.server has {source_count} @app/@router route decorators; expected 46"
+        # The restored POST /session/{id}/detect-compaction route adds one (49 -> 50).
+        assert source_count == 50, (
+            f"writ.server has {source_count} @app/@router route decorators; expected 50"
         )

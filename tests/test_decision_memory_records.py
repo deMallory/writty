@@ -33,6 +33,8 @@ import pytest_asyncio
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import ALLOWED_EDGE_TYPES, Neo4jConnection
 from writ.graph.schema import (
+
+
     GRAPH_FIRST_PROVENANCE,
     NODE_ID_FIELDS,
     NODE_TYPE_MODELS,
@@ -40,6 +42,11 @@ from writ.graph.schema import (
     VALID_PROVENANCE,
     NodeType,
 )
+
+from tests._bible_guard import requires_bible
+
+pytestmark = requires_bible
+
 
 BIBLE = Path(__file__).resolve().parent.parent / "bible"
 
@@ -83,7 +90,7 @@ def _commit_factory(**overrides) -> dict:
         "commit_hash": "abc123def456abc123def456abc123def456abc1",
         "project": "test-dm",
         "subject": "feat(dm): add record substrate",
-        "author": "Lucio",
+        "author": "Test Author",
         "branch": "main",
         "ts": "2026-06-25T00:00:00Z",
     }

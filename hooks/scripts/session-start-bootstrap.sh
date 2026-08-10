@@ -35,18 +35,29 @@ NEO4J_HOST="${WRIT_NEO4J_HOST:-localhost}"
 NEO4J_PORT="${WRIT_NEO4J_PORT:-7687}"
 
 # 2. Probe venv. If missing, instruct user and exit 0.
+#
+# The bootstrap command is printed on its own line with NO "[Writ] " prefix and with
+# ${CLAUDE_PLUGIN_ROOT} already expanded, so it is a clean copy-paste. That single line
+# IS the documented install step: it is why the docs no longer carry a WRIT_DIR
+# discovery incantation, and why nothing else has to be run after it.
 if [ ! -x "${VENV_DIR}/bin/python3" ]; then
   cat >&2 <<MSG
 [Writ] Plugin venv not bootstrapped at ${VENV_DIR}.
-[Writ] Run once:
-[Writ]   bash ${WRIT_DIR}/scripts/bootstrap-plugin.sh
+[Writ] Run this one command, then restart Claude Code:
+
+bash ${WRIT_DIR}/scripts/bootstrap-plugin.sh
+
+[Writ] It creates the venv, brings up Neo4j, seeds the rule corpus, starts the daemon,
+[Writ] patches ~/.claude/settings.json + CLAUDE.md, and installs the slash commands.
 [Writ] Writ hooks will degrade gracefully until bootstrap completes.
 MSG
   exit 0
 fi
 
 # 3. Probe Neo4j bolt port 7687. If unreachable, instruct user and exit 0.
-if ! (exec 3<>/dev/tcp/"${NEO4J_HOST}"/"${NEO4J_PORT}") 2>/dev/null; then
+# timeout-wrapped: a bare /dev/tcp connect to a black-holed host blocks for the
+# kernel SYN timeout (minutes) and would stall every SessionStart with it.
+if ! timeout 2 bash -c "exec 3<>/dev/tcp/${NEO4J_HOST}/${NEO4J_PORT}" 2>/dev/null; then
   cat >&2 <<MSG
 [Writ] Neo4j not reachable at ${NEO4J_HOST}:${NEO4J_PORT}.
 [Writ] Start it with:
