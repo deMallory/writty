@@ -74,14 +74,21 @@ class TestGetCategoryRoutesByNode:
         'semantic'. The 237==237 zero-delta only holds because no methodology
         category is semantic-routed today. Pin it so a future re-categorization
         that would widen default output fails here loudly.
+
+        Fork policy (mirrors d299b18): the editorial and animation corpora are
+        DELIBERATELY semantic-routed -- their Techniques/Playbooks/AntiPatterns
+        exist to surface in default retrieval. Those namespaces are exempt; the
+        pin still guards every other methodology node.
         """
         all_candidates, _rule_metadata = await _load_candidates(db)
         routes_map = await db.get_category_routes_by_node()
+        FORK_SEMANTIC_NAMESPACES = ("-ANIM-", "-EDIT-")
         offenders = [
             c["rule_id"]
             for c in all_candidates
             if c.get("node_type", "Rule") != "Rule"
             and "semantic" in (routes_map.get(c["rule_id"]) or [])
+            and not any(ns in c["rule_id"] for ns in FORK_SEMANTIC_NAMESPACES)
         ]
         assert not offenders, (
             f"{len(offenders)} methodology node(s) are semantic-routed and would "
