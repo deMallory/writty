@@ -436,8 +436,8 @@ class TestSettingsJsonCompactionHooks:
 
     def _load_settings(self) -> dict[str, Any]:
         # Fork policy: see feat/upstream-resync migration (option A).
-        # Pre/PostCompact register via templates/settings.json, not hooks.json.
-        with open(HOOKS_JSON.parent.parent / "templates" / "settings.json") as f:
+        # Pre/PostCompact register via templates/settings.fork.json, not hooks.json.
+        with open(HOOKS_JSON.parent.parent / "templates" / "settings.fork.json") as f:
             return json.load(f)
 
     def _extract_commands(self, entries: list) -> list[str]:

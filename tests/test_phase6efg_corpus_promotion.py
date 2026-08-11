@@ -27,6 +27,11 @@ from pathlib import Path
 
 import pytest
 
+from tests._bible_guard import requires_bible
+
+pytestmark = requires_bible
+
+
 WRIT_ROOT = Path(__file__).resolve().parent.parent
 BIBLE_METHODOLOGY = WRIT_ROOT / "bible" / "methodology"
 OLD_FIXTURE_PATH = WRIT_ROOT / "tests" / "fixtures" / "synthetic_methodology"
@@ -43,8 +48,8 @@ OLD_FIXTURE_PATH = WRIT_ROOT / "tests" / "fixtures" / "synthetic_methodology"
 # the corresponding count here so the snapshot stays honest.
 EXPECTED_FILE_COUNTS = {
     "PBK": 15,  # Playbooks (+3 debug-mode Increment 3: PBK-PROC-DIAGNOSE-*; +1 INV-3: PBK-PROC-RESEARCH-001; +1 INV-6a: PBK-PROC-AUDIT-FANOUT-001)
-    "SKL": 15,  # Skills (+1 INC-5: SKL-PROC-INVESTIGATE-001; +1 INC-7: SKL-PROC-TDD-DESIGN-FEEDBACK-001; +1 INC-11: SKL-PROC-METHODOLOGY-CHECK-001; +1 Phase3: SKL-PROC-DISPATCH-001; +1 Phase0: SKL-PROC-DEBUG-001) -- INC-9 enriched existing SKL-PROC-REVRECV-001, no new node
-    "ANT": 13,  # AntiPatterns (+1 INC-2: ANT-PROC-FINISH-001; +1 INC-7: ANT-PROC-TDD-006; +1 INC-10: ANT-PROC-WORKTREE-001)
+    "SKL": 16,  # Skills (+1 INC-5: SKL-PROC-INVESTIGATE-001; +1 INC-7: SKL-PROC-TDD-DESIGN-FEEDBACK-001; +1 INC-11: SKL-PROC-METHODOLOGY-CHECK-001; +1 Phase3: SKL-PROC-DISPATCH-001; +1 Phase0: SKL-PROC-DEBUG-001; +1 2026-08-05: SKL-PROC-WRIT-DIAGNOSIS-001, the first ai-provisional node) -- INC-9 enriched existing SKL-PROC-REVRECV-001, no new node
+    "ANT": 14,  # AntiPatterns (+1 INC-2: ANT-PROC-FINISH-001; +1 INC-7: ANT-PROC-TDD-006; +1 INC-10: ANT-PROC-WORKTREE-001; +1 2026-08-08: ANT-PROC-TDD-007, the absence claim whose search never reached the code)
     "ROL": 5,   # SubagentRoles (explorer, planner, test-writer, implementer, reviewer) -- spec-reviewer + code-quality-reviewer merged into ROL-REVIEWER-001
     "FRB": 2,   # ForbiddenResponses
     "PHA": 20,  # Phases (+11 INC-4: PHA-WORK/ORCH/FANOUT)
@@ -54,7 +59,7 @@ EXPECTED_FILE_COUNTS = {
     "ENF": 11,  # Rule companions (+1 INC-3: ENF-META-CONCISE-001; +1 INC-11: ENF-PROC-PRIORITY-001; +1 Phase4-A3: ENF-COMMS-OUTPUT-001)
     "META": 2,  # Meta-authoring nodes
     "TEC": 11,  # Techniques (+2 INC-3: KEYWORDS, PERSUASION; +1 INC-7: RED-VERIFY; +1 INC-8: FILE-STRUCTURE; +2 INC-12: VERIFY-EVIDENCE-MAP, PARALLEL-PROMPT)
-    "CAT": 22,  # Category nodes (Phase 0 Wave B: 22 CAT-*.md membership-target nodes)
+    "CAT": 23,  # Category nodes (Phase 0 Wave B: 22 CAT-*.md membership-target nodes; +1 fork: CAT-COMM-EDIT-001, editorial corpus category)
 }
 
 

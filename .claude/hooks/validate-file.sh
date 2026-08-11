@@ -49,7 +49,7 @@ if [ $EXIT_CODE -ne 0 ]; then
   # emit-summary.py reads the log, surfaces the first error, references the
   # log path. Claude reads the full log only if the first error is ambiguous.
   SAFE_NAME=$(echo "$FILE" | tr '/' '_')
-  LOG_DIR="$SKILL_DIR/cache/$SESSION_ID"
+  LOG_DIR="${WRIT_CACHE_DIR:-$SKILL_DIR/cache}/$SESSION_ID"
   mkdir -p "$LOG_DIR"
   LOG_FILE="$LOG_DIR/${SAFE_NAME}.lint.json"
   echo "$OUTPUT" > "$LOG_FILE"

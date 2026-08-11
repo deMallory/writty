@@ -176,6 +176,13 @@ def _default_cache() -> dict:
     """
     return {
         "loaded_rule_ids": [],
+        # Rules injected by the always-on channel. Kept SEPARATE from loaded_rule_ids
+        # because that field doubles as the ranked query's exclude list: 5 of the 12
+        # always-on rules live in the ranked pool, so recording them there would stop
+        # them being retrieved by relevance. _validate_phase_a unions both when checking
+        # cited rule IDs, which is what stops the gate calling its own injected rules
+        # hallucinated.
+        "always_on_rule_ids": [],
         "loaded_rules": [],
         "remaining_budget": DEFAULT_SESSION_BUDGET,
         "context_percent": 0,
@@ -216,6 +223,11 @@ def _default_cache() -> dict:
         "phase_transitions": [],
         "quality_judgment_state": {},
         "quality_override_count": 0,
+        # Cycle 9: the latest writ-reviewer verdict, recorded at SubagentStop by
+        # infrastructure rather than reported by the orchestrator. The Bash gate
+        # reads it to confirm before a commit while CRITICAL findings stand.
+        # None (not {}) means no reviewer has run, which is NOT a blocking state.
+        "review_findings_state": None,
         "always_on_budget": DEFAULT_ALWAYS_ON_CAP,
         "always_on_tokens_used": 0,
         "queried_rules_by_file": {},

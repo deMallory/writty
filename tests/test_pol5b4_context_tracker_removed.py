@@ -63,18 +63,18 @@ class TestDeregistered:
     def test_registered_in_settings_template(self) -> None:
         # Fork policy: see feat/upstream-resync migration (option A).
         # The fork's context-watcher chain deliberately keeps the Stop
-        # context-tracker registered via templates/settings.json.
-        template = SKILL_DIR / "templates" / "settings.json"
+        # context-tracker registered via templates/settings.fork.json.
+        template = SKILL_DIR / "templates" / "settings.fork.json"
         assert NAME in template.read_text(), (
-            "templates/settings.json must register writ-context-tracker (fork chain)"
+            "templates/settings.fork.json must register writ-context-tracker (fork chain)"
         )
 
 
 class TestStopEventIntact:
     def test_stop_still_routes_friction_logger(self) -> None:
         # Fork policy: see feat/upstream-resync migration (option A).
-        # friction-logger registers via templates/settings.json in this fork.
-        data = json.loads((SKILL_DIR / "templates" / "settings.json").read_text())
+        # friction-logger registers via templates/settings.fork.json in this fork.
+        data = json.loads((SKILL_DIR / "templates" / "settings.fork.json").read_text())
         section = data.get("hooks", {})
         assert "Stop" in section, "Stop event must still exist"
         stop_cmds = " ".join(
@@ -91,10 +91,14 @@ class TestStopEventIntact:
         # dead PostToolUseFailure track-failed-writes), #6 (added PreToolUse Bash
         # writ-bash-write-gate), the token-saving read-junk gate (added PreToolUse
         # Read writ-read-junk-gate), and the comms-output gate (added Stop
-        # writ-comms-output-gate). Bump when adding/removing a registration; keep
-        # HANDBOOK 'registers **N hook scripts**' in sync.
+        # writ-comms-output-gate), the manual-testing grant (added its UserPromptSubmit
+        # minter and the PreToolUse Write|Edit state-write gate), and the auto-memory
+        # mirror (added PostToolUse Write|Edit writ-memory-capture). Bump when
+        # adding/removing a registration; keep HANDBOOK 'registers **N hook scripts**'
+        # in sync.
         data = json.loads(HOOKS_JSON.read_text())
         n = _registration_count(data)
         # Fork policy: see feat/upstream-resync migration (option A).
-        # hooks.json is pruned to the 13 hooks with no .claude/hooks/ counterpart.
-        assert n == 13, f"hooks.json registration count drifted; found {n}, expected 13"
+        # hooks.json is pruned to the hooks with no .claude/hooks/ counterpart:
+        # 13 at the resync + the three 1.7.0 additions (13 -> 16).
+        assert n == 16, f"hooks.json registration count drifted; found {n}, expected 16"

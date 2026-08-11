@@ -1,4 +1,4 @@
-.PHONY: test bench check check-venv validate
+.PHONY: test perf bench check check-venv validate
 
 # Pin the Python interpreter to the project venv. The system python3 on many
 # machines lacks onnxruntime (and other optional bench dependencies), which
@@ -19,6 +19,15 @@ check-venv:
 test: check-venv
 	$(PYTHON) -m pytest tests/ -x -q
 
+# The timing gates, alone. `make test` deselects them (addopts in pyproject) because
+# p95 inside the loaded suite measures the machine, not the hook: ~30ms of drift on
+# identical code. They still have to run somewhere, and that somewhere is here, on an
+# otherwise idle machine. `-p no:randomly` keeps the sample order fixed so a slow
+# first query cannot land in a different position between runs.
+perf: check-venv
+	$(PYTHON) -m pytest -m perf -o addopts= -p no:randomly -q \
+	  tests/test_hook_perf_floors.py tests/test_retrieval.py
+
 bench: check-venv
 	$(PYTHON) -m pytest benchmarks/bench_targets.py -x -q
 
@@ -27,3 +36,9 @@ validate: check-venv
 
 check: test bench validate
 	@echo "All checks passed."
+
+docs: check-venv
+	$(PYTHON) scripts/render-docs.py
+
+docs-check: check-venv
+	$(PYTHON) scripts/render-docs.py --check

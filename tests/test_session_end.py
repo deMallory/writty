@@ -193,6 +193,11 @@ class TestLogSessionMetricsRemoval:
         """settings.json Bash permission for log-session-metrics.sh must be removed."""
         home = os.path.expanduser("~")
         settings_path = os.path.join(home, ".claude", "settings.json")
+        if not os.path.exists(settings_path):
+            pytest.skip(
+                "asserts on the HOST's installed ~/.claude/settings.json; "
+                "absent on machines (CI) where Writ's global config was never patched"
+            )
         with open(settings_path) as f:
             settings = json.load(f)
         permissions = settings.get("permissions", {})
@@ -213,8 +218,8 @@ class TestSessionEndRegistration:
 
     def _load_settings(self) -> dict[str, Any]:
         # Fork policy: see feat/upstream-resync migration (option A).
-        # SessionEnd hooks register via templates/settings.json, not hooks.json.
-        with open(HOOKS_JSON.parent.parent / "templates" / "settings.json") as f:
+        # SessionEnd hooks register via templates/settings.fork.json, not hooks.json.
+        with open(HOOKS_JSON.parent.parent / "templates" / "settings.fork.json") as f:
             return json.load(f)
 
     def test_session_end_hook_registered_in_settings(self) -> None:

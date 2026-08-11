@@ -16,7 +16,7 @@ SESSION_ID=$(detect_session_id "$PARSED")
 [ -z "$SESSION_ID" ] && exit 0
 is_work_mode "$SESSION_ID" || exit 0
 
-MARKER="$WRIT_DIR/cache/$SESSION_ID/pending-tests.txt"
+MARKER="${WRIT_CACHE_DIR:-$WRIT_DIR/cache}/$SESSION_ID/pending-tests.txt"
 [ -f "$MARKER" ] || exit 0
 
 # Resolve every marker entry to a test file (or empty) via the helper.
@@ -36,7 +36,7 @@ if [ -z "$TEST_FILES" ]; then
     exit 0
 fi
 
-LOG_DIR="$WRIT_DIR/cache/$SESSION_ID"
+LOG_DIR="${WRIT_CACHE_DIR:-$WRIT_DIR/cache}/$SESSION_ID"
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/last-test-run.log"
 : > "$LOG"

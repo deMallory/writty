@@ -9,8 +9,21 @@
 # Usage:
 #   cd ~/.claude/skills/writ
 #   bash scripts/bootstrap.sh
+#   bash scripts/bootstrap.sh --preflight   # prerequisite checks only, no install
 
 set -euo pipefail
+
+# --preflight runs ONLY the tool-presence and Python-version checks and exits, so the
+# prerequisite contract is testable without a real install (Docker, pip, ONNX export).
+# It deliberately stops before the `docker info` probe: the question it answers is
+# "are the required tools here", not "is the Docker daemon running".
+PREFLIGHT=0
+for arg in "$@"; do
+    case "$arg" in
+        --preflight) PREFLIGHT=1 ;;
+        *) echo "Unknown argument: $arg (accepted: --preflight)" >&2; exit 1 ;;
+    esac
+done
 
 # ── Tunables (named constants per ARCH-CONST-001) ───────────────────────────
 readonly NEO4J_WAIT_SECONDS=60   # Max wait for Neo4j bolt port after `compose up`
@@ -19,7 +32,12 @@ readonly MIN_PYTHON_MAJOR=3
 readonly MIN_PYTHON_MINOR=11
 
 # ── Paths ───────────────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Pure-bash dirname: --preflight promises to work with only bash/python3/docker/git
+# on PATH, and under bash >= 5.2 a missing dirname turns into a fatal `cd ""`.
+case "$0" in
+    */*) SCRIPT_DIR="$(cd "${0%/*}" && pwd)" ;;
+    *)   SCRIPT_DIR="$(pwd)" ;;
+esac
 WRIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$WRIT_DIR/.venv"
 COMPOSE_FILE="$WRIT_DIR/docker-compose.yml"
@@ -58,11 +76,26 @@ missing=0
 require_tool python3 "Install Python 3.11+ (e.g., apt install python3 python3-venv / brew install python@3.11)." || missing=1
 require_tool docker  "Install Docker (https://docs.docker.com/get-docker/) and ensure Docker Desktop is running." || missing=1
 require_tool git     "Install git (apt install git / brew install git)." || missing=1
-require_tool envsubst "Install gettext (apt install gettext-base / brew install gettext)." || missing=1
 if [ $missing -ne 0 ]; then
     err "One or more prerequisites missing. See messages above."
     exit 1
 fi
+
+# jq and curl are OPTIONAL accelerators, never requirements: every jq read has a python3
+# fallback (parsed_field / parsed_bool) and every curl call has a urllib fallback
+# (writ_http_get / writ_http_post, bin/lib/writ_install.py http-*). The gettext
+# substitution step is gone entirely: both of its single-variable substitutions are
+# done in Python now.
+optional_tool() {
+    local tool="$1"
+    if command -v "$tool" >/dev/null 2>&1; then
+        ok "$tool (optional accelerator, present)"
+    else
+        warn "$tool not found: optional accelerator only, Writ falls back to Python stdlib"
+    fi
+}
+optional_tool jq
+optional_tool curl
 
 # Python version check
 PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
@@ -75,6 +108,11 @@ if [ "$PY_MAJOR" -lt "$MIN_PYTHON_MAJOR" ] \
     exit 1
 fi
 ok "python3 $PY_VER"
+
+if [ "$PREFLIGHT" = "1" ]; then
+    ok "preflight complete: prerequisites satisfied (no install performed)"
+    exit 0
+fi
 
 # ── 2. Docker daemon reachable ──────────────────────────────────────────────
 step "Checking Docker daemon"
@@ -124,6 +162,13 @@ fi
 step "Patching ~/.claude (permissions + statusLine + CLAUDE.md)"
 bash "$SCRIPT_DIR/patch-global-config.sh"
 
+# Slash commands are user-level (~/.claude/commands/); the repo's own .claude/commands is
+# only discovered when the session cwd IS the repo. Installing them here is what makes
+# /writ-approve work from any project after ONE bootstrap run -- this used to be an
+# undocumented-in-bootstrap extra step.
+step "Installing user-level slash commands"
+bash "$SCRIPT_DIR/install-user-commands.sh"
+
 # ── 6. Symlinks for rules + agents ──────────────────────────────────────────
 step "Linking rules and agent definitions into ~/.claude/"
 mkdir -p "$HOME/.claude/rules" "$HOME/.claude/agents"
@@ -143,7 +188,10 @@ link_all() {
 }
 
 link_all "$WRIT_DIR/rules" "$HOME/.claude/rules"
-link_all "$WRIT_DIR/.claude/agents" "$HOME/.claude/agents"
+# Role files moved to agents/ (the plugin root's documented location). Linking the old
+# .claude/agents path would recreate symlinks pointing at deleted files; link_all relinks
+# any target that is already a symlink, so re-running this repairs an upgraded install.
+link_all "$WRIT_DIR/agents" "$HOME/.claude/agents"
 ok "rules and agents linked"
 
 # ── 7. Start Neo4j via docker compose ──────────────────────────────────────
@@ -181,7 +229,13 @@ fi
 # ── 9. Start Writ daemon ───────────────────────────────────────────────────
 step "Starting Writ daemon"
 DAEMON_URL="http://localhost:8765/health"
-if curl -sf --connect-timeout 0.5 "$DAEMON_URL" >/dev/null 2>&1; then
+# Health probes go through the install module's stdlib http-get: curl is optional, and a
+# probe that is always false on a curl-less machine would report a healthy daemon as down.
+daemon_healthy() {
+    python3 "$WRIT_DIR/bin/lib/writ_install.py" http-get "$DAEMON_URL" --fail --timeout 1 \
+        >/dev/null 2>&1
+}
+if daemon_healthy; then
     ok "writ serve already running"
 else
     # Same resolver the hooks and ensure-server use, so a bootstrap-started daemon
@@ -194,7 +248,7 @@ else
     printf "   waiting for /health "
     waited=0
     while [ $waited -lt $DAEMON_WAIT_SECONDS ]; do
-        if curl -sf --connect-timeout 0.5 "$DAEMON_URL" >/dev/null 2>&1; then
+        if daemon_healthy; then
             printf "\n"
             ok "daemon ready (pid $DAEMON_PID, log $WRIT_LOG)"
             break
@@ -219,7 +273,7 @@ if ! printf '%s' "$PATH" | tr ':' '\n' | grep -qx "$HOME/.local/bin"; then
 fi
 
 # ── 10. Ready banner ───────────────────────────────────────────────────────
-RULE_COUNT=$(curl -sf "http://localhost:8765/stats" 2>/dev/null \
+RULE_COUNT=$(python3 "$WRIT_DIR/bin/lib/writ_install.py" http-get "http://localhost:8765/stats" --fail 2>/dev/null \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('rule_count','?'))" 2>/dev/null \
     || echo "?")
 
@@ -229,7 +283,7 @@ printf "${GREEN}${BOLD}═══════════════════
 printf "  Neo4j          : bolt://localhost:7687\n"
 printf "  Writ daemon    : http://localhost:8765\n"
 printf "  Rules loaded   : %s\n" "$RULE_COUNT"
-printf "  Daemon log     : /tmp/writ-server.log\n"
-printf "  Harness config : ~/.claude/settings.json, ~/.claude/CLAUDE.md\n"
+printf "  Daemon log     : $WRIT_LOG\n"
+printf "  Harness config : ~/.claude/settings.json, ~/.claude/CLAUDE.md, ~/.claude/commands/\n"
 printf "\n"
 printf "${YELLOW}!${RESET} Restart Claude Code for the hooks to take effect.\n"

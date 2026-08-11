@@ -32,7 +32,7 @@ MATCH=$(python3 "$TEST_PATHS_HELPER" match-src "$FILE" 2>/dev/null)
 [ -z "$MATCH" ] && MATCH=$(python3 "$TEST_PATHS_HELPER" match-test "$FILE" 2>/dev/null)
 [ -z "$MATCH" ] && exit 0
 
-MARKER_DIR="$WRIT_DIR/cache/$PARENT_SID"
+MARKER_DIR="${WRIT_CACHE_DIR:-$WRIT_DIR/cache}/$PARENT_SID"
 mkdir -p "$MARKER_DIR"
 echo "$FILE" >> "$MARKER_DIR/pending-tests.txt"
 

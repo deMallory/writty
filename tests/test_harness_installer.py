@@ -29,8 +29,11 @@ INSTALLER = SKILL_DIR / "scripts" / "install-harness-config.sh"
 
 class TestTemplatesExist:
     def test_settings_template_exists(self) -> None:
-        assert (TEMPLATES_DIR / "settings.json").exists(), (
-            "templates/settings.json must exist"
+        # Fork policy: see feat/upstream-resync migration (option A). The installer
+        # seeds settings.fork.json (the .claude/hooks surface); settings.json is the
+        # generated plugin mirror pinned by test_settings_template_sync.py.
+        assert (TEMPLATES_DIR / "settings.fork.json").exists(), (
+            "templates/settings.fork.json must exist"
         )
 
     def test_claude_md_template_exists(self) -> None:
@@ -43,14 +46,14 @@ class TestTemplatesAreParameterized:
     """Templates use $HOME, never a hardcoded home path."""
 
     def test_settings_has_no_hardcoded_home(self) -> None:
-        content = (TEMPLATES_DIR / "settings.json").read_text()
+        content = (TEMPLATES_DIR / "settings.fork.json").read_text()
         leak = re.search(r"/home/[^/\s\"']+/", content)
         assert leak is None, (
-            f"templates/settings.json must not contain a hardcoded /home/<user>/ path "
+            f"templates/settings.fork.json must not contain a hardcoded /home/<user>/ path "
             f"(found: {leak.group(0)!r})"
         )
         assert "$HOME" in content, (
-            "templates/settings.json must use $HOME for home paths"
+            "templates/settings.fork.json must use $HOME for home paths"
         )
 
     def test_claude_md_has_no_hardcoded_home(self) -> None:
@@ -62,17 +65,11 @@ class TestTemplatesAreParameterized:
         )
 
     def test_settings_is_valid_json_after_render(self, tmp_path: Path) -> None:
-        """Rendered settings.json must parse as JSON."""
-        env = {**os.environ, "HOME": str(tmp_path)}
-        result = subprocess.run(
-            ["envsubst", "$HOME"],
-            input=(TEMPLATES_DIR / "settings.json").read_text(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        parsed = json.loads(result.stdout)
+        """Rendered settings.json must parse as JSON (same $HOME substitution the
+        installer performs; envsubst is no longer a prerequisite anywhere)."""
+        content = (TEMPLATES_DIR / "settings.fork.json").read_text()
+        rendered = content.replace("${HOME}", str(tmp_path)).replace("$HOME", str(tmp_path))
+        parsed = json.loads(rendered)
         assert "hooks" in parsed, "rendered settings.json must have hooks key"
 
 
@@ -148,13 +145,13 @@ class TestInstallerDryRun:
 
 
 class TestInstallerPreconditions:
-    def test_installer_fails_cleanly_without_envsubst(self, tmp_path: Path) -> None:
-        """If envsubst is unavailable on PATH, installer exits non-zero with a clear message."""
-        # Build a PATH that excludes envsubst by pointing to an empty dir
+    def test_installer_succeeds_without_envsubst(self, tmp_path: Path) -> None:
+        """envsubst stopped being a prerequisite (upstream 1.7.0 rule, guarded by
+        test_no_tool_prereqs): rendering runs on python3, which is already required."""
         clean_bin = tmp_path / "bin"
         clean_bin.mkdir()
-        # Include a minimal set of tools the script needs but NOT envsubst
-        for tool in ["bash", "cp", "diff", "date", "mkdir", "cat", "printf", "dirname"]:
+        # The minimal tool set the script needs; envsubst deliberately absent.
+        for tool in ["bash", "python3", "cp", "diff", "date", "mkdir", "cat", "printf", "dirname"]:
             found = shutil.which(tool)
             if found:
                 os.symlink(found, clean_bin / tool)
@@ -166,6 +163,7 @@ class TestInstallerPreconditions:
         result = subprocess.run(
             [str(INSTALLER)], env=env, capture_output=True, text=True
         )
-        assert result.returncode != 0, "installer must fail when envsubst is missing"
-        combined = (result.stdout + result.stderr).lower()
-        assert "envsubst" in combined, "error message must mention envsubst"
+        assert result.returncode == 0, (
+            f"installer must not require envsubst:\n{result.stdout}\n{result.stderr}"
+        )
+        assert (tmp_path / "settings.json").exists()
