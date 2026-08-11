@@ -175,10 +175,10 @@ class EdgeStoreMixin:
     ) -> tuple[int, int]:
         """Bulk-create typed edges in ONE write transaction via UNWIND-grouped MERGE
         (B5.2). edges: list of {"type","source","target"} as derive_edges produces.
-        Returns (created, write_dangling): created counts every valid-type edge (an
-        edge whose endpoints don't resolve no-ops its MERGE but is still counted, as
-        the per-edge create_edge loop did); write_dangling counts unknown-type edges
-        (create_edge's ValueError path). Endpoints matched within $project (M.2).
+        Returns (created, write_dangling): created counts edges whose MERGE actually
+        ran (both endpoints resolved in the graph); write_dangling counts unknown-type
+        edges (create_edge's ValueError path) plus edges whose MATCH no-oped on a
+        missing endpoint. Endpoints matched within $project (M.2).
 
         id_to_label maps an endpoint id to its node label. When BOTH endpoints of an
         edge resolve, the match is label-scoped + uses the (id, project) index (the
@@ -209,11 +209,12 @@ class EdgeStoreMixin:
                 fallback[etype].append(
                     {"source_id": e["source"], "target_id": e["target"], "project": project}
                 )
-        created = sum(len(r) for r in resolved.values()) + sum(len(r) for r in fallback.values())
+        valid = sum(len(r) for r in resolved.values()) + sum(len(r) for r in fallback.values())
         if not resolved and not fallback:
-            return created, write_dangling
+            return 0, write_dangling
 
-        async def _work(tx) -> None:
+        async def _work(tx) -> int:
+            persisted = 0
             # Fast path: label-scoped, index-using seeks. Labels/id-fields are
             # controlled (from id_to_label / METHODOLOGY_NODE_ID_FIELDS), not user
             # input -- safe to interpolate, as create_methodology_node does.
@@ -225,9 +226,11 @@ class EdgeStoreMixin:
                     f"MATCH (a:{sl} {{{sidf}: row.s, project: row.project}}) "
                     f"MATCH (b:{tl} {{{tidf}: row.t, project: row.project}}) "
                     f"MERGE (a)-[e:{etype}]->(b) "
-                    "SET e.project = row.project"
+                    "SET e.project = row.project "
+                    "RETURN count(e) AS c"
                 )
-                await tx.run(query, rows=rows)
+                result = await tx.run(query, rows=rows)
+                persisted += (await result.single())["c"]
             # General path: label-less OR-match for any unresolved endpoint. The
             # OR-clause is derived from NODE_ID_FIELDS via _id_or_match (Contract C),
             # not a hardcoded list -- the same derivation create_edge uses -- so the
@@ -241,9 +244,14 @@ class EdgeStoreMixin:
                     MATCH (b) WHERE b.project = row.project AND ({tgt_match})
                     MERGE (a)-[e:{etype}]->(b)
                     SET e.project = row.project
+                    RETURN count(e) AS c
                 """
-                await tx.run(query, rows=rows)
+                result = await tx.run(query, rows=rows)
+                persisted += (await result.single())["c"]
+            return persisted
 
         async with self._driver.session(database=self._database) as session:
-            await session.execute_write(_work)
-        return created, write_dangling
+            created = await session.execute_write(_work)
+        # Rows whose endpoint MATCH found nothing are silent MERGE no-ops; count
+        # them as dangling so `created` never exceeds what the graph holds.
+        return created, write_dangling + (valid - created)
