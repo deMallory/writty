@@ -87,6 +87,8 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from tests._bible_guard import requires_bible
+
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 
@@ -854,6 +856,7 @@ class TestMemoryListCli:
 # [rcl-1..2] Neo4j-gated: reconcile / prune survival (runtime-record exemption)
 # ---------------------------------------------------------------------------
 
+@requires_bible
 class TestMemorySurvivesReconcileAndPrune:
     @pytest.mark.asyncio
     async def test_memory_survives_reconcile(self, db_clean: Neo4jConnection) -> None:
