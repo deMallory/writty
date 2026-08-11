@@ -84,7 +84,11 @@ COLD_START_BUDGET_S = 3.5
 _BUDGET_SCALE = float(os.environ.get("WRIT_BENCH_BUDGET_SCALE", "1"))
 COLD_START_BUDGET_SCALED_S = COLD_START_BUDGET_S * _BUDGET_SCALE
 MEMORY_BUDGET_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
-INTEGRITY_BUDGET_MS = 500.0
+# Upstream's 500ms was calibrated on an 80-rule corpus; the fork graph carries
+# 335 rules plus the methodology/editorial corpus (~4x), and CI p95 sits at
+# 770-820ms warm. 1000ms keeps headroom below the documented cold outliers
+# (1.9-3.2s) so a real regression still fails.
+INTEGRITY_BUDGET_MS = 1000.0
 INGESTION_BUDGET_S = 2.0
 # MRR@5 ambiguous-set floor and hit-rate floor live in
 # tests/fixtures/regression_floors.py (single source of truth shared
