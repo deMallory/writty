@@ -1,10 +1,11 @@
 """PIECE 1: resolve_current_session_id() -- the canonical current-session resolver.
 
 Ordering (first non-empty wins), per plan.md:
-  1. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
-  2. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
-  3. /tmp/writ-current-session   (payload-derived pointer; shared-global)
-  4. newest writ-session-*.json  (mtime glob; last resort; racy)
+  1. $GROK_SESSION_ID
+  2. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
+  3. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
+  4. /tmp/writ-current-session   (payload-derived pointer; shared-global)
+  5. newest writ-session-*.json  (mtime glob; last resort; racy)
 Returns None when nothing resolves.
 
 `writ.session.cache.resolve_current_session_id` does not exist yet -- this file is RED
@@ -43,6 +44,7 @@ def _pointer_path(tmp_path, monkeypatch) -> str:
 @pytest.fixture(autouse=True)
 def _isolated_cache_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("GROK_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
     yield
@@ -51,6 +53,22 @@ def _isolated_cache_dir(tmp_path, monkeypatch):
 class TestResolverExists:
     def test_resolver_is_importable_and_callable(self):
         assert callable(cache.resolve_current_session_id)
+
+
+class TestGrokSessionIdWins:
+    def test_returns_grok_session_id_when_set(self, monkeypatch):
+        monkeypatch.setenv("GROK_SESSION_ID", "sid-from-grok")
+        assert cache.resolve_current_session_id() == "sid-from-grok"
+
+    def test_grok_session_id_wins_over_claude_session_id(self, monkeypatch):
+        monkeypatch.setenv("GROK_SESSION_ID", "sid-grok-wins")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "sid-claude-loses")
+        assert cache.resolve_current_session_id() == "sid-grok-wins"
+
+    def test_empty_grok_session_id_falls_through_to_claude(self, monkeypatch):
+        monkeypatch.setenv("GROK_SESSION_ID", "")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "sid-claude-fallback")
+        assert cache.resolve_current_session_id() == "sid-claude-fallback"
 
 
 class TestEnvSessionIdWins:

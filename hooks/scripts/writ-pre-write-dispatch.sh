@@ -150,8 +150,8 @@ fi
 # + hookSpecificOutput JSON + RAG metadata. Was three sequential json.load() spawns
 # plus an inline hookSpecificOutput builder. Output is tab-separated lines the
 # shell reads with `mapfile` to avoid further parsing spawns.
-DISPATCH_BLOB=$(python3 -c "
-import json, sys
+DISPATCH_BLOB=$(WRIT_DIR="$WRIT_DIR" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$WRIT_DIR" python3 -c "
+import json, os, sys
 result_raw = sys.argv[1] or '{}'
 body_raw = sys.argv[2] or '{}'
 try:
@@ -177,23 +177,24 @@ tokens = rag_meta.get('tokens', 0)
 mode = result.get('mode', '') or ''
 denial_count = str(result.get('max_denial_count', 2))
 
+sys.path.insert(0, os.environ.get('WRIT_DIR', ''))
+from writ.harness.decisions import pretool_payload
 if decision == 'ask':
-    hook_output = json.dumps({
-        'hookSpecificOutput': {
-            'hookEventName': 'PreToolUse',
-            'permissionDecision': 'ask',
-            'permissionDecisionReason': '[Writ: repeated gate violation #' + denial_count + '] ' + (reason or 'Gate approval required'),
-        }
-    })
+    hook_output = json.dumps(pretool_payload(
+        'ask',
+        '[Writ: repeated gate violation #' + denial_count + '] ' + (reason or 'Gate approval required'),
+    ))
 elif decision == 'deny':
-    hook_output = json.dumps({
-        'hookSpecificOutput': {
-            'hookEventName': 'PreToolUse',
-            'permissionDecision': 'deny',
-            'permissionDecisionReason': reason or 'Gate approval required',
-            'additionalContext': 'IMPORTANT: This write was denied by a Writ gate. Do NOT attempt more writes to other files -- the denial applies to ALL files until the gate advances. Read the denial reason and follow the workflow: present your work to the user and wait for approval.',
-        }
-    })
+    hook_output = json.dumps(pretool_payload(
+        'deny',
+        reason or 'Gate approval required',
+        additional_context=(
+            'IMPORTANT: This write was denied by a Writ gate. Do NOT attempt more writes '
+            'to other files. The denial applies to ALL files until the gate advances. '
+            'Read the denial reason and follow the workflow: present your work to the '
+            'user and wait for approval.'
+        ),
+    ))
 else:
     hook_output = ''
 
@@ -226,7 +227,7 @@ DECISION="${DECISION:-allow}"
 if [ "$DECISION" = "deny" ]; then
     GATE_PUSH=$(writ_action_push "$SESSION_ID" "gate-denial" || true)
     if [ -n "$GATE_PUSH" ] && [ -n "$HOOK_OUTPUT" ]; then
-        HOOK_OUTPUT=$(WRIT_HO="$HOOK_OUTPUT" WRIT_PUSH="$GATE_PUSH" python3 -c "
+        HOOK_OUTPUT=$(WRIT_HO="$HOOK_OUTPUT" WRIT_PUSH="$GATE_PUSH" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$WRIT_DIR" python3 -c "
 import json, os
 try:
     ho = json.loads(os.environ['WRIT_HO'])
@@ -234,6 +235,8 @@ try:
     base = hso.get('permissionDecisionReason', '') or ''
     hso['permissionDecisionReason'] = base + '\n\n[Writ: methodology -- gate-denial]\n' + os.environ['WRIT_PUSH']
     ho['hookSpecificOutput'] = hso
+    ho['reason'] = hso['permissionDecisionReason']
+    ho['decision'] = 'deny'
     print(json.dumps(ho))
 except Exception:
     print(os.environ.get('WRIT_HO', ''))

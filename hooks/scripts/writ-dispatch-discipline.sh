@@ -47,8 +47,9 @@ esac
 # substituted into a heredoc body preserves embedded control chars that json.loads
 # rejects (same bug class fixed in writ-sdd-review-order.sh). Quoted '<<PY' delimiter =
 # no shell substitution inside; pure stdlib, no module import needed.
-DECISION=$(WRIT_PARSED_ENVELOPE="$HOOK_ENVELOPE" python3 <<'PY'
+DECISION=$(WRIT_PARSED_ENVELOPE="$HOOK_ENVELOPE" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$WRIT_DIR" python3 <<'PY'
 import json, os, sys
+from writ.harness.decisions import dualize_pretool
 raw = os.environ.get("WRIT_PARSED_ENVELOPE", "")
 try:
     parsed = json.loads(raw)
@@ -106,7 +107,7 @@ if r:
     # genuinely intended.
     new_ti = dict(ti)
     new_ti["subagent_type"] = r
-    print(json.dumps({
+    print(json.dumps(dualize_pretool({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
@@ -118,10 +119,10 @@ if r:
                 f"Task with '[general-purpose]' in the prompt."
             ),
         }
-    }))
+    })))
 else:
     # Ambiguous: no confident role to rewrite to -> ask rather than force a possibly-wrong one.
-    print(json.dumps({
+    print(json.dumps(dualize_pretool({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
@@ -132,7 +133,7 @@ else:
                 f"to the prompt to override."
             ),
         }
-    }))
+    })))
 PY
 )
 

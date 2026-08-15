@@ -593,6 +593,18 @@ if [ -n "$RULES_TEXT" ]; then
     debug "injected rules"
 fi
 
+# Grok UserPromptSubmit is observe-only: stdout never reaches the model. Write the
+# same blocks to a sidecar the always-on project rule tells the model to read.
+_WRIT_SIDECAR_DIR="${GROK_PLUGIN_DATA:-${WRIT_DATA:-}}"
+if [ -n "$_WRIT_SIDECAR_DIR" ]; then
+    mkdir -p "$_WRIT_SIDECAR_DIR" 2>/dev/null || true
+    {
+        [ -n "$AO_BLOCK" ] && printf '%s\n\n' "$AO_BLOCK"
+        [ -n "$RULES_TEXT" ] && printf '%s\n' "$RULES_TEXT"
+        [ -n "$METHOD_BLOCK" ] && printf '\n%s\n' "$METHOD_BLOCK"
+    } > "$_WRIT_SIDECAR_DIR/current-rules.md" 2>/dev/null || true
+fi
+
 # 9. Inject mode classification directive if no mode set yet
 if [ -z "$CURRENT_MODE" ]; then
     emit_mode_directive "$SESSION_HELPER" "$SESSION_ID"

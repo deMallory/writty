@@ -16,6 +16,16 @@ STDIN_JSON=$(cat 2>/dev/null || echo '{}')
 if stop_hook_active "$STDIN_JSON"; then
     exit 0
 fi
+STOP_REASON=$(printf '%s' "$STDIN_JSON" | python3 -c "
+import sys, json
+try:
+    print(json.load(sys.stdin).get('reason') or '')
+except Exception:
+    print('')
+" 2>/dev/null || echo "")
+if [ -n "$STOP_REASON" ] && [ "$STOP_REASON" != "end_turn" ]; then
+    exit 0
+fi
 
 load_hook_env <<< "$STDIN_JSON"
 SESSION_ID="$HOOK_SESSION_ID"
@@ -145,4 +155,5 @@ SUMMARY=$(python3 "$WRIT_DIR/bin/lib/emit-summary.py" \
     --label "test failure(s)" 2>&1)
 [ -z "$SUMMARY" ] && exit 0
 echo "$SUMMARY" >&2
-exit 1
+emit_stop_block "$SUMMARY"
+exit 2

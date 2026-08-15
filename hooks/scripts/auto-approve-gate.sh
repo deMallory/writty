@@ -31,8 +31,9 @@ PARSED=$(echo "$STDIN_JSON" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
-    sid = data.get('agent_id', '') or data.get('session_id', '')
-    agent_id = data.get('agent_id', '')
+    sid = (data.get('agent_id') or data.get('agentId')
+           or data.get('session_id') or data.get('sessionId') or '')
+    agent_id = data.get('agent_id') or data.get('agentId') or ''
     prompt = data.get('prompt', data.get('message', data.get('content', '')))
     print(f'{sid}\n{prompt}\n{agent_id}')
 except Exception:
