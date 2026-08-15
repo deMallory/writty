@@ -114,11 +114,11 @@ class TestDocCounts:
         # 44 = the 41 long-standing registrations + writ-manual-test-grant.sh +
         # writ-state-write-gate.sh + writ-memory-capture.sh (the auto-memory mirror).
         source_count = _count_hooks_json_entries()
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # hooks.json is pruned to the hooks with no .claude/hooks/ counterpart:
-        # 13 at the resync + the three 1.7.0 additions above (13 -> 16).
-        assert source_count == 16, (
-            f"hooks/hooks.json has {source_count} 'command' entries; expected 16. "
+        # 24 = the slim 16 plus Work-mode restores for the Grok adapter
+        # (pre-write-dispatch, rag-inject, auto-approve, exit-plan, pending-tests,
+        # subagent start/stop, enforce-violations).
+        assert source_count == 24, (
+            f"hooks/hooks.json has {source_count} 'command' entries; expected 24. "
             "Bump this (and HANDBOOK 'registers **N hook scripts**') when adding or "
             "removing a registration."
         )

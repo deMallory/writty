@@ -100,15 +100,11 @@ class TestHooksAreNotDoubleDeclared:
         """Deleting the manifest key is only safe because auto-discovery finds this."""
         assert AUTO_DISCOVERED_HOOKS.is_file()
 
-    def test_it_still_registers_all_nine_events(self):
-        """Fork policy: see feat/upstream-resync migration (option A).
-
-        The fork prunes plugin registrations that have a .claude/hooks
-        counterpart, leaving 9 events in the plugin hooks.json.
-        """
+    def test_it_still_registers_all_ten_events(self):
+        """Work-mode restore for the Grok adapter adds SubagentStart (9 -> 10)."""
         events = json.loads(AUTO_DISCOVERED_HOOKS.read_text()).get("hooks", {})
-        assert len(events) == 9, (
-            f"expected 9 registered hook events, got {len(events)}: {sorted(events)}"
+        assert len(events) == 10, (
+            f"expected 10 registered hook events, got {len(events)}: {sorted(events)}"
         )
 
     def test_no_declared_hooks_path_resolves_to_the_auto_discovered_file(self):
@@ -285,16 +281,15 @@ class TestRealInstallLoadsEverything:
             errors.extend(entry.get("errors") or [])
         assert errors == [], f"a marketplace install reported load errors: {errors}"
 
-    def test_all_nine_hook_events_load(self, installed):
+    def test_all_ten_hook_events_load(self, installed):
         """Zero hooks means no gate, no injection, no enforcement.
 
-        Fork policy: see feat/upstream-resync migration (option A). The pruned
-        plugin surface registers 9 events (the CLI counts events, not commands).
+        The Grok adapter Work-mode surface registers 10 events.
         """
         m = re.search(r"Hooks \((\d+)\)", installed["details"])
         assert m, f"no Hooks count in plugin details:\n{installed['details']}"
-        assert int(m.group(1)) == 9, (
-            f"expected 9 hook events on a marketplace install, got {m.group(1)}"
+        assert int(m.group(1)) == 10, (
+            f"expected 10 hook events on a marketplace install, got {m.group(1)}"
         )
 
     def test_the_documented_install_path_command_prints_the_install_dir(self, installed):

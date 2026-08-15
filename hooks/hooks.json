@@ -26,7 +26,36 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/auto-approve-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-rag-inject.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-manual-test-grant.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-subagent-start.sh"
           }
         ]
       }
@@ -40,6 +69,15 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-blackbox-capture.sh"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-subagent-stop.sh"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -49,6 +87,24 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-comms-output-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-run-pending-tests.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/enforce-violations.sh"
           }
         ]
       }
@@ -88,6 +144,15 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "ExitPlanMode|exit_plan_mode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-exit-plan.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Read",
         "hooks": [
           {
@@ -106,7 +171,7 @@
         ]
       },
       {
-        "matcher": "Task",
+        "matcher": "Task|spawn_subagent",
         "hooks": [
           {
             "type": "command",
@@ -115,7 +180,7 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|run_terminal_command",
         "hooks": [
           {
             "type": "command",
@@ -124,18 +189,27 @@
         ]
       },
       {
-        "matcher": "Write|Edit|NotebookEdit",
+        "matcher": "Write|Edit|NotebookEdit|write|search_replace",
         "hooks": [
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-state-write-gate.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit|write|search_replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/writ-pre-write-dispatch.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "WebFetch|WebSearch",
+        "matcher": "WebFetch|WebSearch|web_search|web_fetch",
         "hooks": [
           {
             "type": "command",
@@ -144,7 +218,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|write|search_replace",
         "hooks": [
           {
             "type": "command",
@@ -153,7 +227,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|write|search_replace",
         "hooks": [
           {
             "type": "command",
