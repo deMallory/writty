@@ -4,6 +4,10 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **`hooks/hooks.json` restored to the full upstream registration set (44 entries, 12 events).** The fork's commit 3837e3b pruned 28 registrations on the premise that `.claude/hooks/` was the authoritative copy, but no settings file ever registered that directory, so the pruned hooks (`auto-approve-gate.sh`, `writ-rag-inject.sh`, `friction-logger.sh`, `validate-exit-plan.sh`, the Stop gates, and the rest) fired nowhere: typed approvals could not advance a Work-mode gate and no rules were injected. `templates/settings.json` regenerated from the manifest.
+
 ## [1.7.0] - 2026-08-08
 
 The install collapses to "install the plugin, run one command"; `jq`, `envsubst` and `curl` stop being prerequisites; and the hook layer's own guarantees are audited rather than asserted. Two gates that were failing open now hold, session identity is never guessed, a destructive graph operation needs permission, and the isolation the test suite claimed is enforced instead of assumed.

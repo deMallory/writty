@@ -80,9 +80,8 @@ class TestTemplateMatchesItsSource:
     def test_it_registers_the_same_events(self):
         assert set(_commands(_load(TEMPLATE))) == set(_commands(_load(HOOKS_JSON)))
 
-    def test_it_registers_all_nine_events(self):
-        """Fork policy: see feat/upstream-resync migration (option A). 9 plugin events."""
-        assert len(_commands(_load(TEMPLATE))) == 9
+    def test_it_registers_all_twelve_events(self):
+        assert len(_commands(_load(TEMPLATE))) == 12
 
     def test_every_command_matches_modulo_the_path_variable(self):
         """Structural comparison, not text: reformatting either file must yield neither
@@ -191,8 +190,8 @@ def _seeded(target: Path) -> dict:
     """
     doc = _load(target)
     events = doc.get("hooks") or {}
-    assert len(events) == 9, (
-        f"expected 9 seeded hook events, got {len(events)}: the --hooks step did nothing"
+    assert len(events) == 12, (
+        f"expected 12 seeded hook events, got {len(events)}: the --hooks step did nothing"
     )
     return doc
 
@@ -210,7 +209,7 @@ class TestSeedingIsOptIn:
     def test_the_flag_merges_every_event(self, target):
         r = _patch(target, "--hooks")
         assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
-        assert len(_seeded(target)["hooks"]) == 9
+        assert len(_seeded(target)["hooks"]) == 12
 
     def test_the_install_path_is_expanded_not_left_as_a_variable(self, target):
         _patch(target, "--hooks")
@@ -281,7 +280,7 @@ class TestSeedingRefusesUnderAPluginInstall:
 
         without = fresh("no-plugin.json")
         _patch(without, "--hooks", plugin_list="[]")
-        assert len(_load(without).get("hooks") or {}) == 9, (
+        assert len(_load(without).get("hooks") or {}) == 12, (
             "control case did not seed, so this test cannot attribute anything"
         )
 
@@ -302,7 +301,7 @@ class TestSeedingRefusesUnderAPluginInstall:
         }])
         r = _patch(target, "--hooks", plugin_list=other)
         assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
-        assert len(_load(target).get("hooks") or {}) == 9
+        assert len(_load(target).get("hooks") or {}) == 12
 
 
 class TestDoctorDetectsDoubleRegistration:

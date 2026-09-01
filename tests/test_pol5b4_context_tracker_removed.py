@@ -98,7 +98,4 @@ class TestStopEventIntact:
         # in sync.
         data = json.loads(HOOKS_JSON.read_text())
         n = _registration_count(data)
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # hooks.json is pruned to the hooks with no .claude/hooks/ counterpart:
-        # 13 at the resync + the three 1.7.0 additions (13 -> 16).
-        assert n == 16, f"hooks.json registration count drifted; found {n}, expected 16"
+        assert n == 44, f"hooks.json registration count drifted; found {n}, expected 44"
