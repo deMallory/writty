@@ -14,6 +14,9 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ### Fixed
 
+- **Gate-token path mismatch on macOS.** Nine test files wrote the gate token to `tempfile.gettempdir()` (`/var/folders/.../T` when `$TMPDIR` is set), but `gate_token_path()` hardcodes `/tmp`. Every `cmd_advance_phase` call in the test suite returned "Invalid or missing gate token" and ~25 gate/advance tests failed. Fixed by aligning the test writers to `/tmp`.
+- **Stale methodology count pins.** `test_phase6efg_corpus_promotion.py` pinned per-prefix counts from before the INC-2 through INC-12 node additions. Updated to match the current `writ-corpus.cypher` dump (e.g. ANT 14 to 22, PHA 20 to 25, TEC 11 to 18). Also excluded ABS-*.md (Abstraction exports) from the total assertion.
+- **Option A event-count pin in `test_writ_install.py`.** The fork had changed the "merges all twelve events" assertion to "nine events" during the option A migration. Reverted to upstream's 12.
 - **`hooks/hooks.json` restored to the full upstream registration set (44 entries, 12 events).** The fork's commit 3837e3b pruned 28 registrations on the premise that `.claude/hooks/` was the authoritative copy, but no settings file ever registered that directory, so the pruned hooks (`auto-approve-gate.sh`, `writ-rag-inject.sh`, `friction-logger.sh`, `validate-exit-plan.sh`, the Stop gates, and the rest) fired nowhere: typed approvals could not advance a Work-mode gate and no rules were injected. `templates/settings.json` regenerated from the manifest.
 
 ## [1.7.0] - 2026-08-08

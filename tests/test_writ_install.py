@@ -398,14 +398,13 @@ class TestHooksRenderAndMerge:
         assert "${WRIT_DIR}" not in body
         assert str(install) in body
 
-    def test_merges_all_nine_events(self, tmp_path):
-        # Fork policy: see feat/upstream-resync migration (option A). 9 plugin events.
+    def test_merges_all_twelve_events(self, tmp_path):
         install = _fake_install(tmp_path)
         target = tmp_path / "settings.json"
         _seed(target, allow=[])
         run_module("hooks", "--target", str(target), "--skill-dir", str(install))
         doc = json.loads(target.read_text())
-        assert len(doc.get("hooks") or {}) == 9
+        assert len(doc.get("hooks") or {}) == 12
 
     def test_idempotent_second_run(self, tmp_path):
         install = _fake_install(tmp_path)
@@ -487,7 +486,7 @@ class TestHooksRenderAndMerge:
             env={"WRIT_PLUGIN_LIST_CMD": f"printf '%s' {shlex.quote(other)}"},
         )
         assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
-        assert len(json.loads(target.read_text()).get("hooks") or {}) == 9
+        assert len(json.loads(target.read_text()).get("hooks") or {}) == 12
 
     def test_settings_without_a_hooks_key_still_merges(self, tmp_path):
         install = _fake_install(tmp_path)
@@ -495,7 +494,7 @@ class TestHooksRenderAndMerge:
         target.write_text(json.dumps({"theme": "dark"}))
         r = run_module("hooks", "--target", str(target), "--skill-dir", str(install))
         assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
-        assert len(json.loads(target.read_text()).get("hooks") or {}) == 9
+        assert len(json.loads(target.read_text()).get("hooks") or {}) == 12
 
 
 # --------------------------------------------------------------------------- #
@@ -611,7 +610,7 @@ class TestShimScriptsPreserveContract:
             settings_target=target, claude_md_target=tmp_path / "CLAUDE.md",
         )
         assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
-        assert len(json.loads(target.read_text()).get("hooks") or {}) == 9
+        assert len(json.loads(target.read_text()).get("hooks") or {}) == 12
 
     def test_patch_global_config_exit_zero_on_patch(self, tmp_path):
         install = _fake_install(tmp_path)

@@ -278,7 +278,7 @@ class TestSessionAdvancePhase:
         import os
         import tempfile
         tok = "test-gate-token-xyz"
-        tok_path = os.path.join(tempfile.gettempdir(), f"writ-gate-token-{SESSION_ID}")
+        tok_path = os.path.join("/tmp", f"writ-gate-token-{SESSION_ID}")
         with open(tok_path, "w") as f:
             f.write(tok)
         try:

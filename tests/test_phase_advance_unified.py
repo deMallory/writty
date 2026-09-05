@@ -86,7 +86,7 @@ def _cache_path(session_id: str) -> str:
 
 
 def _token_path(session_id: str) -> str:
-    return os.path.join(tempfile.gettempdir(), f"writ-gate-token-{session_id}")
+    return os.path.join("/tmp", f"writ-gate-token-{session_id}")
 
 
 def _make_base_cache() -> dict:
@@ -412,7 +412,7 @@ class TestCrossPathParity:
 
         def _advance_once():
             token = secrets.token_hex(16)
-            tpath = os.path.join(tempfile.gettempdir(), f"writ-gate-token-{session_id}")
+            tpath = os.path.join("/tmp", f"writ-gate-token-{session_id}")
             with open(tpath, "w") as f:
                 f.write(token)
             capsys.readouterr()

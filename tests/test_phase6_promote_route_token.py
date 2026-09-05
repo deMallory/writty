@@ -44,7 +44,7 @@ def _post_promote(session_id: str, body: dict) -> dict:
 
 
 def _token_path(session_id: str) -> str:
-    return os.path.join(tempfile.gettempdir(), f"writ-gate-token-{session_id}")
+    return os.path.join("/tmp", f"writ-gate-token-{session_id}")
 
 
 class TestPromoteCandidateTokenGate:
