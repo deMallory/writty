@@ -60,21 +60,17 @@ class TestDeregistered:
             "hooks/hooks.json must not reference writ-context-tracker"
         )
 
-    def test_registered_in_settings_template(self) -> None:
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # The fork's context-watcher chain deliberately keeps the Stop
-        # context-tracker registered via templates/settings.fork.json.
-        template = SKILL_DIR / "templates" / "settings.fork.json"
-        assert NAME in template.read_text(), (
-            "templates/settings.fork.json must register writ-context-tracker (fork chain)"
+    def test_not_in_global_settings(self) -> None:
+        if not GLOBAL_SETTINGS.exists():
+            return
+        assert NAME not in GLOBAL_SETTINGS.read_text(), (
+            "~/.claude/settings.json must not reference writ-context-tracker"
         )
 
 
 class TestStopEventIntact:
     def test_stop_still_routes_friction_logger(self) -> None:
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # friction-logger registers via templates/settings.fork.json in this fork.
-        data = json.loads((SKILL_DIR / "templates" / "settings.fork.json").read_text())
+        data = json.loads(HOOKS_JSON.read_text())
         section = data.get("hooks", {})
         assert "Stop" in section, "Stop event must still exist"
         stop_cmds = " ".join(
@@ -95,7 +91,8 @@ class TestStopEventIntact:
         # minter and the PreToolUse Write|Edit state-write gate), and the auto-memory
         # mirror (added PostToolUse Write|Edit writ-memory-capture). Bump when
         # adding/removing a registration; keep HANDBOOK 'registers **N hook scripts**'
-        # in sync.
+        # in sync. 48 = 44 upstream + the four fork hooks ported from .claude/hooks
+        # (agent-hotswap, sdd-review-order, output-rewrite, bash-failure).
         data = json.loads(HOOKS_JSON.read_text())
         n = _registration_count(data)
-        assert n == 44, f"hooks.json registration count drifted; found {n}, expected 44"
+        assert n == 48, f"hooks.json registration count drifted; found {n}, expected 48"

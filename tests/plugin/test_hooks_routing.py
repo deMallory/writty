@@ -18,29 +18,21 @@ from tests.plugin.conftest import REPO_ROOT, _expand_plugin_root
 
 HOOKS_JSON_PATH = REPO_ROOT / "hooks" / "hooks.json"
 
-# Fork policy: see feat/upstream-resync migration (option A).
-# hooks.json is pruned to the 13 hooks with no .claude/hooks/ counterpart;
-# the remainder register via templates/settings.json.
+# Expected script names per event from the plan's Phase B Files section
 EXPECTED_EVENT_SCRIPTS: dict[str, list[str]] = {
-    "SessionStart": ["writ-blackbox-capture.sh", "session-start-bootstrap.sh"],
-    "UserPromptSubmit": ["writ-manual-test-grant.sh"],
-    "SubagentStop": ["writ-blackbox-capture.sh"],
-    "Stop": ["writ-comms-output-gate.sh"],
-    "PostToolUseFailure": ["writ-blackbox-capture.sh"],
-    "PostCompact": ["writ-blackbox-capture.sh"],
-    "CwdChanged": ["writ-blackbox-capture.sh"],
-    "PreToolUse": [
-        "writ-read-junk-gate.sh",
-        "writ-debug-code-gate.sh",
-        "writ-dispatch-discipline.sh",
-        "writ-bash-write-gate.sh",
-        "writ-state-write-gate.sh",
+    "UserPromptSubmit": ["auto-approve-gate.sh", "writ-rag-inject.sh"],
+    "SubagentStart": ["writ-subagent-start.sh"],
+    "SubagentStop": ["writ-subagent-stop.sh"],
+    "Stop": [
+        "friction-logger.sh",
+        "enforce-violations.sh",
+        "writ-verify-before-claim.sh",
+        "writ-comms-output-gate.sh",
     ],
-    "PostToolUse": [
-        "writ-web-capture.sh",
-        "writ-bible-authoring-push.sh",
-        "writ-memory-capture.sh",
-    ],
+    "PreCompact": ["writ-precompact.sh"],
+    "PostCompact": ["writ-postcompact.sh"],
+    "SessionEnd": ["writ-session-end.sh", "writ-pressure-audit.sh"],
+    "CwdChanged": ["writ-cwd-changed.sh"],
 }
 
 
@@ -118,15 +110,12 @@ class TestHooksJsonStructure:
         comms-output gate added the Stop writ-comms-output-gate (40 -> 41); the
         manual-testing grant added its UserPromptSubmit minter and the PreToolUse
         Write|Edit state-write gate (41 -> 43); the auto-memory mirror added the
-        PostToolUse Write|Edit writ-memory-capture (43 -> 44)."""
+        PostToolUse Write|Edit writ-memory-capture (43 -> 44); the fork ported
+        agent-hotswap, sdd-review-order, output-rewrite and bash-failure (44 -> 48)."""
         registrations = _collect_all_registrations(hooks_data)
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # hooks.json carries only the hooks with no .claude/hooks/ counterpart:
-        # 13 at the resync, plus the 1.7.0 manual-test-grant, state-write-gate
-        # and memory-capture registrations (13 -> 16).
-        assert len(registrations) == 16, (
+        assert len(registrations) == 48, (
             f"hooks.json registration count drifted; found {len(registrations)}, "
-            f"expected 16. Update this and HANDBOOK if the change is intentional."
+            f"expected 48. Update this and HANDBOOK if the change is intentional."
         )
 
     def test_hooks_json_event_mapping(self, hooks_data: dict) -> None:

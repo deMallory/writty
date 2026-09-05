@@ -4,6 +4,14 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **The four surviving fork-only hooks now live in the plugin manifest.** `writ-agent-hotswap.sh` and `writ-sdd-review-order.sh` (PreToolUse, matcher `Task`), `writ-output-rewrite.sh` (PostToolUse, `Bash`) and `writ-bash-failure.sh` (PostToolUseFailure, `Bash`) moved unchanged from `.claude/hooks/` into `hooks/scripts/` and are registered in `hooks/hooks.json` (44 -> 48 registrations, still 12 events). `templates/settings.json` and `docs/reference/hooks.md` regenerated; a new `tests/test_fork_hooks_ported.py` pins the registrations and the hooks' behavior.
+
+### Removed
+
+- **`.claude/hooks/` (36 scripts), `templates/settings.fork.json`, `templates/writ-agent-hotswap.sh`, `templates/settings.README.md` and `scripts/install-harness-config.sh`.** The fork's "option A" surface: every script there was either a stale duplicate of `hooks/scripts/`, one of the four hooks ported above, or one of the four hooks upstream deliberately sunset (`writ-context-watcher.sh` POL-5a, `writ-instructions-loaded.sh` POL-5c, `writ-context-tracker.sh` POL-5b4, `track-failed-writes.sh` POL-5b2c). Those four are dropped with their seven fork-only test files, and the option A rewiring in the remaining tests is reverted to upstream so `hooks/hooks.json` is again the single registration source, as upstream ships it.
+
 ### Fixed
 
 - **`hooks/hooks.json` restored to the full upstream registration set (44 entries, 12 events).** The fork's commit 3837e3b pruned 28 registrations on the premise that `.claude/hooks/` was the authoritative copy, but no settings file ever registered that directory, so the pruned hooks (`auto-approve-gate.sh`, `writ-rag-inject.sh`, `friction-logger.sh`, `validate-exit-plan.sh`, the Stop gates, and the rest) fired nowhere: typed approvals could not advance a Work-mode gate and no rules were injected. `templates/settings.json` regenerated from the manifest.

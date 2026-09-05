@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 SKILL_DIR = (Path(__file__).resolve().parent.parent)
-POSTCOMPACT_HOOK = SKILL_DIR / ".claude" / "hooks" / "writ-postcompact.sh"
+POSTCOMPACT_HOOK = SKILL_DIR / "hooks" / "scripts" / "writ-postcompact.sh"
 SESSION_HELPER = str(SKILL_DIR / "bin" / "lib" / "writ-session.py")
 
 

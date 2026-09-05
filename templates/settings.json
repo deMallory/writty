@@ -137,6 +137,15 @@
             "command": "bash ${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-bash-failure.sh"
+          }
+        ]
       }
     ],
     "PreCompact": [
@@ -284,6 +293,24 @@
         ]
       },
       {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-agent-hotswap.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-sdd-review-order.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
@@ -336,6 +363,15 @@
           {
             "type": "command",
             "command": "bash ${WRIT_DIR}/hooks/scripts/inject-tier-workflow.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-output-rewrite.sh"
           }
         ]
       },

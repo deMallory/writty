@@ -125,8 +125,7 @@ class TestPosttoolRagPerfFloor:
 
     def test_posttool_rag_p95_under_floor(self) -> None:
         """p95 wall-clock for writ-posttool-rag.sh must be < 400ms."""
-        # Fork policy: see feat/upstream-resync migration (option A).
-        hook = SKILL_DIR / ".claude" / "hooks" / "writ-posttool-rag.sh"
+        hook = SKILL_DIR / "hooks" / "scripts" / "writ-posttool-rag.sh"
         if not hook.exists():
             pytest.skip(f"{hook} not found")
 
@@ -171,8 +170,7 @@ class TestValidateRulesPerfFloor:
 
     def test_validate_rules_p95_under_floor(self) -> None:
         """p95 wall-clock for validate-rules.sh must be < 350ms."""
-        # Fork policy: see feat/upstream-resync migration (option A).
-        hook = SKILL_DIR / ".claude" / "hooks" / "validate-rules.sh"
+        hook = SKILL_DIR / "hooks" / "scripts" / "validate-rules.sh"
         if not hook.exists():
             pytest.skip(f"{hook} not found")
 
@@ -217,10 +215,7 @@ class TestPreWriteDispatchPerfFloor:
 
     def test_pre_write_dispatch_p95_under_floor(self) -> None:
         """p95 wall-clock for writ-pre-write-dispatch.sh must be < 180ms."""
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # The fork's authoritative registered hook lives in .claude/hooks
-        # (hooks/scripts carries the unregistered upstream variant).
-        hook = SKILL_DIR / ".claude" / "hooks" / "writ-pre-write-dispatch.sh"
+        hook = SKILL_DIR / "hooks" / "scripts" / "writ-pre-write-dispatch.sh"
         if not hook.exists():
             pytest.skip(f"{hook} not found")
 

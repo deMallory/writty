@@ -3,7 +3,7 @@
 
 # Hook registration matrix
 
-44 registrations across 12 events wiring 40 scripts under `hooks/scripts/`, generated from `hooks/hooks.json` (the single source; `templates/settings.json` is rendered from the same file). `writ-statusline.sh` is wired through the settings `statusLine` channel, not a hook event. Behavior and blocking semantics: `HANDBOOK.md` section 14.
+48 registrations across 12 events wiring 44 scripts under `hooks/scripts/`, generated from `hooks/hooks.json` (the single source; `templates/settings.json` is rendered from the same file). `writ-statusline.sh` is wired through the settings `statusLine` channel, not a hook event. Behavior and blocking semantics: `HANDBOOK.md` section 14.
 
 ## SessionStart
 
@@ -48,6 +48,7 @@
 | Matcher | Script |
 |---|---|
 | `.*` | `writ-blackbox-capture.sh` |
+| `Bash` | `writ-bash-failure.sh` |
 
 ## PreCompact
 
@@ -88,6 +89,8 @@
 | `Write|Edit|NotebookEdit` | `writ-pre-write-dispatch.sh` |
 | `Write|Edit` | `pre-validate-file.sh` |
 | `Task` | `writ-dispatch-discipline.sh` |
+| `Task` | `writ-agent-hotswap.sh` |
+| `Task` | `writ-sdd-review-order.sh` |
 | `Bash` | `writ-worktree-safety.sh` |
 | `Bash` | `writ-bash-write-gate.sh` |
 | `Write` | `validate-test-file.sh` |
@@ -99,6 +102,7 @@
 | Matcher | Script |
 |---|---|
 | `Bash` | `inject-tier-workflow.sh` |
+| `Bash` | `writ-output-rewrite.sh` |
 | `WebFetch|WebSearch` | `writ-web-capture.sh` |
 | `Write|Edit` | `validate-file.sh` |
 | `Write|Edit` | `writ-bible-authoring-push.sh` |

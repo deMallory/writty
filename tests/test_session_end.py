@@ -214,12 +214,10 @@ class TestLogSessionMetricsRemoval:
 
 
 class TestSessionEndRegistration:
-    """writ-session-end.sh must be registered under SessionEnd."""
+    """writ-session-end.sh must be registered under SessionEnd in hooks.json."""
 
     def _load_settings(self) -> dict[str, Any]:
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # SessionEnd hooks register via templates/settings.fork.json, not hooks.json.
-        with open(HOOKS_JSON.parent.parent / "templates" / "settings.fork.json") as f:
+        with open(HOOKS_JSON) as f:
             return json.load(f)
 
     def test_session_end_hook_registered_in_settings(self) -> None:
