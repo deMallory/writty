@@ -7,13 +7,13 @@
   },
   "metadata": {
     "description": "Single-plugin marketplace for writty (fork of infinri/Writ). The repository root is the plugin, so `source` is './'.",
-    "version": "1.7.0"
+    "version": "1.7.1"
   },
   "plugins": [
     {
       "name": "writty",
       "source": "./",
-      "version": "1.7.0",
+      "version": "1.7.1",
       "displayName": "writty",
       "description": "Hybrid RAG rule retrieval + session-aware workflow enforcement. Injects relevant coding rules via a 5-stage pipeline (BM25 + vector + graph traversal + reciprocal-rank fusion) and enforces mode-based workflow gates (plan -> tests -> implementation).",
       "category": "workflow",
