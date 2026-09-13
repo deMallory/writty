@@ -9,7 +9,7 @@ Contributor-facing system design: the spine `README.md` and `HANDBOOK.md` refere
 | Piece | What it is | Where |
 |---|---|---|
 | **FastAPI daemon** | The single HTTP service all hooks talk to: retrieval, session state, gates, self-authoring. Binds `127.0.0.1:8765`, 49 endpoints, no auth (localhost only). | `writ/server/` (package: `__init__.py` app + lifespan, `models.py`, `routes/*.py`) |
-| **Hooks + session state machine** | 40 bash hooks intercept the Claude Code tool lifecycle (44 registrations, 12 events, `hooks/hooks.json`); a Python package owns mode/phase/budget/gate state per session. | `hooks/`, `writ/session/` |
+| **Hooks + session state machine** | 44 bash hooks intercept the Claude Code tool lifecycle (48 registrations, 12 events, `hooks/hooks.json`); a Python package owns mode/phase/budget/gate state per session. | `hooks/`, `writ/session/` |
 | **Neo4j canonical store** | The graph is the source of truth for rules, methodology, and decision-memory records. Docker container `writ-neo4j`, bolt 7687. | `writ/graph/db/` (mixin package composing `Neo4jConnection`) |
 | **The CLI** | Operator surface: ingest, export, reconcile, validate, author, query, doctor, logs, decision memory. | `writ/cli.py` (Typer), plus the hook-facing `bin/lib/writ-session.py` facade |
 

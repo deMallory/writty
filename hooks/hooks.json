@@ -26,6 +26,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-manual-test-grant.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/auto-approve-gate.sh"
           }
         ]
@@ -36,15 +45,6 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-rag-inject.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-manual-test-grant.sh"
           }
         ]
       }
@@ -86,7 +86,25 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-comms-output-gate.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/friction-logger.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/enforce-violations.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-verify-before-claim.sh"
           }
         ]
       },
@@ -104,7 +122,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/enforce-violations.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-comms-output-gate.sh"
           }
         ]
       }
@@ -118,6 +136,26 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-blackbox-capture.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash|run_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-bash-failure.sh"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-precompact.sh"
+          }
+        ]
       }
     ],
     "PostCompact": [
@@ -129,6 +167,35 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-blackbox-capture.sh"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-postcompact.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-session-end.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-pressure-audit.sh"
+          }
+        ]
       }
     ],
     "CwdChanged": [
@@ -138,6 +205,15 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-blackbox-capture.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-cwd-changed.sh"
           }
         ]
       }
@@ -162,29 +238,20 @@
         ]
       },
       {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-read-rag.sh"
+          }
+        ]
+      },
+      {
         "matcher": "Grep|Read|Glob",
         "hooks": [
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-debug-code-gate.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Task|spawn_subagent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-dispatch-discipline.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|run_terminal_command",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-bash-write-gate.sh"
           }
         ]
       },
@@ -205,9 +272,108 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-pre-write-dispatch.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit|write|search_replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/pre-validate-file.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Task|spawn_subagent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-dispatch-discipline.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Task|spawn_subagent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-agent-hotswap.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Task|spawn_subagent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-sdd-review-order.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|run_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-worktree-safety.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|run_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-bash-write-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/validate-test-file.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/validate-design-doc.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-memory-policy-guard.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Bash|run_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/inject-tier-workflow.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|run_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-output-rewrite.sh"
+          }
+        ]
+      },
       {
         "matcher": "WebFetch|WebSearch|web_search|web_fetch",
         "hooks": [
@@ -222,7 +388,61 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/validate-file.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|write|search_replace",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-bible-authoring-push.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|write|search_replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/validate-handoff.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|write|search_replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/validate-rules.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit|write|search_replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-posttool-rag.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-quality-judge.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|write|search_replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-mark-pending-test.sh"
           }
         ]
       },

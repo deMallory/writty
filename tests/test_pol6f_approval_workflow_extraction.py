@@ -59,7 +59,7 @@ def _seed(sid, **fields):
 
 def _write_token(sid):
     token = secrets.token_hex(16)
-    with open(os.path.join(tempfile.gettempdir(), f"writ-gate-token-{sid}"), "w") as f:
+    with open(os.path.join("/tmp", f"writ-gate-token-{sid}"), "w") as f:
         f.write(token)
     return token
 

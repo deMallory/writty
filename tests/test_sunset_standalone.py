@@ -34,10 +34,6 @@ def _read(*parts):
 
 
 class TestDeadFilesRemoved:
-    # Fork policy: see feat/upstream-resync migration (option A).
-    # The standalone install path is deliberately restored in this fork;
-    # these files must exist.
-    #
     # templates/settings.json is deliberately NOT in this list any more. What the sunset
     # removed was a HAND-MAINTAINED second copy of the hook registrations, seeded by
     # install-harness-config.sh into every install, which had to be kept in sync by hand
@@ -53,7 +49,7 @@ class TestDeadFilesRemoved:
         "tests/test_harness_installer.py",
     ])
     def test_file_deleted(self, relpath):
-        assert os.path.exists(_p(relpath)), f"{relpath} must exist (fork restores standalone install)"
+        assert not os.path.exists(_p(relpath)), f"{relpath} must be deleted (standalone sunset)"
 
     def test_the_settings_template_is_generated_not_hand_maintained(self):
         """The sunset's real target was the dual hand-edited source, so guard that instead."""
@@ -77,12 +73,6 @@ class TestBootstrapRepointed:
 
 
 class TestHooksJsonIsSoleSource:
-    # Fork policy: see feat/upstream-resync migration (option A).
-    # hooks.json is NOT the sole source in this fork: registration is split
-    # between hooks/hooks.json (pruned plugin entries) and templates/settings.fork.json
-    # (.claude/hooks paths, seeded by install-harness-config.sh). templates/settings.json
-    # is upstream's GENERATED mirror of hooks.json and carries no fork registrations.
-    # Events/hooks below are checked across hooks.json and the fork seed.
     EXPECTED_EVENTS = {
         "SessionStart", "UserPromptSubmit", "SubagentStart", "SubagentStop", "Stop",
         "PostToolUseFailure", "PreCompact", "PostCompact", "SessionEnd", "CwdChanged",
@@ -97,13 +87,8 @@ class TestHooksJsonIsSoleSource:
         d = json.loads(_read("hooks", "hooks.json"))
         return d.get("hooks", d)
 
-    def _settings_hooks(self):
-        d = json.loads(_read("templates", "settings.fork.json"))
-        return d.get("hooks", {})
-
     def test_all_events_present(self):
-        # Fork policy: see feat/upstream-resync migration (option A).
-        events = set(self._hooks().keys()) | set(self._settings_hooks().keys())
+        events = set(self._hooks().keys())
         assert self.EXPECTED_EVENTS <= events, f"missing events: {self.EXPECTED_EVENTS - events}"
 
     def test_every_event_has_a_command(self):
@@ -112,10 +97,9 @@ class TestHooksJsonIsSoleSource:
             assert any(c.strip() for c in cmds), f"{event} has no hook command"
 
     def test_critical_hooks_registered(self):
-        # Fork policy: see feat/upstream-resync migration (option A).
-        src = _read("hooks", "hooks.json") + _read("templates", "settings.fork.json")
+        src = _read("hooks", "hooks.json")
         for name in self.CRITICAL_HOOKS:
-            assert name in src, f"{name} missing from hook registration surfaces"
+            assert name in src, f"{name} missing from hooks/hooks.json (SoT incomplete)"
 
     def test_hooks_use_plugin_root(self):
         # SoT registers via the plugin root, never absolute home paths.
@@ -129,18 +113,8 @@ class TestPreWriteDispatchConsolidationFromHooksJson:
     not from ~/.claude/settings.json (which no longer carries hooks)."""
 
     def _pretooluse_commands(self):
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # The pre-write dispatch registers via templates/settings.fork.json in
-        # this fork; scan both registration surfaces.
-        cmds = []
-        for parts in (("hooks", "hooks.json"), ("templates", "settings.fork.json")):
-            d = json.loads(_read(*parts))
-            hooks = d.get("hooks", d) if parts[0] == "hooks" else d.get("hooks", {})
-            cmds.extend(self._extract(hooks))
-        return cmds
-
-    @staticmethod
-    def _extract(hooks):
+        d = json.loads(_read("hooks", "hooks.json"))
+        hooks = d.get("hooks", d)
         cmds = []
         for entry in hooks.get("PreToolUse", []):
             matcher = entry.get("matcher", "")

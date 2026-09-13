@@ -27,7 +27,7 @@ import pytest
 from pathlib import Path
 
 SKILL_DIR = str(Path(__file__).resolve().parent.parent)
-HOOK = f"{SKILL_DIR}/.claude/hooks/writ-sdd-review-order.sh"
+HOOK = f"{SKILL_DIR}/hooks/scripts/writ-sdd-review-order.sh"
 
 
 def _envelope_with_control_chars() -> str:

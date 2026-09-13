@@ -138,7 +138,7 @@ def _cache_path(session_id: str) -> str:
 
 
 def _token_path(session_id: str) -> str:
-    return os.path.join(tempfile.gettempdir(), f"writ-gate-token-{session_id}")
+    return os.path.join("/tmp", f"writ-gate-token-{session_id}")
 
 
 def _post_advance(session_id: str, body: dict) -> dict:

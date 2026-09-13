@@ -114,11 +114,9 @@ class TestDocCounts:
         # 44 = the 41 long-standing registrations + writ-manual-test-grant.sh +
         # writ-state-write-gate.sh + writ-memory-capture.sh (the auto-memory mirror).
         source_count = _count_hooks_json_entries()
-        # 24 = the slim 16 plus Work-mode restores for the Grok adapter
-        # (pre-write-dispatch, rag-inject, auto-approve, exit-plan, pending-tests,
-        # subagent start/stop, enforce-violations).
-        assert source_count == 24, (
-            f"hooks/hooks.json has {source_count} 'command' entries; expected 24. "
+        # main restored full upstream+fork surface; Grok adapter preserves 48.
+        assert source_count == 48, (
+            f"hooks/hooks.json has {source_count} 'command' entries; expected 48. "
             "Bump this (and HANDBOOK 'registers **N hook scripts**') when adding or "
             "removing a registration."
         )

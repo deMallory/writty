@@ -9,6 +9,8 @@
 
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
+source "$WRIT_DIR/bin/lib/common.sh"
+hook_instrument "writ-output-rewrite"
 
 python3 "$WRIT_DIR/bin/lib/output-rewrite.py" 2>/dev/null || true
 exit 0

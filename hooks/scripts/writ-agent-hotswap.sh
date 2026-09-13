@@ -4,14 +4,24 @@
 # the model per the OpusPlan routing policy, via updatedInput. Zero token
 # cost: enforcement happens in the harness, not the prompt.
 #
-# STAGED TEMPLATE: copy to .claude/hooks/writ-agent-hotswap.sh (and the
-# installed skill/plugin hooks dir), chmod +x, then register in hooks.json
-# and/or settings.json under PreToolUse with matcher "Task".
 # Hook type: PreToolUse (matcher: Task). Exit: always 0 (never block).
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
+source "$WRIT_DIR/bin/lib/common.sh"
+hook_instrument "writ-agent-hotswap"
 
 command -v jq >/dev/null 2>&1 || exit 0
 
 INPUT=$(cat)
+
+# Blackbox capture (see OVERVIEW.md): this hook parses stdin directly, so it
+# records its own envelope when the capture flag is on.
+if [ -f "$HOME/.claude/writ-blackbox.on" ]; then
+  mkdir -p "$HOME/.claude/writ-blackbox" 2>/dev/null || true
+  printf '%s\n' "$INPUT" | tr '\n' ' ' >> "$HOME/.claude/writ-blackbox/envelopes.jsonl" 2>/dev/null || true
+  printf '\n' >> "$HOME/.claude/writ-blackbox/envelopes.jsonl" 2>/dev/null || true
+fi
 SUBAGENT=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // empty')
 
 [ -z "$SUBAGENT" ] && exit 0

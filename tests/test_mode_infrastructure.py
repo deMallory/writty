@@ -469,7 +469,7 @@ This feature adds a new service endpoint.
 
         # Create gate token (simulates what auto-approve-gate.sh does)
         token = secrets.token_hex(16)
-        token_path = os.path.join(tempfile.gettempdir(), f"writ-gate-token-{session_id}")
+        token_path = os.path.join("/tmp", f"writ-gate-token-{session_id}")
         with open(token_path, "w") as f:
             f.write(token)
 

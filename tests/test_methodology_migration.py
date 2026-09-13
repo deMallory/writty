@@ -355,7 +355,7 @@ class TestRagInjectHook:
     @pytest.fixture()
     def hook_text(self) -> str:
         path = REPO_ROOT / "hooks" / "scripts" / "writ-rag-inject.sh"
-        assert path.exists(), ".claude/hooks/writ-rag-inject.sh must exist"
+        assert path.exists(), "hooks/scripts/writ-rag-inject.sh must exist"
         return path.read_text()
 
     def test_rag_inject_hook_no_longer_references_skill_md(

@@ -22,7 +22,7 @@ Two problems motivated it.
 | Piece | Role | Where |
 |---|---|---|
 | FastAPI daemon | The single HTTP service all hooks talk to (retrieval, session state, gates, self-authoring). Binds `127.0.0.1:8765`, 49 endpoints, no auth (localhost only). | `writ/server/` |
-| Hooks + session state | 40 thin bash hooks intercept the Claude Code tool lifecycle (44 registrations across 12 events; 41 scripts on disk, one of which is the statusLine, not a hook); a Python package tracks mode/phase/budget/gates per session. | `hooks/`, `writ/session/` |
+| Hooks + session state | 44 thin bash hooks intercept the Claude Code tool lifecycle (48 registrations across 12 events; 45 scripts on disk, one of which is the statusLine, not a hook); a Python package tracks mode/phase/budget/gates per session. | `hooks/`, `writ/session/` |
 | Neo4j canonical store | The graph is the source of truth for all rules and methodology. Runs in Docker (`writ-neo4j`). | `writ/graph/db/` |
 | The CLI | Operator control surface: ingest, export, reconcile, validate, author, query, doctor, logs, decision memory. | `writ/cli.py` |
 
@@ -278,7 +278,7 @@ Writ records *why files changed*, mechanically, and plays it back.
 
 ## 14. Hooks layer (operator reference)
 
-**Single registration.** `hooks/hooks.json` binds 12 Claude Code events to 40 scripts via `${CLAUDE_PLUGIN_ROOT}` (44 registrations; some scripts serve multiple events). One more script, `writ-statusline.sh`, is wired through the `statusLine` settings channel, not hooks. Editing a script takes effect immediately; changing `hooks.json` needs a fresh Claude Code session.
+**Single registration.** `hooks/hooks.json` binds 12 Claude Code events to 44 scripts via `${CLAUDE_PLUGIN_ROOT}` (48 registrations; some scripts serve multiple events). One more script, `writ-statusline.sh`, is wired through the `statusLine` settings channel, not hooks. Editing a script takes effect immediately; changing `hooks.json` needs a fresh Claude Code session.
 
 **What can block:**
 

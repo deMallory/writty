@@ -68,17 +68,11 @@ SCANNED_DIRS = (HOOKS, LIB)
 #
 # docs/ is ignored because the only shell under it is the archived pressure-run transcripts
 # in docs/pressure-runs/PSR-00*, which nothing sources and nothing executes.
-#
-# Fork policy: see feat/upstream-resync migration (option A). .claude/hooks is the fork's
-# authoritative hook surface (templates carries its hotswap template); several of those
-# hooks predate this hardening and still derive session identity synthetically. Porting
-# the payload-only identity rule into the fork surface is tracked as a follow-up; until
-# then both dirs are ignored HERE ONLY so this claim stays honest about what it covers.
 SHELL_UNIVERSE = Universe(
     base=REPO,
     dirs=("hooks/scripts", "hooks/git", "bin", "bin/lib", "scripts", "scripts/lib"),
     match=shell_file,
-    ignore=DEFAULT_IGNORE + ("docs", ".claude", "templates"),
+    ignore=DEFAULT_IGNORE + ("docs",),
 )
 SCAN_ROOTS = tuple(REPO / d for d in SHELL_UNIVERSE.dirs)
 

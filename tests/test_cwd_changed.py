@@ -361,9 +361,7 @@ class TestCwdChangedSettingsJson:
     """writ-cwd-changed.sh is registered in settings.json."""
 
     def _load_settings(self) -> dict:
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # CwdChanged writ-cwd-changed.sh registers via templates/settings.fork.json.
-        with open(Path(SETTINGS_PATH).parent.parent / "templates" / "settings.fork.json") as f:
+        with open(SETTINGS_PATH) as f:
             return json.load(f)
 
     def test_cwd_changed_event_registered_in_settings(self) -> None:

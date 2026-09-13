@@ -44,13 +44,9 @@ HELPER = REPO / "bin" / "lib" / "writ-session.py"
 # a cache path can be built in any shell file, so a scan over one directory would report a
 # zero it never earned. docs/ is ignored -- the only shell under it is the archived
 # pressure-run transcripts, which nothing sources and nothing executes.
-# Fork policy: see feat/upstream-resync migration (option A). .claude/hooks is the fork's
-# authoritative hook surface and templates carries its hotswap template, so both are part
-# of this universe and scanned for real -- the fork hooks use the same WRIT_CACHE_DIR seam.
 SHELL_UNIVERSE = Universe(
     base=REPO,
-    dirs=("hooks/scripts", "hooks/git", "bin", "bin/lib", "scripts", "scripts/lib",
-          ".claude/hooks", "templates"),
+    dirs=("hooks/scripts", "hooks/git", "bin", "bin/lib", "scripts", "scripts/lib"),
     match=shell_file,
     ignore=DEFAULT_IGNORE + ("docs",),
 )

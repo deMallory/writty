@@ -120,14 +120,11 @@ class TestHooksJsonStructure:
         Write|Edit state-write gate (41 -> 43); the auto-memory mirror added the
         PostToolUse Write|Edit writ-memory-capture (43 -> 44)."""
         registrations = _collect_all_registrations(hooks_data)
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # hooks.json carried the slim 16 (13 at resync + manual-test-grant,
-        # state-write-gate, memory-capture). The Grok Work-mode restore added
-        # pre-write-dispatch, rag-inject, auto-approve, exit-plan, pending-tests,
-        # subagent start/stop, and enforce-violations (16 -> 24).
-        assert len(registrations) == 24, (
+        # main restored the full upstream+fork hook surface (48). Grok adapter
+        # keeps that count while adding matcher aliases + dual plugin-root tokens.
+        assert len(registrations) == 48, (
             f"hooks.json registration count drifted; found {len(registrations)}, "
-            f"expected 24. Update this and HANDBOOK if the change is intentional."
+            f"expected 48. Update this and HANDBOOK if the change is intentional."
         )
 
     def test_hooks_json_event_mapping(self, hooks_data: dict) -> None:

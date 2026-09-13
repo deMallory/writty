@@ -72,7 +72,7 @@ def _call_advance_phase(
 ) -> dict:
     """Call cmd_advance_phase with a gate token and return the JSON result."""
     token = secrets.token_hex(16)
-    token_path = os.path.join(tempfile.gettempdir(), f"writ-gate-token-{session_id}")
+    token_path = os.path.join("/tmp", f"writ-gate-token-{session_id}")
     with open(token_path, "w") as f:
         f.write(token)
     capsys.readouterr()

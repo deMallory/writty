@@ -14,6 +14,7 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 SESSION_HELPER="$WRIT_DIR/bin/lib/writ-session.py"
 source "$WRIT_DIR/bin/lib/common.sh"
+hook_instrument "writ-sdd-review-order"
 
 PARSED=$(parse_hook_stdin)
 SESSION_ID=$(detect_session_id "$PARSED")

@@ -100,11 +100,10 @@ class TestHooksAreNotDoubleDeclared:
         """Deleting the manifest key is only safe because auto-discovery finds this."""
         assert AUTO_DISCOVERED_HOOKS.is_file()
 
-    def test_it_still_registers_all_ten_events(self):
-        """Work-mode restore for the Grok adapter adds SubagentStart (9 -> 10)."""
+    def test_it_still_registers_all_twelve_events(self):
         events = json.loads(AUTO_DISCOVERED_HOOKS.read_text()).get("hooks", {})
-        assert len(events) == 10, (
-            f"expected 10 registered hook events, got {len(events)}: {sorted(events)}"
+        assert len(events) == 12, (
+            f"expected 12 registered hook events, got {len(events)}: {sorted(events)}"
         )
 
     def test_no_declared_hooks_path_resolves_to_the_auto_discovered_file(self):
@@ -281,15 +280,12 @@ class TestRealInstallLoadsEverything:
             errors.extend(entry.get("errors") or [])
         assert errors == [], f"a marketplace install reported load errors: {errors}"
 
-    def test_all_ten_hook_events_load(self, installed):
-        """Zero hooks means no gate, no injection, no enforcement.
-
-        The Grok adapter Work-mode surface registers 10 events.
-        """
+    def test_all_twelve_hook_events_load(self, installed):
+        """Zero hooks means no gate, no injection, no enforcement."""
         m = re.search(r"Hooks \((\d+)\)", installed["details"])
         assert m, f"no Hooks count in plugin details:\n{installed['details']}"
-        assert int(m.group(1)) == 10, (
-            f"expected 10 hook events on a marketplace install, got {m.group(1)}"
+        assert int(m.group(1)) == 12, (
+            f"expected 12 hook events on a marketplace install, got {m.group(1)}"
         )
 
     def test_the_documented_install_path_command_prints_the_install_dir(self, installed):
