@@ -121,12 +121,13 @@ class TestHooksJsonStructure:
         PostToolUse Write|Edit writ-memory-capture (43 -> 44)."""
         registrations = _collect_all_registrations(hooks_data)
         # Fork policy: see feat/upstream-resync migration (option A).
-        # hooks.json carries only the hooks with no .claude/hooks/ counterpart:
-        # 13 at the resync, plus the 1.7.0 manual-test-grant, state-write-gate
-        # and memory-capture registrations (13 -> 16).
-        assert len(registrations) == 16, (
+        # hooks.json carried the slim 16 (13 at resync + manual-test-grant,
+        # state-write-gate, memory-capture). The Grok Work-mode restore added
+        # pre-write-dispatch, rag-inject, auto-approve, exit-plan, pending-tests,
+        # subagent start/stop, and enforce-violations (16 -> 24).
+        assert len(registrations) == 24, (
             f"hooks.json registration count drifted; found {len(registrations)}, "
-            f"expected 16. Update this and HANDBOOK if the change is intentional."
+            f"expected 24. Update this and HANDBOOK if the change is intentional."
         )
 
     def test_hooks_json_event_mapping(self, hooks_data: dict) -> None:
@@ -144,10 +145,17 @@ class TestHooksJsonStructure:
                 )
 
     def test_hooks_json_paths_use_claude_plugin_root(self, hooks_data: dict) -> None:
-        """Every command must contain ${CLAUDE_PLUGIN_ROOT} (no hardcoded paths, no $HOME, no $WRIT_DIR)."""
+        """Every command must contain ${CLAUDE_PLUGIN_ROOT} (no hardcoded paths, no $HOME, no $WRIT_DIR).
+
+        Dual-token forms ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}} still satisfy
+        this check (substring) while allowing a GROK_PLUGIN_ROOT fallback on Grok.
+        """
         commands = _collect_all_commands(hooks_data)
         for command in commands:
-            assert "${CLAUDE_PLUGIN_ROOT}" in command, (
+            # Dual form ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}} does not contain
+            # the closed token "${CLAUDE_PLUGIN_ROOT}" (the :- interrupts the brace),
+            # so match the open token prefix shared by both spellings.
+            assert "${CLAUDE_PLUGIN_ROOT" in command, (
                 f"Command does not use ${{CLAUDE_PLUGIN_ROOT}}: {command!r}"
             )
             assert "$HOME" not in command, (
@@ -194,7 +202,7 @@ class TestHookScriptFiles:
             # Extract the script path portion (last token that ends in .sh)
             tokens = command.split()
             for token in tokens:
-                if token.endswith(".sh") and "${CLAUDE_PLUGIN_ROOT}" in token:
+                if token.endswith(".sh") and "${CLAUDE_PLUGIN_ROOT" in token:
                     resolved = _expand_plugin_root(token, REPO_ROOT)
                     if not resolved.exists():
                         missing.append(str(resolved))
@@ -210,7 +218,7 @@ class TestHookScriptFiles:
         for command in commands:
             tokens = command.split()
             for token in tokens:
-                if token.endswith(".sh") and "${CLAUDE_PLUGIN_ROOT}" in token:
+                if token.endswith(".sh") and "${CLAUDE_PLUGIN_ROOT" in token:
                     resolved = _expand_plugin_root(token, REPO_ROOT)
                     if resolved.exists() and not os.access(resolved, os.X_OK):
                         not_executable.append(str(resolved))

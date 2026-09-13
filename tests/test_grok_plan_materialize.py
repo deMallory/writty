@@ -105,3 +105,21 @@ def test_materialized_plan_passes_phase_a_validator(tmp_path):
     result = materialize_plan(str(repo), "sess-3", home=tmp_path)
     assert result.ok
     assert _validate_phase_a(str(repo), "sess-3") is None
+
+
+def test_missing_source_with_no_root_uses_empty_dest(tmp_path, monkeypatch):
+    """Unresolved root must not stringify dest as '.' on missing/empty errors."""
+    monkeypatch.setattr(
+        "writ.harness.grok_plan.resolve_project_root",
+        lambda explicit="", start="": ("", "none"),
+    )
+    result = materialize_plan(str(tmp_path), "no-such", home=tmp_path)
+    assert not result.ok
+    assert result.action == "missing"
+    assert result.dest == ""
+
+    _write_session_plan(tmp_path, str(tmp_path), "empty-sid", "   \n")
+    empty = materialize_plan(str(tmp_path), "empty-sid", home=tmp_path)
+    assert not empty.ok
+    assert empty.action == "empty"
+    assert empty.dest == ""

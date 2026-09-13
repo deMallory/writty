@@ -50,32 +50,34 @@ def materialize_plan(
     """
     source = session_plan_path(cwd, session_id, home=home)
     root, _tier = resolve_project_root(explicit=project_root, start=os.path.abspath(cwd))
-    dest = Path(root) / "plan.md" if root else Path()
+    # When root is unresolved, keep dest as "" (Path() stringifies to ".").
+    dest_path = Path(root) / "plan.md" if root else None
+    dest = str(dest_path) if dest_path is not None else ""
 
     if not source.is_file():
         return MaterializeResult(
-            False, "missing", str(source), str(dest),
+            False, "missing", str(source), dest,
             f"Grok session plan not found: {source}",
         )
     text = source.read_text(encoding="utf-8")
     if not text.strip():
         return MaterializeResult(
-            False, "empty", str(source), str(dest),
+            False, "empty", str(source), dest,
             f"Grok session plan is empty: {source}",
         )
-    if not root:
+    if not root or dest_path is None:
         return MaterializeResult(
             False, "no-root", str(source), "",
             "Could not resolve project root from cwd",
         )
 
-    if dest.is_file() and not force:
-        if dest.stat().st_mtime > source.stat().st_mtime:
+    if dest_path.is_file() and not force:
+        if dest_path.stat().st_mtime > source.stat().st_mtime:
             return MaterializeResult(
-                True, "kept", str(source), str(dest),
+                True, "kept", str(source), dest,
                 "repo-root plan.md is newer; pass --force to overwrite",
             )
 
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, dest)
-    return MaterializeResult(True, "copied", str(source), str(dest))
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, dest_path)
+    return MaterializeResult(True, "copied", str(source), dest)
