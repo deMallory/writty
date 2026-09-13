@@ -17,44 +17,49 @@ hook_instrument "writ-comms-output-gate"
 STDIN_JSON=$(cat 2>/dev/null || echo '{}')
 stop_hook_active "$STDIN_JSON" && exit 0          # block at most once; never loop
 
-TP=$(printf '%s' "$STDIN_JSON" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('transcript_path',''))" 2>/dev/null || echo "")
-[ -n "$TP" ] && [ -f "$TP" ] || exit 0
-
-# NOTE: the transcript path is passed via env (WRIT_TP) and read INSIDE python.
-# We cannot pipe `tail` into `python3 - <<'PY'`: a stdin heredoc makes the script
-# its own stdin, so the piped transcript would never be seen. The forbidden chars
-# are written as \u escapes (NOT literal em/en dash) to avoid any encoding mangling.
-VIOLATION=$(WRIT_TP="$TP" python3 - <<'PY' 2>/dev/null
-import os, json, re
-EM = chr(0x2014)  # em dash, ASCII-safe source (no literal char in this file)
-EN = chr(0x2013)  # en dash, ASCII-safe source
-tp = os.environ.get("WRIT_TP", "")
+# Grok fires an observe-only Stop at session end. Gate genuine turn ends only.
+# Claude Stop has no reason field; empty reason still runs (Claude path).
+# lastAssistantMessage is preferred; transcript_path is the Claude fallback.
+VIOLATION=$(WRIT_STOP_ENVELOPE="$STDIN_JSON" python3 - <<'PY' 2>/dev/null
+import json, os, re
+EM = chr(0x2014)
+EN = chr(0x2013)
 try:
-    with open(tp, encoding="utf-8", errors="replace") as fh:
-        lines = fh.readlines()
+    env = json.loads(os.environ.get("WRIT_STOP_ENVELOPE") or "{}")
 except Exception:
     raise SystemExit(0)
-lines = lines[-400:]  # bound the scan: only the tail of the transcript
-last_text = ""
-for line in lines:
-    if '"assistant"' not in line:
-        continue
+reason = env.get("reason") or ""
+if reason and reason != "end_turn":
+    raise SystemExit(0)
+last_text = env.get("lastAssistantMessage") or env.get("last_assistant_message") or ""
+if not last_text:
+    tp = env.get("transcript_path") or ""
+    if not tp or not os.path.isfile(tp):
+        raise SystemExit(0)
     try:
-        d = json.loads(line)
+        with open(tp, encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()[-400:]
     except Exception:
-        continue
-    if d.get("type") != "assistant":
-        continue
-    content = (d.get("message") or {}).get("content")
-    if isinstance(content, list):
-        last_text = "".join(b.get("text", "") for b in content
-                            if isinstance(b, dict) and b.get("type") == "text")
-    elif isinstance(content, str):
-        last_text = content
+        raise SystemExit(0)
+    for line in lines:
+        if '"assistant"' not in line:
+            continue
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        if d.get("type") != "assistant":
+            continue
+        content = (d.get("message") or {}).get("content")
+        if isinstance(content, list):
+            last_text = "".join(
+                b.get("text", "") for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            )
+        elif isinstance(content, str):
+            last_text = content
 if not last_text:
     raise SystemExit(0)
-# strip fenced + inline code so code / CLI examples are never scanned
 prose = re.sub(r"```.*?```", "", last_text, flags=re.DOTALL)
 prose = re.sub(r"`[^`]*`", "", prose)
 hits = []
@@ -68,10 +73,12 @@ PY
 
 if [ -n "$VIOLATION" ]; then
     log_gate_decision "comms-output" "deny" "$VIOLATION" "assistant-response"
-    echo "[ENF-COMMS-OUTPUT-001] Your last response used forbidden punctuation: $VIOLATION. \
+    REASON="[ENF-COMMS-OUTPUT-001] Your last response used forbidden punctuation: $VIOLATION. \
 The user forbids em dashes and em-dash-substitute double hyphens. Re-send the SAME content using \
-commas, colons, semicolons, or parentheses for clause breaks, and hyphens only to join words." >&2
-    exit 1
+commas, colons, semicolons, or parentheses for clause breaks, and hyphens only to join words."
+    echo "$REASON" >&2
+    emit_stop_block "$REASON"
+    exit 2
 fi
 log_gate_decision "comms-output" "allow" "no forbidden punctuation" "assistant-response"
 exit 0

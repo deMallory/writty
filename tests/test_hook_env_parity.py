@@ -125,6 +125,17 @@ ENVELOPES = {
     "float_agent_id": {"session_id": "s-27", "agent_id": 2.5},
     "bool_tool_name": {"session_id": "s-28", "tool_name": True},
     "container_command": {"session_id": "s-29", "tool_input": {"command": ["ls", "-l"]}},
+    "grok_camel_write": {
+        "sessionId": "s-grok-1",
+        "hookEventName": "PreToolUse",
+        "toolName": "write",
+        "toolInput": {"file_path": "/tmp/g.py", "content": "x"},
+    },
+    "grok_target_file": {
+        "sessionId": "s-grok-2",
+        "toolName": "search_replace",
+        "toolInput": {"target_file": "/tmp/t.py", "old_string": "a", "new_string": "b"},
+    },
 }
 
 pytestmark = pytest.mark.skipif(

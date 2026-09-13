@@ -165,7 +165,7 @@ hook_log_sink() {
 # Lightweight grep -- no python spawn (B2: keep hook spawns down).
 # Usage: STDIN_JSON=$(cat); stop_hook_active "$STDIN_JSON" && exit 0
 stop_hook_active() {
-    printf '%s' "${1:-}" | grep -qE '"stop_hook_active"[[:space:]]*:[[:space:]]*true'
+    printf '%s' "${1:-}" | grep -qE '"stop_hook_active"[[:space:]]*:[[:space:]]*true|"stopHookActive"[[:space:]]*:[[:space:]]*true'
 }
 
 # Emit the envelope's shell assignments from stdin: jq when it can, python otherwise.
@@ -758,15 +758,10 @@ print(json.dumps(items, indent=2, ensure_ascii=False))
 # validate-design-doc / validate-test-file / worktree-safety PreToolUse gates.
 # Usage: [ -n "$DENY" ] && emit_deny "$DENY"
 emit_deny() {
-  WRIT_DENY_REASON="$1" python3 <<'PY'
-import json, os
-print(json.dumps({
-    'hookSpecificOutput': {
-        'hookEventName': 'PreToolUse',
-        'permissionDecision': 'deny',
-        'permissionDecisionReason': os.environ.get('WRIT_DENY_REASON', '')
-    }
-}))
+  WRIT_DENY_REASON="$1" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$_WRIT_SKILL_DIR" python3 <<'PY'
+import os
+from writ.harness.decisions import emit_pretool
+emit_pretool("deny", os.environ.get("WRIT_DENY_REASON", ""))
 PY
 }
 
@@ -777,15 +772,20 @@ PY
 # one destination per line) cannot corrupt or forge the envelope (SEC-INJ-LOG-001).
 # Usage: [ -n "$ASK" ] && emit_ask "$ASK"
 emit_ask() {
-  WRIT_ASK_REASON="$1" python3 <<'PY'
-import json, os
-print(json.dumps({
-    'hookSpecificOutput': {
-        'hookEventName': 'PreToolUse',
-        'permissionDecision': 'ask',
-        'permissionDecisionReason': os.environ.get('WRIT_ASK_REASON', '')
-    }
-}))
+  WRIT_ASK_REASON="$1" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$_WRIT_SKILL_DIR" python3 <<'PY'
+import os
+from writ.harness.decisions import emit_pretool
+emit_pretool("ask", os.environ.get("WRIT_ASK_REASON", ""))
+PY
+}
+
+# Stop / SubagentStop block. Prints Grok+Claude decision JSON. Caller exits 2.
+# Usage: emit_stop_block "reason"; exit 2
+emit_stop_block() {
+  WRIT_STOP_REASON="$1" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$_WRIT_SKILL_DIR" python3 <<'PY'
+import os
+from writ.harness.decisions import emit_stop
+emit_stop(os.environ.get("WRIT_STOP_REASON", ""))
 PY
 }
 
@@ -923,8 +923,8 @@ writ_require_session() {
   # PYTHON IS THE CORRECT SIDE: an empty agent_id means "not a sub-agent", which is a
   # session_id case, not a refusal.
   sid=$(printf '%s' "$stdin_json" | json_transform \
-    '[.agent_id, .session_id] | map(select(. != null and . != "" and . != false)) | first // empty' \
-    "(d.get('agent_id') or d.get('session_id'))" 2>/dev/null || true)
+    '[.agent_id, .agentId, .session_id, .sessionId] | map(select(. != null and . != "" and . != false)) | first // empty' \
+    "(d.get('agent_id') or d.get('agentId') or d.get('session_id') or d.get('sessionId'))" 2>/dev/null || true)
   sid=$(printf '%s' "$sid" | tr -d '[:space:]')
   if [ -z "$sid" ]; then
     writ_critical "$hook" "no session_id in hook payload; refusing to act on a guessed session"

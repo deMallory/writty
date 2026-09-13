@@ -41,6 +41,7 @@ def is_approval(prompt: str) -> bool:
             'approved', 'approve', 'lgtm', 'proceed', 'go ahead',
             'looks good', 'ship it', 'yes', 'yep', 'y', 'ok', 'okay',
             'go', 'do it', 'continue', 'accepted', 'accept',
+            '/writ-approve', 'writ-approve',
         }
 
         clean = re.sub(r'[.!,]+$', '', prompt.strip())

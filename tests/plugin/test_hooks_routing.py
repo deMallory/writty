@@ -18,21 +18,29 @@ from tests.plugin.conftest import REPO_ROOT, _expand_plugin_root
 
 HOOKS_JSON_PATH = REPO_ROOT / "hooks" / "hooks.json"
 
-# Expected script names per event from the plan's Phase B Files section
+# Fork policy: see feat/upstream-resync migration (option A).
+# hooks.json is pruned to the 13 hooks with no .claude/hooks/ counterpart;
+# the remainder register via templates/settings.json.
 EXPECTED_EVENT_SCRIPTS: dict[str, list[str]] = {
-    "UserPromptSubmit": ["auto-approve-gate.sh", "writ-rag-inject.sh"],
-    "SubagentStart": ["writ-subagent-start.sh"],
-    "SubagentStop": ["writ-subagent-stop.sh"],
-    "Stop": [
-        "friction-logger.sh",
-        "enforce-violations.sh",
-        "writ-verify-before-claim.sh",
-        "writ-comms-output-gate.sh",
+    "SessionStart": ["writ-blackbox-capture.sh", "session-start-bootstrap.sh"],
+    "UserPromptSubmit": ["writ-manual-test-grant.sh"],
+    "SubagentStop": ["writ-blackbox-capture.sh"],
+    "Stop": ["writ-comms-output-gate.sh"],
+    "PostToolUseFailure": ["writ-blackbox-capture.sh"],
+    "PostCompact": ["writ-blackbox-capture.sh"],
+    "CwdChanged": ["writ-blackbox-capture.sh"],
+    "PreToolUse": [
+        "writ-read-junk-gate.sh",
+        "writ-debug-code-gate.sh",
+        "writ-dispatch-discipline.sh",
+        "writ-bash-write-gate.sh",
+        "writ-state-write-gate.sh",
     ],
-    "PreCompact": ["writ-precompact.sh"],
-    "PostCompact": ["writ-postcompact.sh"],
-    "SessionEnd": ["writ-session-end.sh", "writ-pressure-audit.sh"],
-    "CwdChanged": ["writ-cwd-changed.sh"],
+    "PostToolUse": [
+        "writ-web-capture.sh",
+        "writ-bible-authoring-push.sh",
+        "writ-memory-capture.sh",
+    ],
 }
 
 
@@ -110,9 +118,10 @@ class TestHooksJsonStructure:
         comms-output gate added the Stop writ-comms-output-gate (40 -> 41); the
         manual-testing grant added its UserPromptSubmit minter and the PreToolUse
         Write|Edit state-write gate (41 -> 43); the auto-memory mirror added the
-        PostToolUse Write|Edit writ-memory-capture (43 -> 44); the fork ported
-        agent-hotswap, sdd-review-order, output-rewrite and bash-failure (44 -> 48)."""
+        PostToolUse Write|Edit writ-memory-capture (43 -> 44)."""
         registrations = _collect_all_registrations(hooks_data)
+        # main restored the full upstream+fork hook surface (48). Grok adapter
+        # keeps that count while adding matcher aliases + dual plugin-root tokens.
         assert len(registrations) == 48, (
             f"hooks.json registration count drifted; found {len(registrations)}, "
             f"expected 48. Update this and HANDBOOK if the change is intentional."
@@ -133,10 +142,17 @@ class TestHooksJsonStructure:
                 )
 
     def test_hooks_json_paths_use_claude_plugin_root(self, hooks_data: dict) -> None:
-        """Every command must contain ${CLAUDE_PLUGIN_ROOT} (no hardcoded paths, no $HOME, no $WRIT_DIR)."""
+        """Every command must contain ${CLAUDE_PLUGIN_ROOT} (no hardcoded paths, no $HOME, no $WRIT_DIR).
+
+        Dual-token forms ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}} still satisfy
+        this check (substring) while allowing a GROK_PLUGIN_ROOT fallback on Grok.
+        """
         commands = _collect_all_commands(hooks_data)
         for command in commands:
-            assert "${CLAUDE_PLUGIN_ROOT}" in command, (
+            # Dual form ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}} does not contain
+            # the closed token "${CLAUDE_PLUGIN_ROOT}" (the :- interrupts the brace),
+            # so match the open token prefix shared by both spellings.
+            assert "${CLAUDE_PLUGIN_ROOT" in command, (
                 f"Command does not use ${{CLAUDE_PLUGIN_ROOT}}: {command!r}"
             )
             assert "$HOME" not in command, (
@@ -183,7 +199,7 @@ class TestHookScriptFiles:
             # Extract the script path portion (last token that ends in .sh)
             tokens = command.split()
             for token in tokens:
-                if token.endswith(".sh") and "${CLAUDE_PLUGIN_ROOT}" in token:
+                if token.endswith(".sh") and "${CLAUDE_PLUGIN_ROOT" in token:
                     resolved = _expand_plugin_root(token, REPO_ROOT)
                     if not resolved.exists():
                         missing.append(str(resolved))
@@ -199,7 +215,7 @@ class TestHookScriptFiles:
         for command in commands:
             tokens = command.split()
             for token in tokens:
-                if token.endswith(".sh") and "${CLAUDE_PLUGIN_ROOT}" in token:
+                if token.endswith(".sh") and "${CLAUDE_PLUGIN_ROOT" in token:
                     resolved = _expand_plugin_root(token, REPO_ROOT)
                     if resolved.exists() and not os.access(resolved, os.X_OK):
                         not_executable.append(str(resolved))

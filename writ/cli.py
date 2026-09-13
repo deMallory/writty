@@ -1717,6 +1717,45 @@ memory_app = typer.Typer(
 )
 app.add_typer(memory_app, name="memory")
 
+grok_app = typer.Typer(
+    name="grok",
+    help="Grok Build adapter: materialize the session plan and probe the dialect.",
+)
+app.add_typer(grok_app, name="grok")
+
+
+@grok_app.command("materialize-plan")
+def grok_materialize_plan(
+    cwd: str = typer.Option(..., help="Absolute project cwd (Grok workspace root)."),
+    session: str = typer.Option(
+        "",
+        "--session",
+        help="Grok session id. Defaults to $GROK_SESSION_ID.",
+    ),
+    project_root: str = typer.Option("", help="Override project root if cwd is not inside it."),
+    force: bool = typer.Option(False, "--force", help="Overwrite a newer repo-root plan.md."),
+) -> None:
+    """Copy ~/.grok/sessions/<encoded-cwd>/<sid>/plan.md to <repo>/plan.md."""
+    import os
+
+    from writ.harness.grok_plan import materialize_plan
+
+    sid = session or os.environ.get("GROK_SESSION_ID", "")
+    if not sid:
+        typer.echo("error: pass --session or set GROK_SESSION_ID", err=True)
+        raise typer.Exit(2)
+    result = materialize_plan(cwd, sid, project_root=project_root, force=force)
+    payload = {
+        "ok": result.ok,
+        "action": result.action,
+        "source": result.source,
+        "dest": result.dest,
+        "error": result.error,
+    }
+    typer.echo(json.dumps(payload))
+    if not result.ok:
+        raise typer.Exit(1)
+
 
 def _memory_capture():
     """Load bin/lib/memory_capture.py -- the parser the mirror hook also binds to.

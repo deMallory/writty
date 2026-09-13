@@ -79,7 +79,7 @@ def pyor(a; b): if (a | pytruthy) then a else b end;
 def getor(obj; key; default): if (obj | has(key)) then obj[key] else default end;
 
 def parsed_tool_input:
-  (.tool_input // null) as $ti
+  ((.tool_input // .toolInput) // null) as $ti
   | (if ($ti | type) == "string" then
        (try ($ti | fromjson | as_object) catch {})
      else
@@ -111,15 +111,30 @@ root
 | . as $env
 | parsed_tool_input as $ti
 | {
-    session_id: getor($env; "session_id"; ""),
-    agent_id: getor($env; "agent_id"; ""),
-    agent_type: getor($env; "agent_type"; ""),
-    event: getor($env; "hook_event_name"; ($ENV.HOOK_EVENT // "")),
-    tool_name: getor($env; "tool_name"; ($ENV.HOOK_TOOL_NAME // "")),
+    session_id: (if ($env | has("session_id")) then $env.session_id
+                 elif ($env | has("sessionId")) then $env.sessionId
+                 else "" end),
+    agent_id: (if ($env | has("agent_id")) then $env.agent_id
+               elif ($env | has("agentId")) then $env.agentId
+               else "" end),
+    agent_type: (if ($env | has("agent_type")) then $env.agent_type
+                 elif ($env | has("agentType")) then $env.agentType
+                 else "" end),
+    event: (if ($env | has("hook_event_name")) then $env.hook_event_name
+            elif ($env | has("hookEventName")) then $env.hookEventName
+            else ($ENV.HOOK_EVENT // "") end),
+    tool_name: (if ($env | has("tool_name")) then $env.tool_name
+                elif ($env | has("toolName")) then $env.toolName
+                else ($ENV.HOOK_TOOL_NAME // "") end),
     tool_input: $ti,
-    tool_output: getor($env; "tool_output"; ($ENV.HOOK_TOOL_OUTPUT // null)),
-    is_error: getor($env; "tool_result_is_error"; (($ENV.HOOK_TOOL_IS_ERROR // "") == "1")),
-    file_path: pyor($ti.file_path; pyor($ti.path; pyor($ti.notebook_path; ""))),
+    tool_output: (if ($env | has("tool_output")) then $env.tool_output
+                  elif ($env | has("toolOutput")) then $env.toolOutput
+                  elif ($env | has("toolResult")) then $env.toolResult
+                  else ($ENV.HOOK_TOOL_OUTPUT // null) end),
+    is_error: (if ($env | has("tool_result_is_error")) then $env.tool_result_is_error
+               elif ($env | has("toolResultIsError")) then $env.toolResultIsError
+               else (($ENV.HOOK_TOOL_IS_ERROR // "") == "1") end),
+    file_path: pyor($ti.file_path; pyor($ti.path; pyor($ti.notebook_path; pyor($ti.target_file; "")))),
     content: pyor($ti.content; getor($ti; "new_source"; "")),
     old_string: getor($ti; "old_string"; ""),
     new_string: getor($ti; "new_string"; ""),

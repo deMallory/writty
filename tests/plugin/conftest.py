@@ -17,8 +17,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def _expand_plugin_root(path: str, root: Path) -> Path:
-    """Substitute ${CLAUDE_PLUGIN_ROOT} with repo root for test-time path resolution."""
-    expanded = path.replace("${CLAUDE_PLUGIN_ROOT}", str(root))
+    """Substitute plugin-root tokens with repo root for test-time path resolution.
+
+    Dual-token forms (${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}) must be
+    replaced before the plain ${CLAUDE_PLUGIN_ROOT} token so the default-value
+    syntax is not partially expanded.
+    """
+    expanded = path.replace("${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}", str(root))
+    expanded = expanded.replace("${CLAUDE_PLUGIN_ROOT}", str(root))
+    expanded = expanded.replace("${GROK_PLUGIN_ROOT}", str(root))
     return Path(expanded)
 
 

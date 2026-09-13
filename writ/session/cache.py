@@ -63,15 +63,25 @@ def resolve_current_session_id() -> str | None:
     """Resolve the CURRENT session id, preferring concurrency-safe signals.
 
     Order (first non-empty wins):
-      1. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
-      2. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
-      3. _SESSION_POINTER_PATH       (payload-derived; self-heals each turn; shared-global)
-      4. newest writ-session-*.json  (mtime glob; last resort; racy)
+      1. $GROK_SESSION_ID            (Grok Build; wins over Claude so a dual-harness
+                                      machine does not attach a Grok turn to a stale
+                                      Claude id)
+      2. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
+      3. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
+      4. _SESSION_POINTER_PATH       (payload-derived; self-heals each turn; shared-global)
+      5. newest writ-session-*.json  (mtime glob; last resort; racy)
     Returns None when nothing resolves (callers fail loud, never guess). Each signal is
     individually guarded so a bad value / unreadable file / dir falls through to the next
     candidate -- the resolver NEVER raises.
     """
-    # 1. per-process env id (empty string is treated as unset)
+    try:
+        grok_sid = os.environ.get("GROK_SESSION_ID", "")
+        if grok_sid:
+            return grok_sid
+    except Exception:
+        pass
+
+    # 2. per-process Claude env id (empty string is treated as unset)
     try:
         env_sid = os.environ.get("CLAUDE_SESSION_ID", "")
         if env_sid:
