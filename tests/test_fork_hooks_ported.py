@@ -66,7 +66,7 @@ class TestRegistrations:
             f"{script} not registered as {expected}"
         )
 
-    def test_manifest_has_48_registrations_across_12_events(self) -> None:
+    def test_manifest_has_49_registrations_across_12_events(self) -> None:
         data = json.loads(HOOKS_JSON.read_text())
         assert len(data["hooks"]) == 12
         total = sum(
@@ -74,7 +74,7 @@ class TestRegistrations:
             for groups in data["hooks"].values()
             for group in groups
         )
-        assert total == 48
+        assert total == 49
 
     def test_settings_template_regenerates_byte_identically(self) -> None:
         result = subprocess.run(

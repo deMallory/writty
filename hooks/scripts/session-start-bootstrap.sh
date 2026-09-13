@@ -80,7 +80,15 @@ WRIT_PORT="8765"
 # ${CLAUDE_PLUGIN_DATA}/server.log -- the same path this line used to hardcode.
 # shellcheck source=scripts/lib/writ-server-lib.sh
 source "${WRIT_DIR}/scripts/lib/writ-server-lib.sh"
-writ_ensure_server
+# Realign is opt-in because on Linux a systemd unit owns the daemon and a restart
+# here would fight it. On Darwin nothing else owns it, so a daemon born on another
+# session store (the split behind "my approval token was lost") would persist for
+# the life of the machine unless SessionStart heals it once.
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+  WRIT_REALIGN_CACHE=1 writ_ensure_server
+else
+  writ_ensure_server
+fi
 
 # 5. Session-id rotation carry-forward. If the harness rotated the session id, the fresh
 #    cache has mode=None and every write is denied [ENF-GATE-MODE]. Parse the payload

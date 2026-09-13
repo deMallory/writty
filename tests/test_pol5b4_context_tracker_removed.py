@@ -95,4 +95,4 @@ class TestStopEventIntact:
         # (agent-hotswap, sdd-review-order, output-rewrite, bash-failure).
         data = json.loads(HOOKS_JSON.read_text())
         n = _registration_count(data)
-        assert n == 48, f"hooks.json registration count drifted; found {n}, expected 48"
+        assert n == 49, f"hooks.json registration count drifted; found {n}, expected 49"

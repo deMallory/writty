@@ -342,7 +342,9 @@ def _check_special_files(basename: str, mode, current_phase) -> dict | None:
             return {
                 "can_write": False,
                 "reason": "[ENF-GATE-PLAN] plan.md cannot be modified during implementation phase. "
-                          "Invalidate the current gate to return to planning if the plan needs changes.",
+                          "If the plan needs changes, start a new task at planning: "
+                          "`python3 <skill>/bin/lib/writ-session.py mode set work <session_id>` "
+                          "(the agent may run this itself; it resets the phase, not the mode).",
             }
         return {"can_write": True, "reason": None}
 

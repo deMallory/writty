@@ -130,10 +130,11 @@ fi
 # no approval gate (finishing is a separate explicit action), and the other
 # modes have no gates, so a stray "approved" there is a logged no-op.
 GATE_TOKEN_FILE="/tmp/writ-gate-token-${SESSION_ID}"
-if [ ! -f "$GATE_TOKEN_FILE" ]; then
-    python3 -c "import secrets; print(secrets.token_hex(16))" > "$GATE_TOKEN_FILE" 2>/dev/null
-    chmod 600 "$GATE_TOKEN_FILE" 2>/dev/null || true
-fi
+# Always mint fresh (overwrite). The token expires by mtime (gate_token.py), so an
+# old file left behind by an earlier, kept approval must not block this one: a new
+# "approved" is a new approval and restarts the clock.
+python3 -c "import secrets; print(secrets.token_hex(16))" > "$GATE_TOKEN_FILE" 2>/dev/null
+chmod 600 "$GATE_TOKEN_FILE" 2>/dev/null || true
 
 CURRENT_PHASE=$(python3 "$SESSION_HELPER" current-phase "$SESSION_ID" 2>/dev/null \
     | python3 -c "import sys,json; print(json.load(sys.stdin).get('phase',''))" 2>/dev/null || echo "")
@@ -146,46 +147,17 @@ GATE_ERROR=""
 VALIDATED=""
 TOKEN_SPENT=""
 if [ "$CURRENT_MODE" = "work" ] && { [ "$CURRENT_PHASE" = "planning" ] || [ "$CURRENT_PHASE" = "testing" ]; }; then
-    GATE_TOKEN=$(cat "$GATE_TOKEN_FILE" 2>/dev/null || echo "")
-    # Send the cwd and let the SERVER resolve the project root
-    # (locators.resolve_project_root: marker dir at or above cwd, else the cwd itself).
-    # Two reasons not to send the bash marker walk as project_root instead:
-    #   - it would arrive as the "explicit" tier, so the reported root_tier could never
-    #     say whether a marker or the bare cwd produced the root -- the whole point of
-    #     showing the user where the approved plan came from;
-    #   - the marker list exists in both bash (detect_project_root) and python
-    #     (PROJECT_ROOT_MARKERS); resolving server-side keeps ONE of them authoritative
-    #     for the gate decision, so a future drift cannot change which plan is approved.
-    # $PROJECT_ROOT is still computed above, for the friction log. Sending cwd is what
-    # makes an unmarked directory workable at all: it used to resolve to no root, and the
-    # route then refused the advance and spent the approval every time. The server cannot
-    # substitute its own cwd -- that is Writ's install dir, which has its own plan.md.
-    ADVANCE_PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'confirmation_source':'pattern','token':sys.argv[1],'cwd':sys.argv[2]}))" "$GATE_TOKEN" "$(pwd -P)" 2>/dev/null || echo "{}")
-    # Address the daemon through WRIT_SESSION_HOST/PORT (common.sh derives them from
-    # WRIT_HOST/WRIT_PORT), as every other hook does. This request once hardcoded
-    # localhost:8765, so it ignored WRIT_PORT: the test suite pins WRIT_PORT to its own
-    # daemon precisely to leave the interactive 8765 singleton alone, and that one line
-    # reached past that isolation and advanced gates on the developer's real daemon,
-    # writing real phase_advance rows into the real audit log.
-    # WRIT_HTTP_TIMEOUT=10, not 3: this POST runs the target gate's validator, and
-    # _validate_test_skeletons falls back to a recursive glob over the project when no
-    # session-tracked test file matches, which on a large repo can outlast a 3s budget.
-    # A timeout is the worst outcome here: the server can still advance and consume the
-    # token while the hook, seeing no response, tells the user nothing was advanced. This
-    # runs once per human approval, not on a hot path, so the wider budget is cheap.
-    #
-    # writ_http_post, not raw curl: without a fallback, a user typing "approved" on a
-    # curl-less machine silently advanced NOTHING. The session helper's own advance arm
-    # cannot substitute -- it posts {}, dropping the single-use token and the cwd the
-    # server needs to resolve the project root -- so the request is preserved byte for byte
-    # here and urllib carries it when curl is absent. Non-fail mode on purpose: a >= 400
-    # body is what gate_advance_outcome.py classifies as a rejection.
-    ADVANCE_RESP=$(WRIT_HTTP_CONNECT_TIMEOUT=0.5 WRIT_HTTP_TIMEOUT=10 \
-        writ_http_post "http://${WRIT_SESSION_HOST}:${WRIT_SESSION_PORT}/session/${SESSION_ID}/advance-phase" \
-        "$ADVANCE_PAYLOAD" 2>/dev/null || echo "")
+    # writ_post_advance (common.sh) sends the token and the cwd and lets the SERVER
+    # resolve the project root (locators.resolve_project_root: marker dir at or above
+    # cwd, else the cwd itself). Sending cwd, not a bash marker walk, keeps ONE root
+    # resolver authoritative and makes an unmarked directory workable; the server
+    # cannot substitute its own cwd, which is Writ's install dir with its own plan.md.
+    # The same helper serves writ-gate-retry.sh, so a kept approval is re-posted with
+    # exactly this payload after the agent fixes the artifact.
+    ADVANCE_RESP=$(writ_post_advance "$SESSION_ID" "$(pwd -P)" || echo "")
     # Classify the response via the shared stdlib helper (single source; the two
-    # inline parses this replaces had drifted). A rejection SPENDS the token, so
-    # the user must fix the artifact and type "approved" again to mint a fresh one.
+    # inline parses this replaces had drifted). A rejection KEEPS the token: the
+    # agent fixes the artifact and the retry hook re-posts on the next write to it.
     OUTCOME_RAW=$(echo "$ADVANCE_RESP" | python3 "$WRIT_DIR/bin/lib/gate_advance_outcome.py" 2>/dev/null || printf 'none\t\t\t\t')
     OUTCOME=$(printf '%s' "$OUTCOME_RAW" | cut -f1)
     # Fields: 1 outcome, 2 phase, 3 what the gate judged, 4 token_spent, 5- the error.
@@ -241,14 +213,13 @@ elif [ -n "$GATE_ERROR" ]; then
     # and fixes it -- stderr is not shown in the UserPromptSubmit context, which made
     # refusals look like "no gate pending".
     echo "[Writ: ${CURRENT_PHASE} gate REJECTED -- not advanced] ${GATE_ERROR}"
-    # Two kinds of refusal, and telling the user the wrong one is a real cost: a spent
-    # token means they MUST type the approval again, an unspent one means they must not.
-    # token_spent=false comes back when the gate could not evaluate the artifact at all
-    # (no resolvable project root), where the approval stays valid.
-    if [ "$TOKEN_SPENT" = "false" ]; then
-        echo "Your approval was NOT consumed: fix the cause above and retry; you do not need to approve again."
+    # The approval is kept on every refusal the current server produces (a rejected
+    # artifact and an unresolvable root both return token_spent=false). Only an older
+    # daemon still reports a spent token; say so only when it does.
+    if [ "$TOKEN_SPENT" = "true" ]; then
+        echo "Fix the issue above in one edit; this daemon spent the prior approval, so the user must approve again."
     else
-        echo "Fix the issue above in one edit; the rejection spent the prior approval, so the user must approve again."
+        echo "Your approval is kept (token not consumed): fix the cause above and the gate retries on the next plan.md/test write. Do not ask the user to approve again."
     fi
 elif [ "$OUTCOME" = "noop" ]; then
     # Benign no-op: the server reported no pending gate to advance (not a rejection).

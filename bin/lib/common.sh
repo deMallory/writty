@@ -119,6 +119,27 @@ writ_http_post() {
     return $rc
 }
 
+# Post a gate advance for SESSION_ID with the on-disk approval token, resolving the
+# project root server-side from CWD. Prints the raw response body (empty when the
+# daemon is unreachable); the caller classifies it with gate_advance_outcome.py.
+# Single builder for the approval hook AND the gate-retry hook: the payload shape
+# (confirmation_source, token, cwd) is the server's contract, and two copies had
+# started to drift. Never removes the token: only the server may spend it.
+# WRIT_HTTP_TIMEOUT=10: the POST runs the target gate's validator, which can glob
+# the whole project for test skeletons; a timeout here is the worst outcome (the
+# server may still advance while the hook reports nothing).
+# Usage: RESP=$(writ_post_advance "$SESSION_ID" "$(pwd -P)")
+writ_post_advance() {
+    local session_id="$1" cwd="${2:-}"
+    local token payload
+    token=$(cat "/tmp/writ-gate-token-${session_id}" 2>/dev/null || echo "")
+    [ -n "$token" ] || return 0
+    payload=$(python3 -c "import json,sys; print(json.dumps({'confirmation_source':'pattern','token':sys.argv[1],'cwd':sys.argv[2]}))" "$token" "$cwd" 2>/dev/null || echo "{}")
+    WRIT_HTTP_CONNECT_TIMEOUT=0.5 WRIT_HTTP_TIMEOUT=10 \
+        writ_http_post "http://${WRIT_SESSION_HOST}:${WRIT_SESSION_PORT}/session/${session_id}/advance-phase" \
+        "$payload" 2>/dev/null || true
+}
+
 # Compat shim for hooks written against the pre-load_hook_env idiom
 # (PARSED=$(parse_hook_stdin); FILE=$(parsed_field "$PARSED" file_path)).
 # New hooks use load_hook_env (single spawn); existing callers keep working.

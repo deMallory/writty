@@ -83,6 +83,23 @@ def is_approval(prompt: str) -> bool:
                 if re.match(p, prompt):
                     return True
 
+            # Position-free: an approval word that ENDS the prompt, or follows a
+            # clause break, counts ("sounds lovely, approved !", "you have my explicit
+            # go ahead", "great, proceed with it"). The anchored patterns above missed
+            # these, so no token was minted and the user retyped a bare "approved".
+            # A word used inside a sentence ("the proceed function", "approved changes
+            # need review") stays a non-match. Guards: a question, or a negation, is
+            # never an approval.
+            if '?' in prompt:
+                return False
+            negations = r"(?:\b(?:not|don'?t|do not|never|isn'?t|shouldn'?t|can'?t|cannot)\b|^no\b)"
+            if re.search(negations, prompt):
+                return False
+            if re.search(r'\b' + approval_words + r'$', clean):
+                return True
+            if re.search(r'[,;:]\s*' + approval_words + r'\b', clean):
+                return True
+
         return False
     except Exception:
         return False

@@ -1,43 +1,23 @@
 ---
 name: writ-approve
-description: Advance the current Writ workflow phase. Replaces pattern-match "approved" detection with an explicit tool-confirmed advance (plan Section 8.1).
+description: Report the pending Writ workflow gate and how the user advances it. The advance itself is performed by the approval hook on the user's own "approved"; the agent never handles the gate token.
 ---
 
-You have been invoked to advance the Writ workflow phase. Confirm the user's intent is to advance, then run this command via Bash.
+You have been invoked to check the Writ workflow gate. This command is status-only: it never advances a phase and never touches the gate token.
+
+## Why status-only
+
+The gate token at `/tmp/` is written by the approval hook ONLY when the user's own prompt matched an approval pattern, and the same hook posts the advance in the same turn. The Bash write gate refuses any command that names that token file, so an agent-side read + POST could only ever fail, and every failure sent the user back to retype "approved". One path remains: the user types the approval, the hook executes it.
 
 ## Procedure
 
-1. Check the current phase via `GET /session/$SESSION_ID/current-phase`.
-2. If the current phase artifact exists and was presented to the user in this or a prior turn (plan.md for planning, test skeletons for testing, etc.), proceed. Otherwise, respond: "No current phase artifact to approve. Present the artifact first."
-3. Advance via POST, passing the gate token. The token at `/tmp/writ-gate-token-$SESSION_ID`
-   is written by the approval hook ONLY when the user's prompt matched an approval pattern,
-   so it proves genuine user approval; the advance route now requires it and consumes it
-   (one approval = one advance):
-
-   `cwd` MUST be sent: the server resolves the project root from it (that is where
-   plan.md and the test skeletons are looked for), and it cannot substitute its own
-   working directory, which is Writ's install dir. Omitting it made every planning
-   advance fail closed on an empty root and spend the approval token.
-
-```bash
-TOKEN=$(cat "/tmp/writ-gate-token-$SESSION_ID" 2>/dev/null)
-curl -sX POST http://localhost:8765/session/$SESSION_ID/advance-phase \
-  -H 'Content-Type: application/json' \
-  -d "{\"confirmation_source\": \"tool\", \"token\": \"$TOKEN\", \"cwd\": \"$(pwd -P)\"}"
-```
-
-   If the response is `{"advanced": false, ...}` with a token error, the user has not
-   actually approved this turn (no token was written). Do NOT retry or fabricate a token:
-   tell the user the approval was not detected and ask them to confirm explicitly.
-
-4. Confirm to the user: "[Writ: $ARG advanced → $NEW_PHASE]" where $ARG is what they approved (design / plan / tests) and $NEW_PHASE is the new phase name from the response. Also report the response's `validated` and `project_root` fields verbatim, so the user can see WHICH plan.md was accepted and catch a wrong project root.
-
-## Audit trail
-
-Each advance is recorded to `session.phase_transitions` with `confirmation_source: "tool"` AND appended to `workflow-friction.log` as a `phase_advance` event. Phase 5 telemetry distinguishes tool-confirmed from pattern-confirmed advances for rubric refinement.
+1. Read the current phase via `GET /session/$SESSION_ID/current-phase` (curl is fine; this route touches no gate state).
+2. If the phase is `planning` or `testing`, the artifact for that phase (plan.md, or the test skeletons) must exist and have been presented to the user. If it has not, present it now.
+3. Tell the user, in one line, what the pending gate is and that typing **approved** advances it. Example: "Pending: plan.md (planning gate). Say approved to proceed."
+4. If the user already approved this turn and the hook reported `REJECTED`, do NOT ask them to approve again: the approval is kept for 15 minutes. Fix the artifact; the gate retries automatically on your next write to it.
 
 ## Never
 
-- Never advance without this command (or its MCP equivalent `writ_approve`). Pattern match on "approved" in user prompts is defence in depth, not the primary path.
-- Never advance multiple phases in a single invocation. One call = one advance.
-- Never fabricate approval. If the user has not explicitly authorized, ask them before calling.
+- Never read, echo, copy or POST the gate token. The hook is the only advance path.
+- Never fabricate approval or advance a phase yourself. If the user has not said so, ask them.
+- Never advance multiple phases in one turn. One approval = one advance.

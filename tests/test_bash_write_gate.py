@@ -428,3 +428,24 @@ class TestMatcherWired:
             if "Bash" in g.get("matcher", "").split("|"):
                 scripts += [h["command"].rsplit("/", 1)[-1] for h in g.get("hooks", [])]
         assert "writ-bash-write-gate.sh" in scripts
+
+
+class TestNonPathTokensAreNotTargets:
+    """`=` and `34,` were emitted as local targets and denied (audit 2026-09-06 11:26),
+    then escalated as repeated denials; a heredoc body containing `x = 1` was refused
+    as "Bash write to =" on 2026-09-13. A candidate whose basename has no letter is
+    not a file the plan gate should judge."""
+
+    def test_equals_sign_is_not_a_target(self):
+        assert not any(t.endswith("/=") for _, t in _extract("tee = < in.txt"))
+
+    def test_numeric_comma_is_not_a_target(self):
+        assert not any(t.endswith("/34,") for _, t in _extract("cp src 34,"))
+
+    def test_heredoc_assignment_is_not_a_target(self):
+        cmd = "cat >> tests/test_x.py <<'EOF'\nx = 1\nEOF"
+        assert not any(t.endswith("/=") for _, t in _extract(cmd))
+        assert any(t.endswith("/tests/test_x.py") for _, t in _extract(cmd))
+
+    def test_real_file_still_targeted(self):
+        assert any(t.endswith("/a.txt") for _, t in _extract("tee a.txt < in.txt"))

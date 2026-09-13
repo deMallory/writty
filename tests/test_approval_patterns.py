@@ -162,3 +162,40 @@ class TestHookModuleAgreement:
             "auto-approve-gate.sh does not reference approval_match; "
             "the hook may still be using the old inline detector instead of the module."
         )
+
+
+# -- Position-free matching (2026-09-13) ------------------------------------
+#
+# The anchored patterns missed real approvals with a preamble ("Sounds lovely,
+# approved !", "You have my explicit go ahead"), so no token was minted and the user
+# had to retype a bare "approved". An approval word anywhere in a short prompt now
+# counts, guarded against negation and questions.
+
+class TestPositionFree:
+    def test_preamble_then_approved_is_approval(self):
+        assert _check_approval("Sounds lovely, approved !")
+
+    def test_explicit_go_ahead_is_approval(self):
+        assert _check_approval("You have my explicit go ahead")
+
+    def test_plan_is_fine_approved_is_approval(self):
+        assert _check_approval("the plan is fine, approved")
+
+    def test_great_proceed_is_approval(self):
+        assert _check_approval("great, proceed with it")
+
+    def test_negated_is_not_approval(self):
+        assert not _check_approval("not approved")
+        assert not _check_approval("this is not approved yet")
+        assert not _check_approval("don't proceed")
+        assert not _check_approval("do not proceed yet")
+
+    def test_question_is_not_approval(self):
+        assert not _check_approval("is this approved?")
+        assert not _check_approval("should I approve this?")
+
+    def test_long_prompt_is_not_approval(self):
+        long = ("i approved the budget last year for the whole team, now can you "
+                "explain how the hook decides which plan file it validates and why")
+        assert len(long) >= 120
+        assert not _check_approval(long)

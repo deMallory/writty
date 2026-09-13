@@ -11,7 +11,21 @@ envelopes, and async wrapping; only the security decision lives here.
 """
 
 import os
+import time
 import uuid
+
+# A rejected artifact no longer spends the token (the approval stands while the agent
+# fixes the format), so an unspent token needs a bound: past this age it is treated
+# as absent and removed, so a stale approval cannot authorize a later, unrelated
+# advance. Override with WRIT_GATE_TOKEN_TTL (seconds).
+DEFAULT_TOKEN_TTL_SECONDS = 900
+
+
+def _token_ttl_seconds() -> float:
+    try:
+        return float(os.environ.get("WRIT_GATE_TOKEN_TTL", DEFAULT_TOKEN_TTL_SECONDS))
+    except ValueError:
+        return float(DEFAULT_TOKEN_TTL_SECONDS)
 
 
 def gate_token_path(session_id: str) -> str:
@@ -24,9 +38,18 @@ def gate_token_path(session_id: str) -> str:
 
 
 def read_gate_token(session_id: str) -> str:
-    """Return the on-disk gate token, or "" if absent/unreadable (fail-closed)."""
+    """Return the on-disk gate token, or "" if absent/unreadable/expired (fail-closed).
+
+    Expiry is judged by the file's mtime, which the approval hook refreshes on every
+    genuine approval (it always rewrites the file). Single source: the route and the
+    CLI both read through here, so they inherit the same bound.
+    """
+    path = gate_token_path(session_id)
     try:
-        with open(gate_token_path(session_id)) as f:
+        if time.time() - os.stat(path).st_mtime > _token_ttl_seconds():
+            consume_gate_token(session_id)
+            return ""
+        with open(path) as f:
             return f.read().strip()
     except FileNotFoundError:
         # No approval outstanding: the normal state on most turns, not a failure.

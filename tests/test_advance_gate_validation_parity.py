@@ -25,7 +25,7 @@ import pytest
 
 from writ.server import SessionAdvancePhaseRequest
 from writ.session.cache import _read_cache, _write_cache
-from writ.session.gate_token import gate_token_path
+from writ.session.gate_token import consume_gate_token, gate_token_path
 
 PLAN_OK = """# Plan
 
@@ -123,8 +123,12 @@ class TestTestSkeletonsGateEnforced:
         assert res.get("phase") == "implementation", res
 
     @pytest.mark.asyncio
-    async def test_rejection_spends_the_token(self, tmp_path):
-        """A judged-and-failed artifact needs a FRESH approval (governance rule)."""
+    async def test_rejection_keeps_the_token(self, tmp_path):
+        """A judged-and-failed artifact KEEPS the approval (2026-09-13).
+
+        Spending it forced the user to retype "approved" after every format miss. The
+        approval stands (bounded by the token TTL, see test_gate_token_ttl) so the agent
+        can fix the artifact and the retry hook can advance on the same token."""
         sid = f"vp-{uuid.uuid4().hex[:8]}"
         _seed(sid, current_phase="testing", gates_approved=["phase-a"])
         tok = _token(sid)
@@ -132,8 +136,9 @@ class TestTestSkeletonsGateEnforced:
             sid, confirmation_source="explicit", token=tok,
             project_root=_testing_project(tmp_path, with_skeleton=False),
         )
-        assert res.get("token_spent") is True
-        assert not _token_exists(sid), "a rejected artifact must consume the approval"
+        assert res.get("advanced") is False and res.get("error")
+        assert res.get("token_spent") is False
+        assert _token_exists(sid), "a rejected artifact must not consume the approval"
 
 
 # --------------------------------------------------------------------------- #
@@ -152,17 +157,23 @@ class TestPhaseAUnchangedPlusCwd:
         assert res.get("phase") == "testing", res
 
     @pytest.mark.asyncio
-    async def test_malformed_plan_rejects_and_spends(self, tmp_path):
+    async def test_malformed_plan_rejects_and_keeps_token(self, tmp_path):
+        """2026-09-13: a rejected artifact no longer spends the approval; the agent
+        fixes plan.md and the retry hook re-posts with the same token."""
         sid = f"vp-{uuid.uuid4().hex[:8]}"
         _seed(sid)
         tok = _token(sid)
-        res = await _advance(
-            sid, confirmation_source="explicit", token=tok,
-            project_root=_planning_project(tmp_path, plan_body="# Plan\n\nno sections\n"),
-        )
-        assert res.get("advanced") is False
-        assert res.get("gate") == "phase-a"
-        assert not _token_exists(sid)
+        try:
+            res = await _advance(
+                sid, confirmation_source="explicit", token=tok,
+                project_root=_planning_project(tmp_path, plan_body="# Plan\n\nno sections\n"),
+            )
+            assert res.get("advanced") is False
+            assert res.get("gate") == "phase-a"
+            assert res.get("token_spent") is False
+            assert _token_exists(sid)
+        finally:
+            consume_gate_token(sid)
 
     @pytest.mark.asyncio
     async def test_unmarked_cwd_can_advance(self, tmp_path):

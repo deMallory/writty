@@ -1152,6 +1152,11 @@ for t in raw_targets:
         print(f"state\t{t}")
         continue
     ap = t if os.path.isabs(t) else os.path.normpath(os.path.join(cwd, t))
+    # A basename with no letter (`=`, `34,`, `--`) is an operator or a number the
+    # scanner mistook for a file; it was denied as "Bash write to =" and then
+    # escalated as repeated denials of a file that does not exist.
+    if not any(ch.isalpha() for ch in os.path.basename(ap)):
+        continue
     # Work-gate only project-local targets. Scratch writes outside the repo are not plan-gated.
     if ap == cwd or ap.startswith(cwd + os.sep):
         print(f"local\t{ap}")

@@ -354,10 +354,11 @@ class TestPreservedBehaviorGuards:
                 pass
 
     @pytest.mark.asyncio
-    async def test_phase_a_rejection_consumes_token(self, tmp_path):
-        """Already true today: a phase-a validation rejection (no plan.md
-        found) consumes the spent token. Unchanged by G1 (the plan explicitly
-        keeps consume_gate_token, not the claim, on this rejection path)."""
+    async def test_phase_a_rejection_keeps_token(self, tmp_path):
+        """2026-09-13: a phase-a validation rejection (no plan.md found) KEEPS
+        the token. The human's approval stands while the agent fixes the
+        artifact; the gate-retry hook re-posts with the same token. Expiry
+        (gate_token.py TTL) bounds the standing approval instead."""
         from writ.server import session_advance_phase
 
         sid = f"g1c-reject-{uuid.uuid4().hex[:8]}"
@@ -377,9 +378,10 @@ class TestPreservedBehaviorGuards:
             )
             assert result.get("advanced") is False, result
             assert result.get("gate") == "phase-a", result
-            assert not os.path.exists(token_path), (
-                "a phase-a validation rejection must consume the spent token "
-                "(no reuse -- a changed plan needs a fresh approval)"
+            assert result.get("token_spent") is False, result
+            assert os.path.exists(token_path), (
+                "a phase-a validation rejection must keep the token: the approval "
+                "stands and the retry hook re-posts it after the artifact is fixed"
             )
         finally:
             try:

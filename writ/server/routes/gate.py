@@ -157,15 +157,20 @@ async def session_advance_phase(
             }
         gate_error = await asyncio.to_thread(validator, project_root, session_id)
         if gate_error:
-            # A judged-and-failed artifact SPENDS the approval (no reuse: a changed
-            # artifact needs a fresh approval). consume_gate_token (not the claim) is
-            # correct here: concurrent rejections both remove + both reject.
-            await asyncio.to_thread(server.consume_gate_token, session_id)
+            # A judged-and-failed artifact KEEPS the approval. Spending it here cost the
+            # user a fresh "approved" for every format miss in plan.md, and the human's
+            # decision has not changed: they approved the plan, the agent owes a
+            # well-formed file. The token's TTL (gate_token.py) bounds how long the
+            # standing approval lives; writ-gate-retry.sh re-posts the advance when
+            # the agent rewrites the artifact.
             return {
                 "advanced": False,
-                "error": gate_error,
+                "error": (
+                    f"{gate_error}\nYour approval stands (token kept): fix the artifact "
+                    "and the gate retries on the next write to it."
+                ),
                 "gate": target_gate,
-                "token_spent": True,
+                "token_spent": False,
                 "project_root": project_root,
                 "root_tier": root_tier,
             }

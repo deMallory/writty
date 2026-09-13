@@ -884,7 +884,12 @@ class TestRepoGuardRawCurlAllowlist:
 class TestHttpWrapperOwnership:
     def test_advance_phase_post_no_longer_a_bare_curl_call(self):
         text = AUTO_APPROVE.read_text()
-        assert "writ_http_post" in text, "the /advance-phase POST must go through writ_http_post"
+        # 2026-09-13: the POST moved into common.sh writ_post_advance (shared with the
+        # retry hook), which itself goes through writ_http_post.
+        assert "writ_post_advance" in text, "the /advance-phase POST must go through writ_post_advance"
+        common = (AUTO_APPROVE.parent.parent.parent / "bin" / "lib" / "common.sh").read_text()
+        body = common[common.index("writ_post_advance()"):]
+        assert "writ_http_post" in body, "writ_post_advance must go through writ_http_post"
         assert not re.search(r"curl\s+-s[^\n]*advance-phase", text), (
             "the /advance-phase POST must not be a raw curl call"
         )

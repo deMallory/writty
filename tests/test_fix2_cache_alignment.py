@@ -195,3 +195,12 @@ class TestEnsureServerSelfHeal:
                 f"ensure-server must realign friction-log to B; got {h_b and h_b.get('friction_log')}"
         finally:
             _kill_alt_daemon(ALT_PORT)
+
+
+class TestAlignmentUsesResolvedDir:
+    def test_lib_compares_against_resolved_dir(self) -> None:
+        """A hook with WRIT_CACHE_DIR unset still resolves a dir (<skill>/var/session);
+        the daemon must be compared against THAT, or a split between the plugin cache
+        store and a repo store is never detected (2026-09-13)."""
+        body = (Path(__file__).resolve().parent.parent / "scripts" / "lib" / "writ-server-lib.sh").read_text()
+        assert '"$running_cache" != "$(writ_session_cache_dir)"' in body

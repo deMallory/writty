@@ -47,15 +47,18 @@ _writ_start_locked() {
             # match ours (FIX-2 + audit #4). A daemon born under a divergent TMPDIR, or
             # carrying a stale WRIT_FRICTION_LOG, silently blackholes its telemetry until
             # restarted. Read both from /health in one probe.
-            # Fail-safe: a value we cannot READ (empty), or an expectation we do not hold
-            # (env unset), is treated as aligned -- we never restart a healthy daemon on
-            # missing evidence.
+            # Fail-safe: a value we cannot READ (empty) is treated as aligned -- we never
+            # restart a healthy daemon on missing evidence. The cache expectation is the
+            # RESOLVED dir (writ_session_cache_dir: env if set, else <skill>/var/session),
+            # never only a raw env value: with the env unset, every hook still writes to
+            # the resolved dir, and a daemon born on another store was invisible to this
+            # check for as long as the env stayed unset.
             local health running_cache running_friction
             health=$(curl -s --connect-timeout 0.3 "http://${WRIT_HOST}:${WRIT_PORT}/health" 2>/dev/null || echo "")
             running_cache=$(printf '%s' "$health" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cache_dir') or '')" 2>/dev/null || echo "")
             running_friction=$(printf '%s' "$health" | python3 -c "import sys,json; print(json.load(sys.stdin).get('friction_log') or '')" 2>/dev/null || echo "")
             local cache_mismatch=0 friction_mismatch=0
-            if [ -n "$running_cache" ] && [ -n "${WRIT_CACHE_DIR:-}" ] && [ "$running_cache" != "$WRIT_CACHE_DIR" ]; then
+            if [ -n "$running_cache" ] && [ "$running_cache" != "$(writ_session_cache_dir)" ]; then
                 cache_mismatch=1
             fi
             if [ -n "$running_friction" ] && [ -n "${WRIT_FRICTION_LOG:-}" ] && [ "$running_friction" != "$WRIT_FRICTION_LOG" ]; then
@@ -65,7 +68,7 @@ _writ_start_locked() {
                 echo "[Writ] Server already running on port $WRIT_PORT (cache_dir=${running_cache:-unknown})" >&2
                 return 0
             fi
-            echo "[Writ] Server on $WRIT_PORT misaligned (cache_dir=$running_cache vs ${WRIT_CACHE_DIR:-unset}; friction_log=$running_friction vs ${WRIT_FRICTION_LOG:-unset}); restarting to realign" >&2
+            echo "[Writ] Server on $WRIT_PORT misaligned (cache_dir=$running_cache vs $(writ_session_cache_dir); friction_log=$running_friction vs ${WRIT_FRICTION_LOG:-unset}); restarting to realign" >&2
             WRIT_PORT="$WRIT_PORT" WRIT_HOST="$WRIT_HOST" bash "${WRIT_DIR}/scripts/stop-server.sh" >/dev/null 2>&1 || true
             # fall through to start a correctly-pinned daemon
         else
