@@ -89,7 +89,8 @@ fi
 # Detect "mode set <mode>" in the Bash command -- the only stdout/injection path.
 MODE=""
 if echo "$HOOK_COMMAND" | grep -qE 'mode set (conversation|debug|investigate|review|work)'; then
-    MODE=$(echo "$HOOK_COMMAND" | grep -oP 'mode set \K(conversation|debug|investigate|review|work)' || echo "")
+    # sed, not grep -P: BSD grep on macOS has no -P and printed its usage instead.
+    MODE=$(echo "$HOOK_COMMAND" | sed -nE 's/.*mode set (conversation|debug|investigate|review|work).*/\1/p' | head -n1)
 fi
 
 if [ -z "$MODE" ]; then
