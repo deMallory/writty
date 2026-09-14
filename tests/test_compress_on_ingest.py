@@ -322,6 +322,10 @@ class TestImportMarkdownCompressFlag:
         sibling tests above; the assertions are on graph state, so where the
         artifact is written does not affect them.
         """
+        try:
+            import sentence_transformers  # noqa: F401
+        except ImportError:
+            pytest.skip("sentence-transformers not installed ([fallback] extras)")
         _clear_graph()
         tmp_bible = tmp_path / "bible"
         shutil.copytree(str(REPO_ROOT / "bible"), str(tmp_bible))
@@ -366,6 +370,7 @@ class TestCompressGracefulWhenDepMissing:
 
         class _FakeReport:
             errors: list = []
+            warnings: list = []
             counts_by_type = {"Rule": 5}
 
             def render(self) -> str:

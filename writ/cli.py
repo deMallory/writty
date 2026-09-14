@@ -420,6 +420,8 @@ def import_markdown(
             typer.echo(report.render())
             for err in report.errors:
                 typer.echo(str(err), err=True)
+            for warn in report.warnings:
+                typer.echo(str(warn), err=True)
 
             # is_default_root is computed here (from the CLI default constant)
             # and passed to finish_import so the ingest library stays free of
