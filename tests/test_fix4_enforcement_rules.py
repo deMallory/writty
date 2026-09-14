@@ -22,7 +22,7 @@ pytestmark = requires_bible
 
 
 SKILL = Path(__file__).resolve().parent.parent
-REASONING = SKILL / "bible" / "enforcement" / "reasoning-discipline.md"
+REASONING = SKILL / "bible" / "enforcement" / "rules.md"
 WRIT_SESSION = SKILL / "bin" / "lib" / "writ-session.py"
 HANDOFF_HOOK = SKILL / "hooks" / "scripts" / "validate-handoff.sh"
 PENDING_HOOK = SKILL / "hooks" / "scripts" / "writ-run-pending-tests.sh"

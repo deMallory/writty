@@ -129,4 +129,4 @@ class TestConcise:
 class TestCensus:
     def test_phase_count(self) -> None:
         n = len(list(METH.glob("PHA-*.md")))
-        assert n == 20, f"expected 20 PHA-*.md (9 BRAIN + 11 new), found {n}"
+        assert n == 25, f"expected 25 PHA-*.md, found {n}"

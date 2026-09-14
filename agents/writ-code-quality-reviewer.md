@@ -1,6 +1,6 @@
 ---
 name: writ-code-quality-reviewer
-description: Reviews an implementation diff for code quality. Runs AFTER spec-compliance review passes, per plan Section 7.1 review ordering. Reports Critical/Important/Minor findings.
+description: "Reviews an implementation diff for code quality. Runs AFTER spec-compliance review passes, per plan Section 7.1 review ordering. Reports Critical/Important/Minor findings."
 model: sonnet
 tools: Read Glob Grep Bash
 ---

@@ -38,7 +38,7 @@ pytestmark = requires_bible
 # per-type counts are pinned by tests/test_phase6efg_corpus_promotion.py). Asserted with >=
 # so adding methodology nodes never false-fails this determinism test; a count DROPPING below
 # the floor still fails (signals a wiped/partial graph, the masking condition this guards).
-EXPECT_SUBAGENT = 5
+EXPECT_SUBAGENT = 7
 EXPECT_PLAYBOOK = 15
 EXPECT_SKILL = 13
 EXPECT_PHASE = 20

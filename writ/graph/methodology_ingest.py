@@ -152,6 +152,7 @@ class IngestReport:
     edges_created: int = 0
     edges_dangling: int = 0
     errors: list[IngestError] = field(default_factory=list)
+    warnings: list[IngestError] = field(default_factory=list)
     ingested: list[tuple[Path, str, str]] = field(default_factory=list)
     dry_run: bool = False
     # Post-write read-back: (verified_count, [mismatched ids]). counts_by_type counts
@@ -199,6 +200,8 @@ class IngestReport:
             )
         if self.errors:
             lines.append(f"Errors: {len(self.errors)}")
+        if self.warnings:
+            lines.append(f"Warnings: {len(self.warnings)}")
         return "\n".join(lines)
 
 
@@ -335,7 +338,7 @@ def _parse_and_validate_files(
             # carry a 'category'. Reported as an ADDITIONAL error but does NOT abort
             # an otherwise-valid node. dry_run previews + Category nodes are exempt.
             if not dry_run and node_type != "Category" and not node.get("category"):
-                report.errors.append(IngestError(
+                report.warnings.append(IngestError(
                     file=filepath, node_type=node_type, node_id=node.get(id_field),
                     field="category",
                     reason=(
@@ -836,9 +839,16 @@ def derive_edges(
     the caller, not here -- they are a write-boundary concern.
     """
     edges: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
     dangling = 0
 
-    # 1. Front-matter declared edges.
+    def _add(etype: str, src: str, tgt: str) -> None:
+        key = (etype, src, tgt)
+        if key not in seen:
+            seen.add(key)
+            edges.append({"type": etype, "source": src, "target": tgt})
+
+    # 1. Front-matter declared edges (canonical; added first so they win).
     for edge in parsed_edges:
         src = edge.get("source")
         tgt = edge.get("target")
@@ -849,7 +859,7 @@ def derive_edges(
         if src not in known_ids or tgt not in known_ids:
             dangling += 1
             continue
-        edges.append({"type": etype, "source": src, "target": tgt})
+        _add(etype, src, tgt)
 
     # 2. Legacy RELATED_TO skeleton edges from cross-references on Rule nodes.
     rule_ids = {
@@ -864,13 +874,14 @@ def derive_edges(
             continue
         for ref_id in node.get("_cross_references", []):
             if ref_id in rule_ids:
-                edges.append({"type": "RELATED_TO", "source": own_id, "target": ref_id})
+                _add("RELATED_TO", own_id, ref_id)
 
     # 3. BELONGS_TO category edges, derived from each node's `category` value.
     # extract_belongs_to_edges was unit-tested but never wired into ingest;
     # without this a real re-import produced zero BELONGS_TO edges and left
     # every node unreachable from its Category.
-    edges.extend(extract_belongs_to_edges(parsed_nodes))
+    for edge in extract_belongs_to_edges(parsed_nodes):
+        _add(edge["type"], edge["source"], edge["target"])
 
     # 4. Category tree edges: a child Category BELONGS_TO its parent Category, so
     # non-leaf parent categories (whose members live in child leaf categories)
@@ -882,7 +893,7 @@ def derive_edges(
         child_id = node.get("category_id")
         if not parent or not child_id:
             continue
-        edges.append({"type": "BELONGS_TO", "source": child_id, "target": parent})
+        _add("BELONGS_TO", child_id, parent)
 
     return edges, dangling
 

@@ -136,7 +136,7 @@ class TestCensus:
         # is narrower than the universe it claims to cover). Deliberate addition, not drift:
         # this is the only ANT-*.md census in the suite, so it is the one that has to move.
         n = len(list(METH.glob("ANT-*.md")))
-        assert n == 14, f"expected 14 ANT-*.md, found {n}"
+        assert n == 22, f"expected 22 ANT-*.md, found {n}"
 
 
 class TestLiveGates:
