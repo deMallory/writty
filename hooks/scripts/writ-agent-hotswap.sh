@@ -9,11 +9,16 @@
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 source "$WRIT_DIR/bin/lib/common.sh"
-hook_instrument "writ-agent-hotswap"
 
 command -v jq >/dev/null 2>&1 || exit 0
 
 INPUT=$(cat)
+
+# hook_instrument files its rows under SESSION_ID; without this every row
+# landed under "unknown". agent_id first so a sub-agent's spawns are not
+# filed under its parent. Read from INPUT: stdin is already consumed.
+SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.agent_id // .session_id // empty' 2>/dev/null || true)
+hook_instrument "writ-agent-hotswap"
 
 # Blackbox capture (see OVERVIEW.md): this hook parses stdin directly, so it
 # records its own envelope when the capture flag is on.

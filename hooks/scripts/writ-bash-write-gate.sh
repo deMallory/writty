@@ -149,7 +149,7 @@ _readonly_inspection() {
     return 0
 }
 
-STATE_DIR_GUARD="${WRIT_CACHE_DIR:-$WRIT_DIR/var/session}"
+STATE_DIR_GUARD="$(writ_session_cache_dir)"
 case "$CMD" in
     *"$STATE_DIR_GUARD"* | *"/tmp/writ-current-session"* | *"writ-session-"* \
     | *"writ-manual-test-grant"* | *"manual_test_grant"* | *"writ-grant-"*)
@@ -359,9 +359,9 @@ except Exception:
 # editing these would be approving its own gates, so they are denied in any mode.
 # Defined outside the try/except above so it exists on BOTH the package-import and
 # fallback paths. Mirrors writ-state-write-gate.sh, which covers Write/Edit.
-_WRIT_HOME = os.environ.get("WRIT_DIR", "")
-_STATE_DIR = os.environ.get("WRIT_CACHE_DIR") or (
-    os.path.join(_WRIT_HOME, "var", "session") if _WRIT_HOME else ""
+# Same default as writ/session/cache.py: one user-level store, never install-relative.
+_STATE_DIR = os.environ.get("WRIT_CACHE_DIR") or os.path.join(
+    os.path.expanduser("~"), ".cache", "writ", "session"
 )
 _POINTER = "/tmp/writ-current-session"
 
@@ -1114,6 +1114,16 @@ for seg, _piped_in in segments:
 # or from `python3 -c`. Runs on the RAW segment tokens: shlex(posix=False) keeps the
 # quote characters, and PATH_CAND excludes them, so quotes act as delimiters.
 stdin_interpreter = False
+# Interpreter-scanned hits are tracked separately because ONE rule applies to
+# them alone: an EXISTING DIRECTORY named in interpreter arguments is never a
+# file-write target (no language here can open() a directory for writing), so
+# gating it is pure false positive -- observed live when a read-only
+# `python -c "validate('<project root>')"` probe was denied as a write to the
+# repo root via the `ap == cwd` branch below. The skip must NOT apply to the
+# shell vectors that share raw_targets: `cp/mv -t DIR` writes INTO a directory
+# and stays gated. A NONEXISTENT path stays gated on this vector too -- it
+# could be a file about to be created.
+interp_hits = set()
 for seg, piped_in in segments:
     if not seg:
         continue
@@ -1128,7 +1138,9 @@ for seg, piped_in in segments:
         # command at all. The pipe IS the marker.
         form = "stdin"
     if form == "flag":
-        raw_targets += scan_tokens(args)
+        hits = scan_tokens(args)
+        raw_targets += hits
+        interp_hits.update(hits)
     elif form == "stdin":
         stdin_interpreter = True
 if stdin_interpreter:
@@ -1138,7 +1150,9 @@ if stdin_interpreter:
     # is gated on notes.md. Coarser than the flag form, deliberately: a stdin-fed
     # interpreter is itself the strong signal, and the answer to "the code is somewhere
     # in here" must not be silence.
-    raw_targets += scan_tokens(tokens)
+    hits = scan_tokens(tokens)
+    raw_targets += hits
+    interp_hits.update(hits)
 
 seen = set()
 for t in raw_targets:
@@ -1156,6 +1170,9 @@ for t in raw_targets:
     # scanner mistook for a file; it was denied as "Bash write to =" and then
     # escalated as repeated denials of a file that does not exist.
     if not any(ch.isalpha() for ch in os.path.basename(ap)):
+        continue
+    # Interpreter-only exemption; see the interp_hits comment above.
+    if t in interp_hits and os.path.isdir(ap):
         continue
     # Work-gate only project-local targets. Scratch writes outside the repo are not plan-gated.
     if ap == cwd or ap.startswith(cwd + os.sep):

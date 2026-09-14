@@ -398,15 +398,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-gate-retry.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
             "command": "bash ${WRIT_DIR}/hooks/scripts/writ-bible-authoring-push.sh"
           }
         ]

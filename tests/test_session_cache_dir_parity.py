@@ -41,6 +41,9 @@ from pathlib import Path
 
 import pytest
 
+# autouse: pins cwd to a sandbox so `mode set` cannot delete THIS repo's gate artifacts.
+from tests.fixtures.session_state import sandbox_cwd  # noqa: F401
+
 SKILL = Path(__file__).resolve().parent.parent
 COMMON = SKILL / "bin" / "lib" / "common.sh"
 HOOK = SKILL / "hooks" / "scripts" / "writ-rag-inject.sh"
@@ -183,9 +186,14 @@ def _run_hook(envelope: str, cache_dir: str) -> subprocess.CompletedProcess:
            "WRIT_CACHE_DIR": cache_dir,
            "WRIT_PORT": "19999",
            "WRIT_HOST": "localhost"}
+    # NO cwd=SKILL. A work-shaped prompt makes this hook run `mode init work`, which stamps
+    # the process cwd as the session's project_root and then deletes that project's
+    # .claude/gates/*.approved: pinned to the skill dir, running this file deleted THIS
+    # repo's real approval artifacts. Inheriting the sandbox_cwd fixture's cwd keeps the
+    # deletion inside tmp_path, and the hook resolves its own paths from $0, not from cwd.
     return subprocess.run(
         ["bash", str(HOOK)], input=envelope, capture_output=True, text=True,
-        cwd=str(SKILL), env=env, timeout=25,
+        env=env, timeout=25,
     )
 
 
@@ -245,4 +253,64 @@ class TestTheHookNeverClaimsAModeChangeItDidNotMake:
         )
         assert AUTOROUTE_MARKER in r.stdout, (
             "when the mode IS set by auto-route, the hook must say so"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 2026-09-14: the default store must not depend on where the code lives.
+# --------------------------------------------------------------------------- #
+
+STATE_GATE = SKILL / "hooks" / "scripts" / "writ-state-write-gate.sh"
+BASH_GATE = SKILL / "hooks" / "scripts" / "writ-bash-write-gate.sh"
+GRANT_HELPER = SKILL / "bin" / "lib" / "manual_test_grant.py"
+FLUSH_EVENTS = SKILL / "bin" / "lib" / "writ-flush-events.py"
+USER_STORE = Path.home() / ".cache" / "writ" / "session"
+USER_LOG_ROOT = Path.home() / ".cache" / "writ" / "logs"
+
+
+class TestTheDefaultStoreIsUserLevel:
+    """Three copies of the code ran at once on 2026-09-14: the launchd daemon from the repo
+    checkout, the hooks from the plugin cache, and the agent's shell with WRIT_CACHE_DIR
+    set. Each <skill>/var/session default was a different directory, so the approval hook
+    read a store where the mode was null and never posted the advance. A user-level
+    default is the same directory for all three, with or without the variable.
+    """
+
+    def test_the_package_default_is_the_user_cache_dir(self):
+        assert Path(_package_default()) == USER_STORE
+
+    def test_the_package_default_is_not_under_the_skill_root(self):
+        default = Path(_package_default()).resolve()
+        assert SKILL.resolve() not in default.parents, (
+            f"the session store still lives under the code that resolves it ({default}); "
+            "a second copy of the code then reads a second store"
+        )
+
+    def test_the_bash_default_is_the_same_user_cache_dir(self):
+        env = {k: v for k, v in os.environ.items() if k != "WRIT_CACHE_DIR"}
+        r = subprocess.run(
+            ["bash", "-c", f'source "{COMMON}"; writ_session_cache_dir'],
+            capture_output=True, text=True, timeout=20, env=env,
+        )
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == str(USER_STORE)
+
+    def test_the_log_root_default_is_the_user_cache_dir(self, monkeypatch):
+        monkeypatch.delenv("WRIT_LOG_ROOT", raising=False)
+        from writ.shared.logging import log_root
+        assert log_root() == USER_LOG_ROOT
+
+    @pytest.mark.parametrize("path", [STATE_GATE, BASH_GATE, GRANT_HELPER, FLUSH_EVENTS])
+    def test_no_private_skill_relative_fallback_survives(self, path):
+        """Each of these carried its own copy of the old default. Comments are stripped so
+        the line that documents the change cannot fail the test for the change."""
+        code = "\n".join(
+            line for line in path.read_text().splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        assert "/var/session" not in code, (
+            f"{path.name} still falls back to <skill>/var/session"
+        )
+        assert '"var", "session"' not in code, (
+            f"{path.name} still walks to <skill>/var/session"
         )

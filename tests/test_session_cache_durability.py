@@ -1,9 +1,10 @@
 """Session state must survive a reboot.
 
-RED PHASE: `_cache_dir()` currently falls back to `tempfile.gettempdir()`, so
-every location assertion below fails until the default moves under the skill
-install. The override and round-trip tests pass both before and after -- that is
-deliberate: they pin the behavior the move must NOT break.
+`_cache_dir()` once fell back to `tempfile.gettempdir()`, then to `<skill>/var/session`
+(2026-07-23), and since 2026-09-14 to `$HOME/.cache/writ/session`: the install-relative
+default split the store three ways across the checkout daemon, the plugin-cache hooks
+and the agent's shell. The override and round-trip tests pin the behavior every move
+must NOT break.
 
 Root cause this file exists to prevent (2026-07-23): session caches lived in
 /tmp, and `/usr/lib/tmpfiles.d/tmp.conf` declares `D /tmp`, which means systemd
@@ -56,23 +57,25 @@ def test_default_cache_dir_is_not_inside_the_system_temp_dir(no_override):
     assert tmp not in resolved.parents and resolved != tmp
 
 
-def test_default_cache_dir_lives_under_the_skill_install(no_override):
-    """Same derivation as the log-root ADR: state follows the install."""
+def test_default_cache_dir_is_the_user_level_store(no_override):
+    """REVERSED 2026-09-14. This asserted the default lived under the skill install,
+    derived from the module's __file__. Three installs of this code run on one machine
+    (checkout daemon, plugin-cache hooks, the agent's shell), so an install-relative
+    default gave each its own store and the approval hook never saw the daemon's
+    mode. One user-level path is the only default all three resolve identically."""
+    assert cache_mod._cache_dir() == str(Path.home() / ".cache" / "writ" / "session")
+
+
+def test_default_cache_dir_does_not_live_under_the_skill_install(no_override):
     resolved = Path(cache_mod._cache_dir()).resolve()
-    assert SKILL_ROOT.resolve() in resolved.parents or resolved == SKILL_ROOT.resolve()
+    assert SKILL_ROOT.resolve() not in resolved.parents and resolved != SKILL_ROOT.resolve()
 
 
-def test_default_cache_dir_is_under_var(no_override):
-    resolved = Path(cache_mod._cache_dir()).resolve()
-    assert "var" in resolved.parts, f"expected a var/ runtime tree; got {resolved}"
-
-
-def test_default_cache_dir_derives_from_the_module_not_a_fixed_home(no_override):
-    """Derived from __file__ so a relocated install keeps its own state, rather
-    than assuming a fixed ~/.claude layout."""
+def test_default_cache_dir_does_not_derive_from_the_module_location(no_override):
+    """A relocated install must NOT get its own state: that is the split."""
     resolved = Path(cache_mod._cache_dir()).resolve()
     module_root = Path(cache_mod.__file__).resolve().parents[2]
-    assert module_root in resolved.parents or resolved == module_root
+    assert module_root not in resolved.parents and resolved != module_root
 
 
 # --- the override must keep working -----------------------------------------

@@ -23,9 +23,10 @@ import uuid
 
 import pytest
 
+from tests.fixtures.session_state import write_bound_gate_token
 from writ.server import SessionAdvancePhaseRequest
 from writ.session.cache import _read_cache, _write_cache
-from writ.session.gate_token import consume_gate_token, gate_token_path
+from writ.session.gate_token import gate_token_path
 
 PLAN_OK = """# Plan
 
@@ -63,10 +64,10 @@ def _seed(session_id: str, **overrides) -> None:
 
 
 def _token(session_id: str) -> str:
-    tok = uuid.uuid4().hex
-    with open(gate_token_path(session_id), "w") as fh:
-        fh.write(tok)
-    return tok
+    # A BOUND token (gate + plan fingerprint), derived from the seeded cache the way the
+    # production mint derives it. The route claims through claim_gate_token with no
+    # unbound fallback, so a bare one-line secret is refused before any gate logic runs.
+    return write_bound_gate_token(session_id, uuid.uuid4().hex)
 
 
 def _token_exists(session_id: str) -> bool:
@@ -123,12 +124,8 @@ class TestTestSkeletonsGateEnforced:
         assert res.get("phase") == "implementation", res
 
     @pytest.mark.asyncio
-    async def test_rejection_keeps_the_token(self, tmp_path):
-        """A judged-and-failed artifact KEEPS the approval (2026-09-13).
-
-        Spending it forced the user to retype "approved" after every format miss. The
-        approval stands (bounded by the token TTL, see test_gate_token_ttl) so the agent
-        can fix the artifact and the retry hook can advance on the same token."""
+    async def test_rejection_spends_the_token(self, tmp_path):
+        """A judged-and-failed artifact needs a FRESH approval (governance rule)."""
         sid = f"vp-{uuid.uuid4().hex[:8]}"
         _seed(sid, current_phase="testing", gates_approved=["phase-a"])
         tok = _token(sid)
@@ -136,9 +133,8 @@ class TestTestSkeletonsGateEnforced:
             sid, confirmation_source="explicit", token=tok,
             project_root=_testing_project(tmp_path, with_skeleton=False),
         )
-        assert res.get("advanced") is False and res.get("error")
-        assert res.get("token_spent") is False
-        assert _token_exists(sid), "a rejected artifact must not consume the approval"
+        assert res.get("token_spent") is True
+        assert not _token_exists(sid), "a rejected artifact must consume the approval"
 
 
 # --------------------------------------------------------------------------- #
@@ -157,23 +153,17 @@ class TestPhaseAUnchangedPlusCwd:
         assert res.get("phase") == "testing", res
 
     @pytest.mark.asyncio
-    async def test_malformed_plan_rejects_and_keeps_token(self, tmp_path):
-        """2026-09-13: a rejected artifact no longer spends the approval; the agent
-        fixes plan.md and the retry hook re-posts with the same token."""
+    async def test_malformed_plan_rejects_and_spends(self, tmp_path):
         sid = f"vp-{uuid.uuid4().hex[:8]}"
         _seed(sid)
         tok = _token(sid)
-        try:
-            res = await _advance(
-                sid, confirmation_source="explicit", token=tok,
-                project_root=_planning_project(tmp_path, plan_body="# Plan\n\nno sections\n"),
-            )
-            assert res.get("advanced") is False
-            assert res.get("gate") == "phase-a"
-            assert res.get("token_spent") is False
-            assert _token_exists(sid)
-        finally:
-            consume_gate_token(sid)
+        res = await _advance(
+            sid, confirmation_source="explicit", token=tok,
+            project_root=_planning_project(tmp_path, plan_body="# Plan\n\nno sections\n"),
+        )
+        assert res.get("advanced") is False
+        assert res.get("gate") == "phase-a"
+        assert not _token_exists(sid)
 
     @pytest.mark.asyncio
     async def test_unmarked_cwd_can_advance(self, tmp_path):
@@ -285,5 +275,9 @@ class TestAdvanceReportsWhatItValidated:
 
 
 def _read_token(session_id: str) -> str:
+    # LINE ONE ONLY: the token file also carries the gate it authorizes and the plan
+    # fingerprint, and the secret is line 1 (read_gate_token's contract). Returning the
+    # whole file here would hand the route a "token" with the binding text glued on and
+    # fail the presence check for a reason that has nothing to do with the test's subject.
     with open(gate_token_path(session_id)) as fh:
-        return fh.read().strip()
+        return fh.readline().strip()

@@ -60,20 +60,42 @@ class TestWritApproveSlashCommand:
         path = COMMANDS_DIR / "writ-approve.md"
         assert path.exists(), "/writ-approve command not registered at .claude/commands/writ-approve.md"
 
-    def test_writ_approve_does_not_touch_the_token(self) -> None:
-        """2026-09-13: the command is status-only, in BOTH copies.
+    def test_writ_approve_references_confirmation_source_tool(self) -> None:
+        content = (COMMANDS_DIR / "writ-approve.md").read_text()
+        # The POST body is now a double-quoted bash string (to interpolate $TOKEN), so the
+        # JSON quotes are backslash-escaped. Assert the field + value are present in either
+        # form rather than a single literal spelling.
+        assert "confirmation_source" in content and "tool" in content, (
+            "/writ-approve must POST with confirmation_source=tool to satisfy Section 8.2 blocker"
+        )
 
-        It used to instruct the agent to `cat /tmp/writ-gate-token-$SESSION_ID` and POST
-        the advance. The Bash write gate refuses any command naming gate state, so the
-        path could only fail, and every failure sent the user back to retype "approved".
-        The approval hook (auto-approve-gate.sh) is the single advance path.
+    def test_writ_approve_passes_gate_token(self) -> None:
+        """Audit P0: the advance must carry the gate token (closes the self-approval hole).
+        The command must read /tmp/writ-gate-token-$SESSION_ID and pass it in the POST."""
+        content = (COMMANDS_DIR / "writ-approve.md").read_text()
+        assert "writ-gate-token-$SESSION_ID" in content, (
+            "/writ-approve must read the gate token file"
+        )
+        assert "token" in content and "\\\"token\\\"" in content, (
+            "/writ-approve must pass the gate token in the advance-phase POST body"
+        )
+
+    def test_writ_approve_passes_cwd(self) -> None:
+        """The advance must carry a cwd, in BOTH copies of the command.
+
+        The server resolves the project root from it (where plan.md and the test skeletons
+        are looked for) and cannot substitute its own working directory, which is Writ's
+        install dir. Without cwd every planning advance failed closed on an empty root. The
+        installed copy under templates/commands is the one a user actually invokes, and it
+        had drifted so far it sent no token either -- so both are asserted here.
         """
         for path in (COMMANDS_DIR / "writ-approve.md",
                      WRIT_ROOT / "templates" / "commands" / "writ-approve.md"):
             content = path.read_text()
-            assert "writ-gate-token" not in content, f"{path} must not read the token file"
-            assert "advance-phase" not in content, f"{path} must not POST the advance"
-            assert "current-phase" in content, f"{path} must still report the pending gate"
+            assert "cwd" in content and "pwd -P" in content, (
+                f"{path} must send a cwd resolved with `pwd -P` in the advance-phase POST"
+            )
+            assert "\\\"token\\\"" in content, f"{path} must also pass the gate token"
 
 
 class TestConfirmationSourceField:

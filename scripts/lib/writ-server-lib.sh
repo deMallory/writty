@@ -133,7 +133,8 @@ writ_default_server_log() {
     #   2. $WRIT_LOG_ROOT/server.log       -- the same override the Python router honors
     #   3. $CLAUDE_PLUGIN_DATA/server.log  -- plugin install: survives an upgrade that
     #                                         rewrites CLAUDE_PLUGIN_ROOT
-    #   4. <skill>/var/logs/server.log     -- standalone, co-located with the install
+    #   4. $HOME/.cache/writ/logs/server.log -- standalone: the same user-level root the
+    #                                         Python router defaults to, never install-relative
     #
     # Off /tmp deliberately. systemd's tmpfiles.d declares `D /tmp`, which EMPTIES it at
     # boot; that is exactly how the session caches were lost (see the mode-wipe root
@@ -148,7 +149,7 @@ writ_default_server_log() {
     elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
         printf '%s/server.log' "${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}"
     else
-        printf '%s/var/logs/server.log' "${WRIT_DIR:-$HOME/.claude/skills/writ}"
+        printf '%s/.cache/writ/logs/server.log' "$HOME"
     fi
 }
 

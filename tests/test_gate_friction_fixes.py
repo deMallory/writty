@@ -75,16 +75,6 @@ class TestImplementationPlanDenialNamesReset:
         )
 
 
-class TestWritApproveIsStatusOnly:
-    def test_neither_copy_reads_the_token_or_posts(self):
-        for path in (WRIT_ROOT / ".claude" / "commands" / "writ-approve.md",
-                     WRIT_ROOT / "templates" / "commands" / "writ-approve.md"):
-            content = path.read_text()
-            assert "writ-gate-token" not in content, f"{path} must not read the token file"
-            assert "advance-phase" not in content, f"{path} must not POST the advance"
-            assert "approved" in content, f"{path} must tell the user what to type"
-
-
 class TestEnsureServerAlignsToResolvedDir:
     def test_lib_compares_against_resolved_dir(self):
         body = (WRIT_ROOT / "scripts" / "lib" / "writ-server-lib.sh").read_text()

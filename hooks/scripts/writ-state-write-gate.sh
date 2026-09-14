@@ -23,7 +23,7 @@ load_hook_env
 FILE="$HOOK_FILE_PATH"
 [ -z "$FILE" ] && exit 0
 
-PROTECTED_DIR="${WRIT_CACHE_DIR:-$WRIT_DIR/var/session}"
+PROTECTED_DIR="$(writ_session_cache_dir)"
 POINTER_FILE="/tmp/writ-current-session"
 
 VERDICT=$(WRIT_TGT="$FILE" WRIT_DIR_PROT="$PROTECTED_DIR" WRIT_PTR="$POINTER_FILE" python3 <<'PY'

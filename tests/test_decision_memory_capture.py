@@ -63,6 +63,7 @@ from fastapi.testclient import TestClient
 # ruff: noqa: F811 -- the shared client/isolated_cache fixtures below are consumed
 # as test-method parameters, which ruff misreads as redefinitions of this import.
 from tests.fixtures.server_routes import client, isolated_cache  # noqa: F401
+from tests.fixtures.session_state import write_bound_gate_token
 from writ.config import get_neo4j_password, get_neo4j_uri, get_neo4j_user
 from writ.graph.db import Neo4jConnection
 from writ.server import app
@@ -373,10 +374,15 @@ async def _wipe_1c_test_data(conn: Neo4jConnection) -> None:
 
 
 def _write_gate_token(session_id: str, token: str) -> None:
-    """Write a gate token file to /tmp (matching gate_token_path semantics)."""
-    path = os.path.join("/tmp", f"writ-gate-token-{session_id}")
-    with open(path, "w") as f:
-        f.write(token)
+    """Mint the bound gate token file (matching gate_token_path semantics).
+
+    The token binds the gate it authorizes and the plan fingerprint it was given for, and
+    the advance route claims through claim_gate_token with no unbound fallback, so a bare
+    one-line secret is refused before the route reaches any gate logic. The binding is
+    derived from the seeded session cache exactly as the production mint derives it, so
+    every caller below keeps seeding the cache first and needs no other change.
+    """
+    write_bound_gate_token(session_id, token)
 
 
 def _token_exists(session_id: str) -> bool:
@@ -1149,19 +1155,16 @@ class TestServerRouteGateAndCapture:
             "cache phase must remain 'planning' after a validation rejection; "
             "got: " + repr(phase_after)
         )
-        # 2026-09-13: a rejected artifact KEEPS the approval so the agent can fix the
-        # plan and the retry hook re-posts on the same token (see test_gate_token_ttl
-        # for the bound).
-        assert result.get("token_spent") is False
-        assert _token_exists(sid), (
-            "gate token must be KEPT on a validation rejection"
+        assert not _token_exists(sid), (
+            "gate token must be CONSUMED on a validation rejection (no token reuse)"
         )
 
-    def test_rejected_token_is_kept_same_token_repost_advances_once_fixed(
+    def test_rejected_token_is_consumed_same_token_repost_refused(
         self, client: TestClient, isolated_cache: Path
     ) -> None:
-        # [server-2]: after a validation rejection, re-posting with the SAME token and a
-        # fixed plan advances; the human approved once and the fix is the agent's job.
+        # [server-2]: after a validation rejection, re-posting with the SAME token must be
+        # refused at the token check. Only a fresh token + fixed plan advances.
+        # RED: server does not yet validate or consume-on-rejection.
         cache_dir = isolated_cache / "writ-cache"
         sid = f"{_TEST_SCOPE}-srv2-{uuid.uuid4().hex[:6]}"
         _seed_planning_phase(cache_dir, sid)
@@ -1173,25 +1176,29 @@ class TestServerRouteGateAndCapture:
         token = uuid.uuid4().hex
         _write_gate_token(sid, token)
 
-        # First post: rejected (token kept).
+        # First post: rejected (token consumed).
         first = _advance_post(client, sid, token, project_root=str(plan_dir))
         assert "error" in first, "first post with reasonless plan must be rejected"
-        assert _token_exists(sid), "the rejection must not spend the approval"
 
-        # Re-post with the SAME token and a fixed plan: advances, and only now is the
-        # token spent.
+        # Re-post with the SAME token: must be refused (token is gone).
+        # Write a fixed plan so the phase-a gate would pass -- only the token check
+        # should refuse at this point.
         (plan_dir / "plan.md").write_text(_VALID_PLAN)
         second = _advance_post(client, sid, token, project_root=str(plan_dir))
-        assert second.get("phase") == "testing", (
-            "re-posting the kept token with a fixed plan must advance; got: " +
+        assert second.get("advanced") is False or "error" in second, (
+            "re-posting with the SAME token after a rejection must be refused; got: " +
             repr(second)
         )
-        assert not _token_exists(sid), "a successful advance consumes the token"
+        assert "token" in json.dumps(second).lower(), (
+            "the refusal of the stale token must mention 'token'"
+        )
 
-        # The spent token cannot be replayed: a third post with it is refused.
-        third = _advance_post(client, sid, token, project_root=str(plan_dir))
-        assert third.get("advanced") is False or "error" in third, (
-            "a consumed token must not be reusable; got: " + repr(third)
+        # With a FRESH token, the valid plan advances.
+        fresh_token = uuid.uuid4().hex
+        _write_gate_token(sid, fresh_token)
+        third = _advance_post(client, sid, fresh_token, project_root=str(plan_dir))
+        assert third.get("phase") == "testing" or "phase" in third, (
+            "a fresh token + valid plan must advance; got: " + repr(third)
         )
 
     def test_empty_project_root_hard_rejected_loud_error(

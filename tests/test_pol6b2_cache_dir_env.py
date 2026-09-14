@@ -85,12 +85,14 @@ class TestEnvHonored:
         )
         assert facade._read_cache("fsid")["mode"] == "debug"
 
-    def test_default_is_durable_skill_var_when_unset(self, monkeypatch, tmp_path):
+    def test_default_is_durable_user_store_when_unset(self, monkeypatch, tmp_path):
         """REVERSED 2026-07-23. This asserted the default WAS tempfile.gettempdir(),
         which encoded the mode=None wipe: `/usr/lib/tmpfiles.d/tmp.conf` declares
         `D /tmp`, so systemd empties it at boot and every session cache died on
-        reboot, silently blanking mode/gates/loaded_rule_ids on resume. The default
-        is now <skill>/var/session and must NOT track tempfile.gettempdir().
+        reboot, silently blanking mode/gates/loaded_rule_ids on resume. Moved again
+        2026-09-14 from <skill>/var/session to $HOME/.cache/writ/session, because an
+        install-relative default gave the checkout daemon and the plugin-cache hooks
+        two different stores. Must NOT track tempfile.gettempdir().
         See tests/test_session_cache_durability.py for the full contract.
         """
         monkeypatch.delenv("WRIT_CACHE_DIR", raising=False)
@@ -98,7 +100,7 @@ class TestEnvHonored:
         cache = _load_cache_module()
         path = cache._cache_path("d")
         assert not path.startswith(str(tmp_path))
-        assert os.path.join("var", "session") in path
+        assert path.startswith(os.path.join(os.path.expanduser("~"), ".cache", "writ", "session"))
 
 
 class TestSnapshotForServer:

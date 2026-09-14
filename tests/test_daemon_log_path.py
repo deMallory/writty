@@ -63,8 +63,11 @@ class TestResolutionOrder:
         got = _resolve(CLAUDE_PLUGIN_ROOT="/p")
         assert got == f"{os.path.expanduser('~')}/.cache/writ/server.log"
 
-    def test_standalone_derives_from_the_install_dir(self):
-        assert _resolve(WRIT_DIR="/opt/writ") == "/opt/writ/var/logs/server.log"
+    def test_standalone_uses_the_user_level_root_not_the_install_dir(self):
+        """A checkout daemon and a plugin-cache hook must land in one tree, so the
+        standalone default ignores WRIT_DIR and matches writ.shared.logging.log_root()."""
+        home = os.path.expanduser("~")
+        assert _resolve(WRIT_DIR="/opt/writ") == f"{home}/.cache/writ/logs/server.log"
 
     def test_explicit_beats_every_implicit_source(self):
         got = _resolve(WRIT_LOG="/win.log", WRIT_LOG_ROOT="/logs",
@@ -112,7 +115,7 @@ class TestLaunchSafety:
     def test_the_parent_directory_is_created(self):
         """The redirect creates the file, never its directory.
 
-        On a fresh install var/logs does not exist yet, and $CLAUDE_PLUGIN_DATA may not
+        On a fresh install ~/.cache/writ/logs does not exist yet, and $CLAUDE_PLUGIN_DATA may not
         exist before bootstrap, so without the mkdir the redirect fails and the daemon
         never starts -- a hard failure, not a degradation.
         """

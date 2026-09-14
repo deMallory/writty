@@ -25,11 +25,18 @@ from writ.session.config import (
 )
 
 
-# Default session-state root: the skill install's `var/session`, derived from this
-# module's own __file__ so it follows the install rather than assuming a fixed home
-# layout. parents[2] is the skill dir containing the `writ` package
-# (parents[0]=writ/session, parents[1]=writ, parents[2]=<skill>). Identical
-# derivation to writ/shared/logging.py::_DEFAULT_LOG_ROOT.
+# Default session-state root: `$HOME/.cache/writ/session`, one per user, NOT derived
+# from this module's own location. Identical derivation to
+# writ/shared/logging.py::_DEFAULT_LOG_ROOT and bin/lib/common.sh::writ_session_cache_dir.
+#
+# NOT `<skill>/var/session` (the previous default). Three copies of this code run on
+# one machine: the daemon from a repo checkout, the hooks from the plugin cache under
+# ~/.claude/plugins/cache/, and the agent's Bash tool with WRIT_CACHE_DIR exported. An
+# install-relative default gave each copy its own store, so the approval hook read the
+# plugin store, found no mode, and never POSTed the advance the daemon was waiting for
+# (2026-09-14: three typed "approved" in a row did nothing, with nothing logged). Any
+# install-relative or env-dependent default recreates that split, which is also why
+# this is not XDG_CACHE_HOME. WRIT_CACHE_DIR still wins, checked at call time.
 #
 # NOT tempfile.gettempdir(). /usr/lib/tmpfiles.d/tmp.conf declares `D /tmp`, and the
 # capital D means systemd EMPTIES the directory at boot -- so every session cache was
@@ -40,12 +47,8 @@ from writ.session.config import (
 # before its try block, so nothing raised and nothing logged.
 # Built with os.path, not pathlib: this module is on the per-hook hot path and
 # importing pathlib here costs ~5.6ms per spawn (it pulls urllib.parse + ipaddress),
-# which would undo the import-cost fix made for exactly this reason. `os` is already
-# imported. The three dirnames walk writ/session/cache.py -> writ/session -> writ -> <skill>.
-_SKILL_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
-_DEFAULT_CACHE_DIR = os.path.join(_SKILL_ROOT, "var", "session")
+# which would undo the import-cost fix made for exactly this reason.
+_DEFAULT_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "writ", "session")
 
 
 def _cache_dir() -> str:
@@ -53,24 +56,41 @@ def _cache_dir() -> str:
     return os.environ.get("WRIT_CACHE_DIR", _DEFAULT_CACHE_DIR)
 
 
-# Payload-derived pointer file the hooks rewrite each turn with the CURRENT session id.
-# A module-level constant (not a hardcoded literal) so tests can monkeypatch it and the
-# resolver reads THIS name, never a bare /tmp path.
-_SESSION_POINTER_PATH = "/tmp/writ-current-session"
-
-
 def resolve_current_session_id() -> str | None:
-    """Resolve the CURRENT session id, preferring concurrency-safe signals.
+    """Resolve the CURRENT session id from the process's own environment, or None.
 
     Order (first non-empty wins):
       1. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
       2. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
-      3. _SESSION_POINTER_PATH       (payload-derived; self-heals each turn; shared-global)
-      4. newest writ-session-*.json  (mtime glob; last resort; racy)
-    Returns None when nothing resolves (callers fail loud, never guess). Each signal is
-    individually guarded so a bad value / unreadable file / dir falls through to the next
-    candidate -- the resolver NEVER raises.
+    Returns None when neither resolves. Each signal is individually guarded so a bad
+    value never propagates: the resolver NEVER raises, and it never guesses.
+
+    THERE IS NO THIRD TIER, and the two that were here were wrong in the same way. Tier 3
+    read /tmp/writ-current-session, ONE file per machine that every Claude Code session's
+    UserPromptSubmit hook overwrites, so it named whichever session took a turn most
+    recently. Tier 4 took the newest writ-session-*.json by mtime out of a cache directory
+    every project shares. Both answered "which session am I" with "whichever one moved
+    last", and both did so live: the user's magento project reported `work` mode it had
+    never set, and a stray test run left the pointer naming
+    `tier-embed-directive-597898df`, a session with no cache anywhere, which the mtime
+    glob could not tell apart from a real id. A wrong answer here is not a failed read, it
+    is a mode, an approval or an audit coverage scope written into somebody else's
+    session, and nothing in any log shows it happened. Callers get None and fail loud
+    instead (the CLI exits 2 naming the two env vars; the doctor reports no session).
     """
+    # BOTH TIERS BELOW ARE UNREACHABLE FROM A BASH TOOL CALL, and the variable that WOULD
+    # answer is the one you must not read. Measured 2026-08-11 against Claude Code 2.1.227:
+    # CLAUDE_SESSION_ID and CLAUDE_JOB_DIR are NEVER exported, so this resolver returns
+    # None in practice and callers fail loud. CLAUDE_CODE_SESSION_ID *is* exported, and in
+    # a main session it equals the id hooks write state under, which makes it look like the
+    # fix. It is not: probed from inside a real sub-agent it still holds the PARENT's id,
+    # while Writ keys a sub-agent by its agent_id. Reading it would let a sub-agent resolve
+    # to its parent and approve or clear the PARENT's gates -- the same class of
+    # cross-session write that deleting tiers 3 and 4 closed. CLAUDE_CODE_CHILD_SESSION=1
+    # is a flag, not an id, and is set in the main session too, so it cannot tell parent
+    # from child either. The refusal therefore stands: the remedy is the explicit session
+    # argument at the call site, NOT another environment read.
+    #
     # 1. per-process env id (empty string is treated as unset)
     try:
         env_sid = os.environ.get("CLAUDE_SESSION_ID", "")
@@ -86,27 +106,6 @@ def resolve_current_session_id() -> str | None:
             base = os.path.basename(job_dir.rstrip("/"))
             if base:
                 return base
-    except Exception:
-        pass
-
-    # 3. payload-derived pointer file
-    try:
-        with open(_SESSION_POINTER_PATH) as f:
-            pointer = f.read().strip()
-        if pointer:
-            return pointer
-    except Exception:
-        pass
-
-    # 4. newest session cache by mtime (last resort; racy)
-    try:
-        pattern = os.path.join(_cache_dir(), "writ-session-*.json")
-        candidates = glob.glob(pattern)
-        if candidates:
-            latest = max(candidates, key=os.path.getmtime)
-            m = re.fullmatch(r"writ-session-(.+)\.json", os.path.basename(latest))
-            if m:
-                return m.group(1)
     except Exception:
         pass
 
@@ -190,6 +189,18 @@ def _default_cache() -> dict:
         "failed_writes": [],
         "queries": 0,
         "mode": None,
+        # WHO chose that mode: "explicit" (a human named it via `mode set`) or "auto" (the
+        # writ-rag-inject.sh classifier chose it via `mode init`). None means the question
+        # cannot be answered for this session -- a cache written before the field existed,
+        # or a mode carried forward from one -- and every consumer must treat that like
+        # "explicit" and leave the mode alone, never like "auto".
+        #
+        # It lives HERE, in the one function that defines the cache's shape, so a reread
+        # cache and a fresh one carry the key alike; the values are stamped by
+        # mode_engine._apply_mode_set (MODE_SOURCE_EXPLICIT / MODE_SOURCE_AUTO), never by a
+        # call site. Without it, the two paths were indistinguishable after the fact: both
+        # emit a mode_change row with change_type "set" and from_mode null.
+        "mode_source": None,
         "is_subagent": False,
         "files_written": [],
         "analysis_results": {},
@@ -203,13 +214,21 @@ def _default_cache() -> dict:
         "pretool_queried_files": [],
         "paused_work_state": None,
         "is_orchestrator": False,
+        # Cycle G one-shot: cmd_reset_after_compaction sets this on the real PostCompact
+        # event and writ-rag-inject.sh clears it after emitting the verify-discipline
+        # directive on the next UserPromptSubmit. It lives here, in the single schema
+        # source, so a cache written before this cycle reads back False and simply never
+        # fires, which is the correct degradation for a queue nobody filled.
+        "post_compact_pending": False,
         "last_injected_rule_ids": [],
         "instructions_rule_ids": [],
         "detected_domain": None,
         # Phase 1 additions per plan Section 6.1 deliverable 5. Track playbook
         # execution state for SDD/brainstorm workflows, verification evidence
         # for Gate 5 Tier 1, review ordering for SDD two-stage review, and
-        # quality-judgment scores for Gate 5 Tier 2 (Haiku judge).
+        # quality-judgment scores for Gate 5 Tier 2 (self-scored: the session
+        # judges its own artifact; hooks/scripts/writ-quality-judge.sh emits the
+        # directive).
         "active_playbook": None,
         "active_phase": None,
         "playbook_phase_history": [],

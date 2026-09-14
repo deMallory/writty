@@ -3,22 +3,22 @@
 
 # Rulebook inventory
 
-287 rules in the shipped corpus dump, 32 mandatory, 6 always-on. Generated from `writ-corpus.cypher`; the live graph may differ if rules were authored since the last `writ export-cypher`. Full rule text: `writ query`, `GET /rule/{id}`, or `writ export`.
+336 rules in the shipped corpus dump, 36 mandatory, 6 always-on. Generated from `writ-corpus.cypher`; the live graph may differ if rules were authored since the last `writ export-cypher`. Full rule text: `writ query`, `GET /rule/{id}`, or `writ export`.
 
 | Domain | Rules | Mandatory |
 |---|---:|---:|
 | api-design | 12 | 0 |
 | architecture | 28 | 0 |
 | code-quality | 45 | 0 |
-| communication | 2 | 0 |
+| communication | 41 | 4 |
 | database | 2 | 0 |
 | documentation | 8 | 0 |
 | enforcement | 19 | 7 |
-| frameworks | 12 | 0 |
+| frameworks | 21 | 0 |
 | languages | 8 | 0 |
 | meta-authoring | 3 | 0 |
 | performance | 19 | 1 |
-| process | 18 | 5 |
+| process | 19 | 5 |
 | research | 4 | 0 |
 | scaling | 10 | 1 |
 | security | 76 | 18 |
@@ -128,6 +128,45 @@
 
 | Rule | Severity | Flags |
 |---|---|---|
+| `EDIT-ARCH-ASYMMETRY-001` | high |  |
+| `EDIT-ARCH-AXIS-001` | high |  |
+| `EDIT-ARCH-IDENTIFY-001` | critical | mandatory |
+| `EDIT-ARCH-INTEGRATE-001` | high |  |
+| `EDIT-ARCH-MIX-001` | high |  |
+| `EDIT-ARCH-RHYTHM-001` | medium |  |
+| `EDIT-ARCH-TENSION-001` | high |  |
+| `EDIT-ARCH-WHITESPACE-001` | high |  |
+| `EDIT-DATA-LABEL-001` | high |  |
+| `EDIT-DATA-PALETTE-001` | high |  |
+| `EDIT-DATA-REPEAT-001` | high |  |
+| `EDIT-GRID-BASELINE-001` | high |  |
+| `EDIT-GRID-BASELINE-002` | medium |  |
+| `EDIT-GRID-FIELD-001` | medium |  |
+| `EDIT-GRID-GUTTER-001` | medium |  |
+| `EDIT-GRID-LINE-001` | critical | mandatory |
+| `EDIT-GRID-LINE-002` | high |  |
+| `EDIT-GRID-MARGIN-001` | high |  |
+| `EDIT-GRID-MARGIN-002` | critical | mandatory |
+| `EDIT-GRID-MARGIN-003` | high |  |
+| `EDIT-GRID-PROPORTION-001` | high |  |
+| `EDIT-GRID-SCALE-001` | high |  |
+| `EDIT-GRID-SCALE-002` | medium |  |
+| `EDIT-MERZ-DIAGONAL-001` | medium |  |
+| `EDIT-MERZ-FRAGMENT-001` | medium |  |
+| `EDIT-MERZ-GOVERN-001` | high |  |
+| `EDIT-PROSE-CAPTION-001` | medium |  |
+| `EDIT-PROSE-FIGURE-001` | high |  |
+| `EDIT-PROSE-MARBER-001` | medium |  |
+| `EDIT-SPEC-SCALE-001` | high |  |
+| `EDIT-SPEC-WEINGART-001` | medium |  |
+| `EDIT-VIZ-COMPARE-001` | high |  |
+| `EDIT-VIZ-INK-001` | high |  |
+| `EDIT-VIZ-INTEGRATE-001` | high |  |
+| `EDIT-VIZ-JUNK-001` | high |  |
+| `EDIT-VIZ-LAYER-001` | medium |  |
+| `EDIT-VIZ-LIE-001` | critical | mandatory |
+| `EDIT-VIZ-MULTIVAR-001` | medium |  |
+| `EDIT-VIZ-SPARKLINE-001` | low |  |
 | `ENF-COMMS-001` | high | always-on |
 | `ENF-COMMS-OUTPUT-001` | medium | always-on |
 
@@ -179,6 +218,15 @@
 
 | Rule | Severity | Flags |
 |---|---|---|
+| `ANIM-GSAP-AUTOALPHA-001` | medium |  |
+| `ANIM-GSAP-CAMELCASE-001` | medium |  |
+| `ANIM-GSAP-EASE-001` | low |  |
+| `ANIM-GSAP-IMMEDIATERENDER-001` | high |  |
+| `ANIM-GSAP-MATCHMEDIA-001` | high |  |
+| `ANIM-GSAP-RETURNVAL-001` | medium |  |
+| `ANIM-GSAP-SVGORIGIN-001` | medium |  |
+| `ANIM-GSAP-TIMELINE-001` | high |  |
+| `ANIM-GSAP-TRANSFORM-001` | high |  |
 | `FW-M2-001` | critical |  |
 | `FW-M2-002` | critical |  |
 | `FW-M2-003` | critical |  |
@@ -243,6 +291,7 @@
 |---|---|---|
 | `ENF-PROC-BRAIN-001` | critical | mandatory |
 | `ENF-PROC-DEBUG-001` | high | always-on |
+| `ENF-PROC-FIXLOOP-001` | high |  |
 | `ENF-PROC-PLAN-001` | high | mandatory, always-on |
 | `ENF-PROC-PRIORITY-001` | high |  |
 | `ENF-PROC-SDD-001` | high |  |

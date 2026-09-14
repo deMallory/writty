@@ -56,8 +56,8 @@ GRANT_PHRASES = (
     "i'll test this manually",
 )
 
-_SKILL_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_DEFAULT_CACHE_DIR = os.path.join(_SKILL_ROOT, 'var', 'session')
+# Same default as writ/session/cache.py: one user-level store, never install-relative.
+_DEFAULT_CACHE_DIR = os.path.join(os.path.expanduser('~'), '.cache', 'writ', 'session')
 
 
 def cache_dir():
