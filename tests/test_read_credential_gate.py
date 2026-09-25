@@ -112,6 +112,32 @@ class TestBashTool:
         assert _classifier()("Bash", {"command": "cat .env"}) == ".env"
 
 
+class TestFalsePositives:
+    """Probed live 2026-09-25: a bare secret-directory name (`secret`) read as the
+    directory `secret/`, and the pattern of grep read as a file. Both refused
+    commands that read nothing secret."""
+
+    @pytest.mark.parametrize("cmd", [
+        "grep -rn secret src/",
+        "grep -rn '.env' src/",
+        "rg -A 2 secret .",
+        """python3 -c "d={'secret': 1}; print(d['secret'])\"""",
+    ])
+    def test_word_or_pattern_is_not_a_path(self, cmd):
+        assert _classifier()("Bash", {"command": cmd}) is None, cmd
+
+    @pytest.mark.parametrize("cmd", [
+        "cat secrets/prod.json",
+        "grep KEY .env",
+        "grep -e x .env",
+        "rg KEY -g .env",
+        "cat .ssh/config",
+        """python3 -c "open('.env')\"""",
+    ])
+    def test_real_secret_read_still_flagged(self, cmd):
+        assert _classifier()("Bash", {"command": cmd}) is not None, cmd
+
+
 class TestOtherTools:
     def test_unrelated_tool_ignored(self):
         assert _classifier()("Glob", {"pattern": ".env*"}) is None

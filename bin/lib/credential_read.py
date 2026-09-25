@@ -27,8 +27,9 @@ _ROOT = os.environ.get("WRIT_DIR") or os.path.dirname(
 sys.path.insert(0, _ROOT)
 
 try:
-    from writ.session.gates import _is_credential_path
+    from writ.session.gates import _CREDENTIAL_DIR_SEGMENTS, _is_credential_path
 except Exception:  # broken install: fail closed on the common case, .env files
+    _CREDENTIAL_DIR_SEGMENTS = ("/.ssh/", "/secrets/", "/secret/", "/.gnupg/", "/.kube/")
     _TEMPLATES = (
         ".env.example", ".env.sample", ".env.template", ".env.dist", ".env.defaults",
         "example.env", "sample.env", "template.env",
@@ -53,12 +54,40 @@ INLINE_FLAGS = frozenset({"-c", "-e", "-r", "-E"})
 SEPARATORS = frozenset({"|", "||", "&&", ";", "&", "|&", "(", ")", ";;"})
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 STRING_LITERAL = re.compile(r"""['"]([^'"\s]+)['"]""")
+GREP_FAMILY = frozenset({"grep", "egrep", "fgrep", "rg", "ag"})
+# Flags whose value is a pattern (skipped) or a count (never the pattern).
+PATTERN_FLAGS = frozenset({"-e", "--regexp"})
+COUNT_FLAGS = frozenset({"-A", "-B", "-C", "-m", "--max-count"})
+# `secret`, `.ssh`, ... alone: _is_credential_path reads the word as the directory
+# itself, so `grep secret src/` or `d['secret']` was refused. A path must follow.
+SECRET_DIR_NAMES = frozenset(s.strip("/") for s in _CREDENTIAL_DIR_SEGMENTS)
 
 
 def _is_secret(path: str) -> bool:
-    return bool(path) and (
-        _is_credential_path(path) or _is_credential_path(os.path.expanduser(path))
-    )
+    if not path or ("/" not in path and path.lower() in SECRET_DIR_NAMES):
+        return False
+    return _is_credential_path(path) or _is_credential_path(os.path.expanduser(path))
+
+
+def _without_pattern(args: list[str]) -> list[str]:
+    """grep-family args minus the search pattern, which is text, not a file. The
+    pattern is the -e value, else the first positional. -f and -g values stay: grep
+    -f and rg -g make the tool open that file."""
+    explicit = any(a in PATTERN_FLAGS or a.startswith("--regexp=") for a in args)
+    out: list[str] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in PATTERN_FLAGS or a in COUNT_FLAGS:
+            i += 2
+            continue
+        if not explicit and not a.startswith("-"):
+            explicit = True
+            i += 1
+            continue
+        out.append(a)
+        i += 1
+    return out
 
 
 def _tokens(command: str) -> list[str]:
@@ -108,6 +137,8 @@ def _check_segment(seg: list[str]) -> str | None:
     verb = os.path.basename(args[0])
     rest = args[1:]
     if verb in READERS:
+        if verb in GREP_FAMILY:
+            rest = _without_pattern(rest)
         for arg in rest:
             candidate = arg.split("=", 1)[1] if arg.startswith("-") and "=" in arg else arg
             if _is_secret(candidate):
