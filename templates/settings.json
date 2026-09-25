@@ -221,6 +221,15 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Read|Grep|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-read-credential-gate.sh"
+          }
+        ]
+      },
+      {
         "matcher": "ExitPlanMode",
         "hooks": [
           {
