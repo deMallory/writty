@@ -117,9 +117,10 @@ class TestDocCounts:
         # The fork briefly pruned this to 16 (commit 3837e3b, "option A": .claude/hooks
         # authoritative) but nothing ever registered .claude/hooks, so the pruned
         # hooks fired nowhere. Restored to the full upstream manifest (2026-09-01),
-        # then the four surviving fork hooks were ported in (2026-09-05): 44 + 4.
-        assert source_count == 48, (
-            f"hooks/hooks.json has {source_count} 'command' entries; expected 48. "
+        # then the four surviving fork hooks were ported in (2026-09-05): 44 + 4,
+        # then writ-read-credential-gate.sh (2026-09-25): 48 + 1.
+        assert source_count == 49, (
+            f"hooks/hooks.json has {source_count} 'command' entries; expected 49. "
             "Bump this (and HANDBOOK 'registers **N hook scripts**') when adding or "
             "removing a registration."
         )

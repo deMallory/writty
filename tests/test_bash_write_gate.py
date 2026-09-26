@@ -457,6 +457,29 @@ class TestNonPathTokensAreNotTargets:
         assert any(t.endswith("/a.txt") for _, t in _extract("tee a.txt < in.txt"))
 
 
+class TestBareSecretDirWordInInterpreterCode:
+    """`_is_credential_path` wraps its input as /x/, so the word `secret` inside
+    interpreter source matched the `/secret/` directory segment and the one-liner
+    was refused as a credential write (observed 2026-09-25). A secret-directory
+    name only counts in the literal scan when a path follows it."""
+
+    def test_dict_key_named_secret_is_not_a_cred_target(self):
+        got = _extract("""python3 -c "d={'secret': 1}; print(d['secret'])\"""")
+        assert not any(kind == "cred" for kind, _ in got), got
+
+    def test_heredoc_regex_naming_secret_is_not_a_cred_target(self):
+        cmd = "python3 - <<'PY'\nimport re; re.compile('password|secret|token')\nPY"
+        assert not any(kind == "cred" for kind, _ in _extract(cmd))
+
+    @pytest.mark.parametrize("cmd", [
+        "echo x > secrets",
+        """python3 -c "open('secrets/k','w')\"""",
+        """python3 -c "open('.env','w')\"""",
+    ])
+    def test_real_credential_write_still_flagged(self, cmd):
+        assert any(kind == "cred" for kind, _ in _extract(cmd)), cmd
+
+
 class TestInterpreterArgDirectoryIsNotAWriteTarget:
     """The inline-interpreter args scan fed DIRECTORY paths to the work gate.
 

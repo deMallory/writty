@@ -29,7 +29,7 @@ Two fields that look redundant and are not: `loaded_rule_ids` doubles as the ran
 
 `_can_write_check` (`writ/session/gates.py`) evaluates in strict order:
 
-1. **Credential deny, every mode, overrides every exemption**: secret directories (`/.ssh/`, `/secrets/`, `/.gnupg/`, `/.kube/`), then credential basenames and extensions (`.env` minus templates, `*.key`, `*.pem`, `id_rsa`, `kubeconfig`, ...). Path-based; the file is never opened.
+1. **Credential deny, every mode, overrides every exemption**: secret directories (`/.ssh/`, `/secrets/`, `/.gnupg/`, `/.kube/`), then credential basenames and extensions (`.env` minus templates, `*.key`, `*.pem`, `id_rsa`, `kubeconfig`, ...). Path-based; the file is never opened. Reads get the same deny from a separate hook, `writ-read-credential-gate.sh` (PreToolUse on `Read|Grep|Bash`, `[SEC-CREDENTIAL-READ]`), which runs in every mode, with no server, and does not exempt sub-agents; its classifier is `bin/lib/credential_read.py`.
 2. **Exemptions, each logged, never silent**: the Writ install's own tree; `~/.claude/settings.json` / `settings.local.json` (exact basenames, `realpath`-resolved to kill symlink escapes); sub-agents (`is_subagent`) bypass entirely: the orchestrator already passed the human gate, and worker scope is bounded by role tools, not re-policing.
 3. **Special files**: `plan.md` writable pre-mode and through planning/testing (denied in implementation); `capabilities.md` always writable.
 4. **No mode**: deny all writes (except the special files).

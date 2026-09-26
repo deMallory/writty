@@ -327,6 +327,7 @@ cwd = os.environ.get("WRIT_CWD", "") or os.getcwd()
 sys.path.insert(0, os.environ.get("WRIT_DIR", ""))
 try:
     from writ.session.gates import _is_credential_path as is_cred
+    from writ.session.gates import _CREDENTIAL_DIR_SEGMENTS as _DIRS
 except Exception:
     # Minimal fallback (only if the package import fails -- the server gate would be
     # down too). Covers the headline secrets so the org boundary still holds.
@@ -353,6 +354,10 @@ except Exception:
         if b == "credentials":
             return True
         return any(fnmatch.fnmatch(b, g) for g in _GLOBS)
+
+# `secret`, `.ssh`, ... alone: is_cred reads them as the directory itself, right for a
+# redirect target, wrong for a word inside interpreter source (see looks_like_path).
+SECRET_DIR_NAMES = frozenset(s.strip("/") for s in _DIRS)
 
 
 # Writ gate state: mode, approved gates and the manual-testing grant. The agent
@@ -964,6 +969,10 @@ def looks_like_path(c):
     # set below) would be candidates that never became targets -- the credential deny
     # would have applied to `echo k > deploy.pem` and not to `python3 -c
     # "open('deploy.pem','w')"`, which is the exact asymmetry this vector exists to end.
+    # A bare secret-directory name is a word here (`d['secret']`, a regex), not a file:
+    # open() cannot write a directory, and `secrets/k` still matches below.
+    if "/" not in c and c.lower() in SECRET_DIR_NAMES:
+        return False
     if is_cred(c):
         return True
     if os.path.splitext(os.path.basename(c))[1].lower() in INLINE_FILE_EXTS:

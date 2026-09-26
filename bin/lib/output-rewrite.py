@@ -22,8 +22,8 @@ TAIL_LINES = 100
 
 REDACTED = "[REDACTED:writ-output-rewrite]"
 
-# Conservative, low-false-positive secret shapes. The keyed pattern (last)
-# keeps the key name and separator, redacting only the value.
+# Conservative, low-false-positive secret shapes. The grouped patterns (last
+# two) keep the key name or URL user and separator, redacting only the value.
 SECRET_PATTERNS = [
     re.compile(
         r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
@@ -35,8 +35,12 @@ SECRET_PATTERNS = [
     re.compile(r"\bsk-ant-[A-Za-z0-9-]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b"),
+    # Password in a connection URL (postgres://user:pass@host): keep user and host.
+    re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^:/\s@]+)(:)[^@\s/]+(?=@)"),
+    # No \b before the keyword: "_" is a word character, so \b let DB_PASSWORD and
+    # STRIPE_SECRET_KEY through. The suffix keeps SECRET_KEY whole in the output.
     re.compile(
-        r"(?i)\b(api[_-]?key|secret|token|password|passwd)"
+        r"(?i)(?<![A-Za-z0-9])((?:api[_-]?key|secret|token|password|passwd)[A-Za-z0-9_]*)"
         r"([\"']?\s*[=:]\s*[\"']?)[A-Za-z0-9_+/.\-]{12,}"
     ),
 ]
