@@ -79,9 +79,10 @@ MSG
 fi
 
 # 3. Probe Neo4j bolt port 7687. If unreachable, instruct user and exit 0.
-# timeout-wrapped: a bare /dev/tcp connect to a black-holed host blocks for the
-# kernel SYN timeout (minutes) and would stall every SessionStart with it.
-if ! timeout 2 bash -c "exec 3<>/dev/tcp/${NEO4J_HOST}/${NEO4J_PORT}" 2>/dev/null; then
+# Bounded: a bare /dev/tcp connect to a black-holed host blocks for the kernel SYN
+# timeout (minutes) and would stall every SessionStart with it. run-bounded.py, not GNU
+# timeout: stock macOS lacks it, and the shell's exit 127 read as "Neo4j down" with Neo4j up.
+if ! python3 "${WRIT_DIR}/bin/lib/run-bounded.py" 2 bash -c "exec 3<>/dev/tcp/${NEO4J_HOST}/${NEO4J_PORT}" 2>/dev/null; then
   cat >&2 <<MSG
 [Writ] Neo4j not reachable at ${NEO4J_HOST}:${NEO4J_PORT}.
 [Writ] Start it with:
