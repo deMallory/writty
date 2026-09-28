@@ -1,11 +1,15 @@
 ---
 type: Documentation Index
 title: "Operations"
-description: Running Writty day to day, with environment variables, the service lifecycle, the wiki refresh job, the project log, and upstream sync.
+description: Running Writty day to day, with the service lifecycle, upstream sync, the project log, and where the environment variables are documented.
 ---
 
 # Operations
 
-Running Writty day to day: environment variables, starting and restarting the service, the scheduled wiki refresh, the dated project log, and syncing this fork with upstream Writ.
+Running Writty day to day: starting and restarting the service, syncing this fork with upstream Writ, and the dated project log.
 
-Until pages land here, `docs/reference/configuration.md` and the "Restarting the daemon" section of `docs/install.md` cover this ground.
+- [Service lifecycle](service-lifecycle.md) - what runs on which port, who starts the daemon on Linux and on macOS, when to restart, health and logs
+- [Upstream sync](upstream-sync.md) - measuring the gap with infinri/Writ, what a merge must keep, the steps, the history
+- [Project log](project-log.md) - current state, open threads, dated timeline: the resume point
+
+Environment variables are listed in `docs/reference/configuration.md`, section "Environment variables".
