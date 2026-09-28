@@ -10,16 +10,14 @@ Read this first when coming back to the project. "Current state" is what is true
 
 ## Current state as of 2026-09-28
 
-- `main` on GitHub has PR 12 (plugin agent names, `491657c`) and PR 13 (wiki skeleton and handoff, `7dd0ee0`), both merged 2026-09-28.
-- The PR 12 fix is not live on the owner's Mac: the installed plugin is still 1.7.2 without it. PR 12 did not bump the version, so whether `claude plugin update` picks it up is not verified.
-- PR 14 (open) brings three wiki sections: workflows (`1c584f1`), architecture (`82bd2a9`) and operations (`e00dc0f`). Next: integrations, then testing. Plan and gate notes: `docs/handoff/openwiki-port/README.md`.
-- PR 15 (open) fixes the first open thread below.
+- `main` on GitHub has PRs 12 to 15, all merged 2026-09-28: plugin agent names (`491657c`), the wiki skeleton (`7dd0ee0`), three wiki sections (`461afbd`), and two hooks freed from GNU `timeout` (`c144c31`).
+- The PR 12 and PR 15 fixes are not live on the owner's Mac: the installed plugin is the 1.7.2 copy from before them. Neither PR bumped the version, so whether `claude plugin update` picks them up is not verified.
+- Wiki sections left: integrations, then testing. Plan and gate notes: `docs/handoff/openwiki-port/README.md`.
 - Upstream is 146 commits ahead, at release 1.10.1 (fetched 2026-09-28, merge base `e608659`). Since the merge base it added `writ-output-compress.sh`, next to the fork's `writ-output-rewrite.sh`; how the two overlap is not checked. How to sync: [Upstream sync](upstream-sync.md).
 - Workshop for the dev team around 2026-10-09. The deck says "approuvé" is refused; the approval matcher accepts it. Fix list: step 5 of the handoff.
 
 ## Open threads
 
-- Two hooks call GNU `timeout`, which stock macOS lacks. The shell's exit 127 reads as the failure each hook checks for. SessionStart (`hooks/scripts/session-start-bootstrap.sh`, line 84) takes Neo4j for down, so neither its daemon start nor the macOS realign runs; see [Service lifecycle](service-lifecycle.md). The Stop hook (`hooks/scripts/writ-run-pending-tests.sh`, line 88) never runs a pending test, and says nothing. Both reproduced on the owner's Mac 2026-09-28. Fixed in PR 15, not merged.
 - `HANDBOOK.md` section 18 places the log streams under `<install>/var/logs/`; since 1.7.2 they live under `~/.cache/writ/logs`.
 - `HANDBOOK.md` section 16 and `docs/install.md` present the systemd unit as the main path. systemd is Linux only.
 - `docs/install.md` documents upstream's install commands and an older hook count.
@@ -28,11 +26,13 @@ Read this first when coming back to the project. "Current state" is what is true
   - `tests/test_plugin_manifest.py`: strict validation warns on 49 unquoted `${CLAUDE_PLUGIN_ROOT}`.
   - `tests/test_hook_instrumentation.py`: `writ-read-credential-gate.sh` never calls `hook_instrument`.
   - `tests/plugin/test_hooks_routing.py`: it pins 48 hook registrations; PR 11's credential gate made 49.
-  - `tests/test_pol5e_hook_noise.py`, "still nags": it writes its marker under `<repo>/cache`, so the Stop hook never sees it when `WRIT_CACHE_DIR` is set, as on the owner's Mac. With it unset, the test also needs the PR 15 fix and the test Neo4j on 7688; not run in that setup.
+  - `tests/test_pol5e_hook_noise.py`, "still nags": it writes its marker under `<repo>/cache`, so the Stop hook never sees it when `WRIT_CACHE_DIR` is set, as on the owner's Mac. With it unset, the test also needs the test Neo4j on 7688; not run in that setup.
 - Stale comments and doc lines listed under "Follow-ups outside the steps" in the handoff.
 
 ## Timeline
 
+- 2026-09-28: PR 14, the workflows, architecture and operations sections of the wiki (`1c584f1`, `82bd2a9`, `e00dc0f`).
+- 2026-09-28: PR 15, two hooks stop calling GNU `timeout`, which stock macOS lacks. SessionStart skipped the daemon start and the realign, and the Stop hook ran no pending test (`0faf853`).
 - 2026-09-28: PR 13, the wiki skeleton with its structure checks (`948c357`) and the handoff pack (`8c721dc`).
 - 2026-09-28: PR 12, four hooks expect the plugin's `writ:writ-*` agent names. Before, two rewrote dispatches to agents that do not exist and two skipped their check (`0f15365`).
 - 2026-09-26: PR 11, a hook refuses reads of secret files, whose content would leave the machine (`7931e57`, `f47e030`).
