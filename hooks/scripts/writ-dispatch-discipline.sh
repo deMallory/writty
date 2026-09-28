@@ -99,9 +99,13 @@ def role():
     return ""
 
 
+# The plugin loader registers the roles under the plugin's name (plugin.json "name"), so a
+# bare writ-* name only resolves where scripts/bootstrap.sh linked it into ~/.claude/agents/.
+ROLE_PREFIX = "writ:" if os.environ.get("CLAUDE_PLUGIN_ROOT") else ""
 shown = st or "general-purpose"
 r = role()
 if r:
+    r = ROLE_PREFIX + r
     # Confident classification: REWRITE the dispatch to the governed Writ role via
     # updatedInput so the model proceeds with it directly. Deny-based steering is reserved
     # for the ambiguous branch below because a denial depends on the agent re-dispatching,
@@ -132,7 +136,8 @@ else:
             "permissionDecisionReason": (
                 f"[Writ dispatch discipline | SKL-PROC-DISPATCH-001] You dispatched the generic "
                 f"'{shown}' agent and the task did not map to a specific Writ role. Re-dispatch "
-                f"with writ-explorer (read-only) or writ-implementer, or add '[general-purpose]' "
+                f"with {ROLE_PREFIX}writ-explorer (read-only) or {ROLE_PREFIX}writ-implementer, "
+                f"or add '[general-purpose]' "
                 f"to the prompt to override."
             ),
         }

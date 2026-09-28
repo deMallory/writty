@@ -31,10 +31,15 @@ SUBAGENT=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // empty')
 
 [ -z "$SUBAGENT" ] && exit 0
 
+# The plugin loader registers the roles under the plugin's name (plugin.json "name"), so a
+# bare writ-* name only resolves where scripts/bootstrap.sh linked it into ~/.claude/agents/.
+ROLE_PREFIX=""
+[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && ROLE_PREFIX="writ:"
+
 # Generic -> writ-* routing map
 case "$SUBAGENT" in
-  Explore|explore)      NEW_TYPE="writ-explorer" ;;
-  Plan|plan)            NEW_TYPE="writ-planner" ;;
+  Explore|explore)      NEW_TYPE="${ROLE_PREFIX}writ-explorer" ;;
+  Plan|plan)            NEW_TYPE="${ROLE_PREFIX}writ-planner" ;;
   *)                    NEW_TYPE="$SUBAGENT" ;;
 esac
 
@@ -42,7 +47,7 @@ esac
 # Only stamp when the caller did not set a model explicitly.
 MODEL=$(echo "$INPUT" | jq -r '.tool_input.model // empty')
 if [ -z "$MODEL" ]; then
-  case "$NEW_TYPE" in
+  case "${NEW_TYPE#writ:}" in
     writ-explorer|writ-planner|writ-spec-reviewer|writ-code-quality-reviewer)
       NEW_MODEL="opus" ;;
     writ-implementer|writ-test-writer|general-purpose|claude)

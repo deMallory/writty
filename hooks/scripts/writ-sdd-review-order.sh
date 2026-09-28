@@ -44,7 +44,8 @@ except (json.JSONDecodeError, ValueError) as _e:
     )
     sys.exit(0)
 ti = parsed.get("tool_input") or {}
-agent_type = (ti.get("subagent_type") or "").lower()
+# A plugin install dispatches the reviewer as writ:writ-code-quality-reviewer.
+agent_type = (ti.get("subagent_type") or "").lower().removeprefix("writ:")
 if "code-review" not in agent_type and agent_type not in ("writ-code-quality-reviewer",):
     sys.exit(0)
 session = mod._read_cache("$SESSION_ID")
