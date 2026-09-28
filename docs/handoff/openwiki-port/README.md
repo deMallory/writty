@@ -1,7 +1,7 @@
 # Handoff pack: openwiki port and the Writty workshop
 
 Written 2026-09-28 at the end of the session that finished step 1, updated the same day after
-the step 2 workflows session. Read this first, then
+the step 2 workflows and operations sessions. Read this first, then
 `openwiki/INSTRUCTIONS.md`. Everything below was checked against the repo on that date; a
 claim marked "not verified" was not.
 
@@ -9,9 +9,9 @@ claim marked "not verified" was not.
 
 | What | Where | State |
 |---|---|---|
-| Step 1: wiki skeleton and structure checks | branch `feat/openwiki`, commit `948c357` | Done, not pushed |
-| Side fix: plugin agent names in four hooks | branch `fix/plugin-role-names`, commit `0f15365` (off `main`) | Done, not pushed, not live. Merge its PR before `feat/openwiki` (see Step 2) |
-| Step 2: wiki content | `feat/openwiki`, commit `1c584f1` (workflows) | Workflows done, not pushed. Next: architecture |
+| Step 1: wiki skeleton and structure checks | branch `feat/openwiki`, commit `948c357` | Merged on GitHub as PR 13 (`7dd0ee0`), 2026-09-28 |
+| Side fix: plugin agent names in four hooks | branch `fix/plugin-role-names`, commit `0f15365` (off `main`) | Merged as PR 12 (`491657c`), before PR 13. Not live: the plugin cache is still 1.7.2 without it, and the fix did not bump the version |
+| Step 2: wiki content | `feat/openwiki`: `1c584f1` workflows, `82bd2a9` architecture, `e00dc0f` operations | Three sections done, not pushed. Next: integrations, then testing |
 | Step 3: environment-variable check | `feat/openwiki` | Not started |
 | Step 4: GitHub Actions wiki refresh | `feat/openwiki` | Not started |
 | Step 5: workshop touch-ups | raggidy repo, see below | Not started. Has a deadline |
@@ -191,6 +191,23 @@ both sides of the fix.
 own model on some dispatches, so the front-matter model is not always what runs. The approval
 flow is drawn once, as a sequence diagram in `work-gates.md`; an architecture page about
 hooks should link it, not redraw it.
+
+### Operations section
+
+Three pages: `openwiki/operations/service-lifecycle.md`, `openwiki/operations/upstream-sync.md`,
+`openwiki/operations/project-log.md`, pinned by `tests/openwiki/test_operations.py` (ports,
+systemd unit, macOS realign, fork-only hooks, log date order). 36 wiki tests pass. The project
+log is now the dated resume point for the whole project; keep its "Current state" current.
+
+Found while writing it: SessionStart probes Neo4j through GNU `timeout`
+(`hooks/scripts/session-start-bootstrap.sh:84`), which stock macOS lacks. The probe fails
+with Neo4j up, so the macOS cache realign never runs; the prompt hook still starts the
+daemon. Reproduced on the owner's Mac. Not fixed: it is listed under open threads in the
+project log.
+
+The local `main` is behind `origin/main` (PRs 12 and 13). `tests/test_plugin_role_names.py`
+is not on `feat/openwiki`, so no wiki page may cite that path until the branch takes
+`origin/main`.
 
 ## Step 3: environment-variable check
 
