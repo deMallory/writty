@@ -1,5 +1,8 @@
 # Handoff pack: openwiki port and the Writty workshop
 
+**Current state moved to `docs/handoff/verify-1.7.3/README.md`** (after PR 18, 2026-09-28).
+The steps, ground rules and gate mechanics below still hold; its resume table does not.
+
 Written 2026-09-28 at the end of the session that finished step 1, updated the same day after
 the step 2 workflows and operations sessions. Read this first, then
 `openwiki/INSTRUCTIONS.md`. Everything below was checked against the repo on that date; a
