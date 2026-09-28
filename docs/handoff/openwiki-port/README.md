@@ -11,10 +11,10 @@ claim marked "not verified" was not.
 |---|---|---|
 | Step 1: wiki skeleton and structure checks | branch `feat/openwiki`, commit `948c357` | Merged on GitHub as PR 13 (`7dd0ee0`), 2026-09-28 |
 | Side fix: plugin agent names in four hooks | branch `fix/plugin-role-names`, commit `0f15365` (off `main`) | Merged as PR 12 (`491657c`), before PR 13. Not live: the plugin cache is still 1.7.2 without it, and the fix did not bump the version |
-| Step 2: wiki content | `feat/openwiki`: `1c584f1` workflows, `82bd2a9` architecture, `e00dc0f` operations | Three sections done, pushed as PR 14 (open). Next: integrations, then testing |
-| Fix: GNU `timeout` in two hooks | branch `fix/session-start-timeout`, commit `0faf853` (off `origin/main`) | PR 15, open. Once merged, see the end of "Operations section" below |
-| Step 3: environment-variable check | `feat/openwiki` | Not started |
-| Step 4: GitHub Actions wiki refresh | `feat/openwiki` | Not started |
+| Step 2: wiki content | `feat/openwiki`: `1c584f1` workflows, `82bd2a9` architecture, `e00dc0f` operations | Three sections done, merged as PR 14 (`461afbd`), 2026-09-28. Next: integrations, then testing |
+| Fix: GNU `timeout` in two hooks | branch `fix/session-start-timeout`, commits `0faf853` and `b250b0e` (off `origin/main`) | Merged as PR 15 (`c144c31`), 2026-09-28. Not live: same plugin update as the side fix |
+| Step 3: environment-variable check | a new branch off `origin/main` | Not started |
+| Step 4: GitHub Actions wiki refresh | a new branch off `origin/main` | Not started |
 | Step 5: workshop touch-ups | raggidy repo, see below | Not started. Has a deadline |
 
 The workshop is around 2026-10-09. Step 5 carries a factual error that must be fixed before
@@ -103,9 +103,10 @@ The repo runs its own gates on itself. These cost turns this session:
   pins 48 registrations; PR 11's credential gate made 49.
 - `tests/test_pol5e_hook_noise.py::TestRunPendingTestsBehavior::test_implementation_phase_still_nags`:
   writes its marker under `<repo>/cache`, so the Stop hook misses it when `WRIT_CACHE_DIR`
-  is set (it is, on the owner's Mac). Unset, it also needs PR 15 and the test Neo4j on 7688.
+  is set (it is, on the owner's Mac). Unset, it also needs the test Neo4j on 7688.
 
-All four fail identically on `origin/main` (checked 2026-09-28 in a clean worktree).
+All four fail identically on `origin/main` (checked 2026-09-28 in a clean worktree, and again
+after PRs 14 and 15 merged).
 
 ## The side fix, and how it goes live
 
@@ -116,10 +117,12 @@ commit and the spec-before-quality review order never held. Commit `0f15365` fix
 `tests/test_plugin_role_names.py` pins it (11 tests). Upstream Writ has the same defect in
 `writ-dispatch-discipline.sh`; the owner is telling its author directly.
 
-The plugin installs from `deMallory/writty` on GitHub, from `main`. To go live: push the
-branch, open and merge the PR, then run `claude plugin marketplace update writty` and
-`claude plugin update writty@writty`, then restart Claude Code. The workshop machine needs the
-same update (see Step 5).
+The plugin installs from `deMallory/writty` on GitHub, from `main`, where PR 12 and PR 15 are
+merged. To go live: run `claude plugin marketplace update writty` and
+`claude plugin update writty@writty`, then restart Claude Code. Neither PR bumped the version
+in `.claude-plugin/plugin.json` (still 1.7.2), and whether the update takes a new commit at
+the same version is not verified. After it, check that the plugin's copy has
+`bin/lib/run-bounded.py`. The workshop machine needs the same update (see Step 5).
 
 ## What step 1 left in place
 
@@ -207,19 +210,17 @@ Three pages: `openwiki/operations/service-lifecycle.md`, `openwiki/operations/up
 systemd unit, macOS realign, fork-only hooks, log date order). 36 wiki tests pass. The project
 log is now the dated resume point for the whole project; keep its "Current state" current.
 
-Found while writing it: SessionStart probes Neo4j through GNU `timeout`
-(`hooks/scripts/session-start-bootstrap.sh:84`), which stock macOS lacks. The probe fails
-with Neo4j up, so the macOS cache realign never runs; the prompt hook still starts the
-daemon. Reproduced on the owner's Mac. Fixed the same day in PR 15 (open), which also
-covers the Stop hook (`hooks/scripts/writ-run-pending-tests.sh:88`): same bug, no pending
-test ever ran on macOS. Both hooks call `bin/lib/run-bounded.py` instead, which exists only
-on that branch until it merges, so no wiki page cites it yet. Once PR 15 merges, drop the
-"Known gap" paragraph from `service-lifecycle.md`, and move the open thread in the project
-log to a timeline bullet.
+Found while writing it: SessionStart probed Neo4j through GNU `timeout`
+(`hooks/scripts/session-start-bootstrap.sh:84`), which stock macOS lacks. The probe failed
+with Neo4j up, so the macOS cache realign never ran; the prompt hook still started the
+daemon. The Stop hook (`hooks/scripts/writ-run-pending-tests.sh:88`) had the same bug: no
+pending test ever ran on macOS. Reproduced on the owner's Mac. PR 15 fixed both the same day
+with `bin/lib/run-bounded.py`. After the merge, the "Known gap" paragraph in
+`service-lifecycle.md` became a note for plugin copies older than the fix, the project log
+moved the thread to its timeline, and `hooks.md` gained a "No GNU `timeout`" pattern.
 
-The local `main` is behind `origin/main` (PRs 12 and 13). `tests/test_plugin_role_names.py`
-is not on `feat/openwiki`, so no wiki page may cite that path until the branch takes
-`origin/main`.
+Branch new wiki work off `origin/main`: `feat/openwiki` is merged, and the local `main` is
+behind.
 
 ## Step 3: environment-variable check
 
@@ -330,7 +331,8 @@ instead of advancing.
   `HANDBOOK.md` and `docs/architecture/`.
 - Workshop machine: update the plugin after the merges (`atelier-defi.md:39` already says so
   for the secret-read guard). Without the side fix live, a demo that dispatches a generic
-  agent fails, and a CRITICAL review does not block a commit.
+  agent fails, and a CRITICAL review does not block a commit. Without PR 15 live, SessionStart
+  skips the realign on macOS and the Stop hook runs no test.
 - `atelier-defi.md` already excludes the bypasses documented in `README.md` (line 55 there).
 
 ## Follow-ups outside the steps
