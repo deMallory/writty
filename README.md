@@ -294,6 +294,7 @@ Six self-contained pages with interactive diagrams and a live explorer for the g
 
 ## Where to go next
 
+* [`openwiki/index.md`](openwiki/index.md): the wiki. A reading order for newcomers, a quickstart, and one section per area.
 * [`HANDBOOK.md`](HANDBOOK.md): the operator manual. Modes, gates, helper AIs, the rulebook, the command line, day-to-day use.
 * [`docs/reference/`](docs/reference/): precise contracts. Architecture, graph schema, retrieval, sessions and gates, configuration, logging, decision memory, testing.
 * [`docs/install.md`](docs/install.md): both install paths, running it as a background service, and troubleshooting.
