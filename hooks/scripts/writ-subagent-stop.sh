@@ -196,7 +196,8 @@ fi
 # harness hands us the reviewer's own final text, so the author is never the courier.
 # Recorded against the PARENT session (the one that will run `git commit`), not the
 # agent's own throwaway session. Fire-and-forget: never changes the hook outcome.
-if [ "$AGENT_TYPE" = "writ-reviewer" ] && [ -n "$PARENT_SESSION" ]; then
+# A plugin install reports the reviewer as writ:writ-reviewer.
+if [ "${AGENT_TYPE#writ:}" = "writ-reviewer" ] && [ -n "$PARENT_SESSION" ]; then
     REVIEW_MSG=$(parsed_field "$STDIN_JSON" "last_assistant_message")
     # Recorded UNCONDITIONALLY, including when the message is empty: an empty
     # message parses as unparseable, which counts as blocking. Skipping the record
