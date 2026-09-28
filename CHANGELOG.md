@@ -4,6 +4,26 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-09-28
+
+Ships PRs 11 to 17 and the credential audit fix to installed plugins. The plugin cache is keyed by version, and 1.7.2 (`b73c2ed`) predates all of them.
+
+### Added
+
+- **Reads of secret files are refused in every mode (SEC-CREDENTIAL-READ).** A new PreToolUse hook, `hooks/scripts/writ-read-credential-gate.sh` (matcher `Read|Grep|Bash`), refuses a Read or Grep on a secret path and a Bash command that reads one (`cat .env`, `source .env`, `grep KEY .env`, `python3 -c "open('.env')"`). Whatever Claude reads leaves the machine, so the read is the leak; the write side was already refused. It needs no daemon and covers subagents. Classification is path-only, in `bin/lib/credential_read.py`, and shares the write gate's template allowlist (`.env.example`, `.env.sample`, `*.pub`). 48 -> 49 registrations.
+- **`openwiki/`, a verified wiki for newcomers.** Quickstart, workflows (modes, work gates, sub-agents), architecture and operations; integrations and testing are still stubs. `tests/openwiki/test_structure.py` holds its structure.
+
+### Changed
+
+- **Bash output masking catches two more secret shapes** (`bin/lib/output-rewrite.py`): the password in a connection URL (`postgres://user:pass@host` keeps user and host), and a keyed value whose name only contains the keyword (`DB_PASSWORD=`, `STRIPE_SECRET_KEY=`), which the old leading `\b` let through.
+
+### Fixed
+
+- **Credential refusals now appear in `writ audit-session`.** Its "Gate denials" section lists only `gate_denial` rows, and none of the three credential guards wrote one: the read gate and the Bash write gate logged nothing, and a Write or Edit left a `write_attempt` with no rule. Each now writes one `gate_denial` with its rule (`SEC-CREDENTIAL-READ` or `SEC-CREDENTIAL-WRITE`), the path and the gate. The read gate writes it after the refusal is printed, so a logging failure cannot turn a refusal into an allow. Side effect: `analyze_rule_effectiveness` counts these as stuck denials, since nothing ever approves them.
+- **A bare word like `secret` or a grep pattern no longer counts as a secret file.** `grep -rn secret src/` and `python3 -c "d={'secret': 1}"` were refused by the read gate, and the Bash write gate had the same false positive in interpreter source. A secret-directory name alone is now a word; `secrets/prod.json` is still refused.
+- **The plugin's agents are dispatched as `writ:writ-*`.** The plugin loader registers them under the plugin's name, so the bare `writ-explorer` and `writ-planner` that `writ-agent-hotswap.sh` and `writ-dispatch-discipline.sh` rewrote dispatches to did not resolve outside a `scripts/bootstrap.sh` install. The prefix applies when `CLAUDE_PLUGIN_ROOT` is set; `writ-sdd-review-order.sh` and `writ-subagent-stop.sh` accept both names.
+- **No hook calls GNU `timeout` any more.** Stock macOS lacks it: `session-start-bootstrap.sh` read the shell's exit 127 as "Neo4j not reachable" with Neo4j up, and every group in `writ-run-pending-tests.sh` exited 127. Both now call `bin/lib/run-bounded.py`, which keeps GNU timeout's exit codes (124 on expiry) and kills the whole process group. `tests/test_run_bounded.py` fails the build on any new `timeout` call in the shell surface, `-s KILL` forms included.
+
 ## [1.7.2] - 2026-09-14
 
 Fork sync with upstream infinri/Writ at 2026-08-14 (`bf339bc`). Also covers the fork's 1.7.1, which shipped without a changelog entry.

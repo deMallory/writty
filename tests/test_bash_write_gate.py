@@ -51,6 +51,19 @@ def _seed(sid, **fields):
     cache._write_cache(sid, data)
 
 
+def _session_rows(sid: str) -> list[dict]:
+    """This session's rows from the test's friction log (conftest points
+    WRIT_FRICTION_LOG at tmp_path; hook subprocesses inherit it)."""
+    return [e for e in _imp("writ.analysis.friction").load_events(None)
+            if e.get("session") == sid]
+
+
+def _denied_rules(sid: str) -> list[str]:
+    """The rule ids `writ audit-session` prints under "Gate denials"."""
+    agg = _imp("writ.analysis.friction").aggregate_session(_session_rows(sid))
+    return [g["rule_id"] for g in agg["gate_denials"]]
+
+
 def _extractor_src() -> str:
     """Slice the embedded python extractor block out of the hook script."""
     text = Path(HOOK_SH).read_text()
@@ -185,6 +198,17 @@ class TestCredentialGuardInWriteCheck:
         _seed(sid, mode="conversation")
         res = gates._can_write_check(sid, self._env("/proj/src/main.py"), SKILL_ROOT)
         assert res["can_write"] is True
+
+    def test_credential_deny_is_audited(self):
+        # `writ audit-session` lists gate_denial rows only; the write_attempt row the
+        # branch already wrote carries no rule and never showed up as a denial.
+        gates = _imp("writ.session.gates")
+        sid = f"bwg-{uuid.uuid4().hex[:8]}"
+        _seed(sid, mode="conversation")
+        res = gates._can_write_check(sid, self._env("/proj/.env"), SKILL_ROOT)
+        assert res["can_write"] is False
+        assert _denied_rules(sid) == ["SEC-CREDENTIAL-WRITE"]
+        assert [e["event"] for e in _session_rows(sid)].count("write_attempt") == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -340,6 +364,23 @@ class TestHookEndToEnd:
         out = _run_hook("echo SECRET > .env", sid, str(tmp_path))
         assert out is not None and out.get("permissionDecision") == "deny"
         assert "SEC-CREDENTIAL-WRITE" in out.get("permissionDecisionReason", "")
+
+    def test_credential_write_is_audited(self, tmp_path: Path):
+        sid = f"bwg-{uuid.uuid4().hex[:8]}"
+        _seed(sid, mode="conversation")
+        out = _run_hook("echo SECRET > .env", sid, str(tmp_path))
+        assert out is not None and out.get("permissionDecision") == "deny"
+        assert _denied_rules(sid) == ["SEC-CREDENTIAL-WRITE"]
+
+    def test_credential_path_with_a_quote_is_recorded_exactly(self, tmp_path: Path):
+        # The shell builds this row, so a quote in the path must not reach the JSON
+        # unescaped (SEC-INJ-LOG-001).
+        sid = f"bwg-{uuid.uuid4().hex[:8]}"
+        _seed(sid, mode="conversation")
+        out = _run_hook("echo SECRET > 'a\"b/.env'", sid, str(tmp_path))
+        assert out is not None and out.get("permissionDecision") == "deny"
+        rows = [e for e in _session_rows(sid) if e.get("event") == "gate_denial"]
+        assert len(rows) == 1 and rows[0].get("file_path", "").endswith('a"b/.env')
 
     def test_read_only_command_allowed(self, tmp_path: Path):
         sid = f"bwg-{uuid.uuid4().hex[:8]}"

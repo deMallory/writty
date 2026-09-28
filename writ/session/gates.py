@@ -481,6 +481,8 @@ def _can_write_check(session_id: str, envelope: dict, skill_dir: str = "", cache
     if _is_credential_path(file_path):
         _log_friction_event(session_id, mode, "write_attempt", file_path=file_path,
                             result="deny", gate_status="credential_path")
+        _log_friction_event(session_id, mode, "gate_denial", rule_id="SEC-CREDENTIAL-WRITE",
+                            file_path=file_path, gate="credential_path")
         return {
             "can_write": False,
             "reason": "[SEC-CREDENTIAL-WRITE] Refusing to write to a credential/secret path "

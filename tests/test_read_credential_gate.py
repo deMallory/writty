@@ -184,3 +184,54 @@ class TestHookEndToEnd:
     def test_plain_bash_allowed(self, tmp_path: Path):
         assert _run_hook({"session_id": "rcg-5", "tool_name": "Bash",
                           "tool_input": {"command": "ls -la"}}, tmp_path) is None
+
+
+# --------------------------------------------------------------------------- #
+# 3. the refusal reaches `writ audit-session`, which lists gate_denial rows only
+# --------------------------------------------------------------------------- #
+def _session_rows(sid: str) -> list[dict]:
+    """This session's rows from the test's friction log (conftest points
+    WRIT_FRICTION_LOG at tmp_path; the hook subprocess inherits it)."""
+    from writ.analysis.friction import load_events
+    return [e for e in load_events(None) if e.get("session") == sid]
+
+
+def _denied_rules(sid: str) -> list[str]:
+    """The rule ids `writ audit-session` prints under "Gate denials"."""
+    from writ.analysis.friction import aggregate_session
+    return [g["rule_id"] for g in aggregate_session(_session_rows(sid))["gate_denials"]]
+
+
+class TestDenialIsAudited:
+    def test_read_env_leaves_a_gate_denial(self, tmp_path: Path):
+        out = _run_hook({"session_id": "rcg-a1", "tool_name": "Read",
+                         "tool_input": {"file_path": ".env"}}, tmp_path)
+        assert out is not None and out.get("permissionDecision") == "deny"
+        assert _denied_rules("rcg-a1") == ["SEC-CREDENTIAL-READ"]
+
+    def test_bash_cat_env_leaves_a_gate_denial(self, tmp_path: Path):
+        out = _run_hook({"session_id": "rcg-a2", "tool_name": "Bash",
+                         "tool_input": {"command": "cat .env"}}, tmp_path)
+        assert out is not None and out.get("permissionDecision") == "deny"
+        assert _denied_rules("rcg-a2") == ["SEC-CREDENTIAL-READ"]
+
+    def test_allowed_read_leaves_no_gate_denial(self, tmp_path: Path):
+        assert _run_hook({"session_id": "rcg-a3", "tool_name": "Read",
+                          "tool_input": {"file_path": "src/main.py"}}, tmp_path) is None
+        assert _denied_rules("rcg-a3") == []
+
+    def test_path_is_recorded_exactly(self, tmp_path: Path):
+        path = 'conf"ig/.env'
+        out = _run_hook({"session_id": "rcg-a4", "tool_name": "Read",
+                         "tool_input": {"file_path": path}}, tmp_path)
+        assert out is not None and out.get("permissionDecision") == "deny"
+        rows = [e for e in _session_rows("rcg-a4") if e.get("event") == "gate_denial"]
+        assert [r.get("file_path") for r in rows] == [path]
+
+    def test_audit_text_names_the_rule(self, tmp_path: Path):
+        from writ.analysis.friction import aggregate_session, render_audit_text
+        _run_hook({"session_id": "rcg-a5", "tool_name": "Read",
+                   "tool_input": {"file_path": ".env"}}, tmp_path)
+        rows = _session_rows("rcg-a5")
+        assert "denied: SEC-CREDENTIAL-READ" in render_audit_text(
+            "rcg-a5", rows, aggregate_session(rows))
