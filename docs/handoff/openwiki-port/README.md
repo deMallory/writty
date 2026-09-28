@@ -1,6 +1,7 @@
 # Handoff pack: openwiki port and the Writty workshop
 
-Written 2026-09-28 at the end of the session that finished step 1. Read this first, then
+Written 2026-09-28 at the end of the session that finished step 1, updated the same day after
+the step 2 workflows and operations sessions. Read this first, then
 `openwiki/INSTRUCTIONS.md`. Everything below was checked against the repo on that date; a
 claim marked "not verified" was not.
 
@@ -8,9 +9,10 @@ claim marked "not verified" was not.
 
 | What | Where | State |
 |---|---|---|
-| Step 1: wiki skeleton and structure checks | branch `feat/openwiki`, commit `948c357` | Done, not pushed |
-| Side fix: plugin agent names in four hooks | branch `fix/plugin-role-names`, commit `0f15365` (off `main`) | Done, not pushed, not live |
-| Step 2: wiki content | `feat/openwiki` | Next. One section per session |
+| Step 1: wiki skeleton and structure checks | branch `feat/openwiki`, commit `948c357` | Merged on GitHub as PR 13 (`7dd0ee0`), 2026-09-28 |
+| Side fix: plugin agent names in four hooks | branch `fix/plugin-role-names`, commit `0f15365` (off `main`) | Merged as PR 12 (`491657c`), before PR 13. Not live: the plugin cache is still 1.7.2 without it, and the fix did not bump the version |
+| Step 2: wiki content | `feat/openwiki`: `1c584f1` workflows, `82bd2a9` architecture, `e00dc0f` operations | Three sections done, pushed as PR 14 (open). Next: integrations, then testing |
+| Fix: GNU `timeout` in two hooks | branch `fix/session-start-timeout`, commit `0faf853` (off `origin/main`) | PR 15, open. Once merged, see the end of "Operations section" below |
 | Step 3: environment-variable check | `feat/openwiki` | Not started |
 | Step 4: GitHub Actions wiki refresh | `feat/openwiki` | Not started |
 | Step 5: workshop touch-ups | raggidy repo, see below | Not started. Has a deadline |
@@ -55,12 +57,17 @@ The repo runs its own gates on itself. These cost turns this session:
 - **New task, new plan.** After a task, the session sits in `implementation`. Reset to
   planning with `python3 bin/lib/writ-session.py mode set work <session_id>`.
 - **Stale `plan.md`.** The repo-root `plan.md` and `capabilities.md` hold the last task's plan
-  (the dispatch fix). Replace them outright for the next task.
+  (the step 2 workflows section). Replace them outright for the next task.
+- **Wiki writes are never gated.** `*.md` and `*/tests/*` are in the `exclusions` of
+  `bin/lib/gate-categories.json`, so pages and wiki tests are writable in any phase. The
+  plan, tests, pages order holds by discipline, not by the gate.
 - **Files grammar.** Each `## Files` bullet is one line:
   `` - `path` (create|modify|delete) -- reason ``. A wrapped line or a colon instead of ` -- `
   is rejected.
 - **Rule IDs.** `## Rules Applied` may cite only IDs that appeared in a `--- WRIT RULES ---`
   block this session. Anything else is flagged as hallucinated and the approval is spent.
+  The always-active block counts: the workflows plan passed citing ENF-COMMS-OUTPUT-001,
+  ENF-OPS-001, ENF-GATE-007, ENF-PROC-TDD-001 and ENF-TEST-001.
 - **Dry-run the gate before asking for approval:**
   `.venv/bin/python -c "from writ.session.approval_workflow import _validate_phase_a; print(_validate_phase_a('.', '<session_id>'))"`.
   `None` means it passes.
@@ -77,6 +84,13 @@ The repo runs its own gates on itself. These cost turns this session:
 - **Sub-agents.** Until the side fix is live, dispatch `writ:writ-explorer` (and the other
   `writ:writ-*` roles) by that exact name. A generic `Explore` or `general-purpose` dispatch
   is rewritten to a bare name that does not exist, and the call fails.
+- **Bash denials in auto mode.** Two multi-command Bash calls (a `cd` or a long `&&` chain)
+  were denied by the permission check. Single commands with absolute paths, or the Read
+  tool, went through.
+- **Checking diagrams.** A Mermaid CLI sits in the npx cache:
+  `~/.npm/_npx/d62b6517736c1e35/node_modules/.bin/mmdc -i <page>.md -o <scratchpad>/out.md`
+  renders every chart in a page, and `-o <scratchpad>/x.png` gives an image the Read tool
+  can show. The cache path is machine-specific and can be pruned.
 
 ## Pre-existing failures (not caused by this work)
 
@@ -85,6 +99,13 @@ The repo runs its own gates on itself. These cost turns this session:
   `${CLAUDE_PLUGIN_ROOT}` and on the untracked root `CLAUDE.md`.
 - `tests/test_hook_instrumentation.py::test_every_wired_hook_emits_hook_execution`:
   `hooks/scripts/writ-read-credential-gate.sh` never calls `hook_instrument`.
+- `tests/plugin/test_hooks_routing.py::TestHooksJsonStructure::test_hooks_json_registration_count`:
+  pins 48 registrations; PR 11's credential gate made 49.
+- `tests/test_pol5e_hook_noise.py::TestRunPendingTestsBehavior::test_implementation_phase_still_nags`:
+  writes its marker under `<repo>/cache`, so the Stop hook misses it when `WRIT_CACHE_DIR`
+  is set (it is, on the owner's Mac). Unset, it also needs PR 15 and the test Neo4j on 7688.
+
+All four fail identically on `origin/main` (checked 2026-09-28 in a clean worktree).
 
 ## The side fix, and how it goes live
 
@@ -132,7 +153,7 @@ integrations, testing.
 
 | Section | Proposed pages | Sources |
 |---|---|---|
-| workflows | modes, work gates and approvals, sub-agents, helper workflows (dialectic review, inventory) | `HANDBOOK.md` sections 3 to 8, `docs/reference/session-and-gates.md`, `writ/session/mode_engine.py`, `bin/lib/approval_match.py`, `agents/`, `docs/dialectic-review-workflow.md`, `docs/inventory-workflow.md` |
+| workflows (done) | modes, work gates and approvals, sub-agents, helper workflows (dialectic review, inventory) | `HANDBOOK.md` sections 3 to 8, `docs/reference/session-and-gates.md`, `writ/session/mode_engine.py`, `bin/lib/approval_match.py`, `agents/`, `docs/dialectic-review-workflow.md`, `docs/inventory-workflow.md` |
 | architecture | topography (module map with a mermaid flowchart), hooks, local service, rule graph, retrieval, decisions (index of the four ADRs plus decision memory) | `docs/reference/architecture.md`, `docs/reference/hooks.md`, `hooks/hooks.json`, `docs/reference/http-api.md`, `docs/reference/graph-schema.md`, `docs/reference/retrieval.md`, `writ/retrieval/pipeline.py`, `docs/adr/`, `HANDBOOK.md` sections 9 to 14, `docs/architecture/*.html` |
 | operations | service lifecycle, project log (dated, newest first, seeded with 2026-09-28), upstream sync. `environment.md` belongs to step 3 and `wiki-refresh.md` to step 4 | `HANDBOOK.md` section 16, `docs/install.md` ("Restarting the daemon"), git remotes (`upstream` is `infinri/Writ`) |
 | integrations | Claude Code plugin (including the `writ:` namespace), Neo4j, embedding model, upstream Writ, PyPI | `.claude-plugin/`, `docs/plugin-marketplace.md`, `docs/plugin-validation.md`, `docs/reference/configuration.md`, `.github/workflows/publish.yml` |
@@ -151,6 +172,54 @@ lives in `openwiki/quickstart.md`.
 Paulinator analogs worth reading before writing a page: `openwiki/architecture/topography.md`,
 `openwiki/architecture/decisions.md`, `openwiki/operations/project-log.md`,
 `openwiki/integrations/external-services.md`.
+
+### Workflows section: done in `1c584f1`
+
+Four pages: `openwiki/workflows/modes.md`, `openwiki/workflows/work-gates.md`,
+`openwiki/workflows/sub-agents.md`, `openwiki/workflows/helper-workflows.md`. 19 wiki tests
+pass. Two test additions set the pattern for the other sections:
+
+- `tests/openwiki/test_workflows.py` pins each page to the code it summarizes: the
+  `MODE_CONFIG` keys (read with `ast`, no writ import), the work phases and gates, the `name:`
+  of every `agents/*.md`, and an approval examples table run through
+  `approval_match.classify` (it includes "approuvé"). Stdlib only, so it runs under
+  `--noconftest`. Give each section its own `tests/openwiki/test_<section>.py` that reads the
+  sources its pages summarize. For architecture, the obvious pins are a hook table against
+  `hooks/hooks.json` and the decisions index against `docs/adr/`.
+- `tests/openwiki/test_structure.py` now fails when a section index links a page but keeps
+  the "Until pages land here" line.
+
+**Merge order.** `sub-agents.md` and `work-gates.md` describe the review-order check and the
+commit hold after a CRITICAL review as working. On a plugin install they only work with the
+side fix, so merge `fix/plugin-role-names` before `feat/openwiki`. The dispatch rewrite is
+described as "to the matching Writty role", without the target name, so that line is true on
+both sides of the fix.
+
+**Choices to keep.** The agent table has no model column: `writ-agent-hotswap.sh` stamps its
+own model on some dispatches, so the front-matter model is not always what runs. The approval
+flow is drawn once, as a sequence diagram in `work-gates.md`; an architecture page about
+hooks should link it, not redraw it.
+
+### Operations section
+
+Three pages: `openwiki/operations/service-lifecycle.md`, `openwiki/operations/upstream-sync.md`,
+`openwiki/operations/project-log.md`, pinned by `tests/openwiki/test_operations.py` (ports,
+systemd unit, macOS realign, fork-only hooks, log date order). 36 wiki tests pass. The project
+log is now the dated resume point for the whole project; keep its "Current state" current.
+
+Found while writing it: SessionStart probes Neo4j through GNU `timeout`
+(`hooks/scripts/session-start-bootstrap.sh:84`), which stock macOS lacks. The probe fails
+with Neo4j up, so the macOS cache realign never runs; the prompt hook still starts the
+daemon. Reproduced on the owner's Mac. Fixed the same day in PR 15 (open), which also
+covers the Stop hook (`hooks/scripts/writ-run-pending-tests.sh:88`): same bug, no pending
+test ever ran on macOS. Both hooks call `bin/lib/run-bounded.py` instead, which exists only
+on that branch until it merges, so no wiki page cites it yet. Once PR 15 merges, drop the
+"Known gap" paragraph from `service-lifecycle.md`, and move the open thread in the project
+log to a timeline bullet.
+
+The local `main` is behind `origin/main` (PRs 12 and 13). `tests/test_plugin_role_names.py`
+is not on `feat/openwiki`, so no wiki page may cite that path until the branch takes
+`origin/main`.
 
 ## Step 3: environment-variable check
 
@@ -274,3 +343,9 @@ instead of advancing.
 - The two pre-existing test failures listed above.
 - `docs/install.md` still documents upstream's install commands and an old hook count (see
   Step 2).
+- `HANDBOOK.md` section 8 says "five named roles" and lists the planner without Edit;
+  `agents/` has seven files and `agents/writ-planner.md` grants Edit.
+- `docs/reference/session-and-gates.md` section 5 says the token is minted "only if no token
+  already exists"; `hooks/scripts/auto-approve-gate.sh:189` overwrites it on purpose.
+- `docs/inventory-workflow.md` says `inventory/` is gitignored; `.gitignore` has no entry
+  for it.

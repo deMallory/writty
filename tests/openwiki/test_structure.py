@@ -39,6 +39,8 @@ _CITED_PATH = re.compile(
 )
 # A row is `| `path` | N | ...`: an inventory table with a Lines column.
 _COUNTED_ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*(\d+)\s*\|")
+# Step 1 left this line in every section index; it goes when the first page lands.
+PLACEHOLDER = "Until pages land here"
 
 
 def parse_frontmatter(markdown: str) -> tuple[dict[str, str], str]:
@@ -79,6 +81,12 @@ def cited_paths(markdown: str) -> list[str]:
         if (REPO_ROOT / candidate.split("/")[0]).exists():
             cited.append(candidate)
     return cited
+
+
+def keeps_placeholder(index_markdown: str) -> bool:
+    """A section index that already links a page must not still say pages are coming."""
+    files, _ = parse_index_links(index_markdown)
+    return bool(files) and PLACEHOLDER in index_markdown
 
 
 def _read_wiki(rel_path: str) -> str:
@@ -133,6 +141,11 @@ def test_no_orphan_pages():
     pages, _ = _reachable_pages()
     orphans = [f for f in _all_wiki_files() if not _is_reserved(f) and f not in pages]
     assert orphans == []
+
+
+def test_no_section_index_keeps_the_placeholder_once_it_links_pages():
+    stale = [s for s in SECTIONS if keeps_placeholder(_read_wiki(f"{s}/index.md"))]
+    assert stale == []
 
 
 def test_every_page_carries_front_matter():
@@ -223,6 +236,12 @@ def test_parse_frontmatter_strips_quotes_and_ignores_other_keys():
     )
     assert meta == {"type": "Guide", "title": "Hooks", "description": ""}
     assert rest == "# Hooks\n"
+
+
+def test_keeps_placeholder_flags_only_an_index_that_links_pages():
+    assert keeps_placeholder("- [Modes](modes.md)\n\nUntil pages land here, read HANDBOOK.md.\n")
+    assert not keeps_placeholder("Until pages land here, read HANDBOOK.md.\n")
+    assert not keeps_placeholder("- [Modes](modes.md)\n")
 
 
 def test_parse_index_links_skips_external_absolute_and_anchored_links_and_dedupes():
