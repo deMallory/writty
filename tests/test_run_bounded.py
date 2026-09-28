@@ -51,9 +51,12 @@ SHELL_UNIVERSE = Universe(
     ignore=DEFAULT_IGNORE + ("docs",),
 )
 COMMENT_LINE = re.compile(r"^[ \t]*#.*$", re.M)
-# `timeout` in command position, followed by a duration. The lookbehind skips flags and
-# names that only end in it (`--connect-timeout 5`, `read_timeout 3`).
-GNU_TIMEOUT = re.compile(r"(?<![\w.-])timeout[ \t]+[0-9][^\n]*")
+# `timeout` in command position, allowing GNU options before the duration. The lookbehind
+# skips flags and names that only end in it (`--connect-timeout 5`, `read_timeout 3`).
+GNU_TIMEOUT = re.compile(
+    r'(?<![\w.-])timeout[ \t]+(?:-[^ \t\n]+(?:=[^ \t\n]+)?[ \t]+)*'
+    r'(?:[0-9][^ \t\n]*|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?|"\$[^"\n]+"|\'\$[^\'\n]+\')',
+)
 
 
 def _alive(pid: int) -> bool:
@@ -208,6 +211,8 @@ class TestNoGnuTimeout:
     def test_the_pattern_sees_both_forms_it_replaced(self) -> None:
         assert GNU_TIMEOUT.findall('if ! timeout 2 bash -c "exec 3<>/dev/tcp/h/1"; then')
         assert GNU_TIMEOUT.findall('        timeout 60s bash -c "$cmd" 2>&1')
+        assert GNU_TIMEOUT.findall('timeout --kill-after=5 60s bash -c "$cmd" 2>&1')
+        assert GNU_TIMEOUT.findall('timeout "$SECONDS" bash -c "$cmd" 2>&1')
         assert not GNU_TIMEOUT.findall('curl --connect-timeout 5 "$url"')
         assert not GNU_TIMEOUT.findall("read_timeout 3")
 
