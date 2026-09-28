@@ -85,7 +85,8 @@ run_group() {
     local rc=0
     {
         echo "===== $fmt: $cmd ====="
-        timeout 60s bash -c "$cmd" 2>&1
+        # run-bounded.py, not GNU timeout: stock macOS lacks it, and every group exited 127.
+        python3 "$WRIT_DIR/bin/lib/run-bounded.py" 60 bash -c "$cmd" 2>&1
     } >> "$LOG" || rc=$?
     if [ $rc -ne 0 ]; then
         OVERALL_RC=$rc
