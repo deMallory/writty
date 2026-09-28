@@ -109,7 +109,7 @@ Every edge above comes from this loop, run at the repo root. It prints one line 
 for a in analysis compression graph retrieval server session shared; do
   for b in analysis compression graph retrieval server session shared; do
     [ "$a" = "$b" ] && continue
-    n=$(grep -rlE "^\s*(from|import)\s+writ\.$b\b" writ/$a | wc -l | tr -d ' ')
+    n=$(grep -rlE "^[[:space:]]*(from|import)[[:space:]]+writ\.$b([^[:alnum:]_]|$)" writ/$a | wc -l | tr -d ' ')
     [ "$n" != "0" ] && echo "$a -> $b ($n files)"
   done
 done
