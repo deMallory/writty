@@ -179,6 +179,17 @@ def main() -> None:
     hit = find_credential_read(envelope.get("tool_name", ""), envelope.get("tool_input", {}))
     if hit:
         sys.stdout.write(hit)
+        sys.stdout.flush()
+        # The refusal is already out; a logging failure must not turn it into an allow.
+        try:
+            from writ.session.cache import _read_cache
+            from writ.session.friction import _log_friction_event
+            sid = envelope.get("session_id") or ""
+            _log_friction_event(sid, _read_cache(sid).get("mode") if sid else None,
+                                "gate_denial", rule_id="SEC-CREDENTIAL-READ",
+                                file_path=hit, gate="credential_read")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

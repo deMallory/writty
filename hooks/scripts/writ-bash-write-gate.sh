@@ -1233,6 +1233,19 @@ PY
 # 1. Credential targets: deny in any mode, no server needed (org boundary).
 CRED_HIT=$(printf '%s\n' "$TARGETS" | awk -F'\t' '$1=="cred"{print $2; exit}')
 if [ -n "$CRED_HIT" ]; then
+    # gate_denial is the only row `writ audit-session` lists as a refusal. jq takes the
+    # path with --arg, so a quote in it cannot forge a field (SEC-INJ-LOG-001). No python
+    # fallback arm: the inline-snippet ratchet (tests/test_json_transform_equivalence.py)
+    # holds this hook at one. Without jq the row keeps its rule and loses the path.
+    _writ_row_mode
+    CRED_EXTRA=""
+    if [ -z "${WRIT_NO_JQ:-}" ] && command -v jq >/dev/null 2>&1; then
+        CRED_EXTRA=$(jq -n -c --arg fp "$CRED_HIT" \
+            '{rule_id: "SEC-CREDENTIAL-WRITE", file_path: $fp, gate: "credential_path"}' \
+            2>/dev/null) || CRED_EXTRA=""
+    fi
+    [ -n "$CRED_EXTRA" ] || CRED_EXTRA='{"rule_id": "SEC-CREDENTIAL-WRITE", "gate": "credential_path"}'
+    log_friction_event "$SESSION_ID" "$_WRIT_ROW_MODE" "gate_denial" "$CRED_EXTRA"
     emit_deny "[SEC-CREDENTIAL-WRITE] Refusing this Bash command: it writes to a credential/secret path ('$CRED_HIT'). Secret material must not be written or overwritten by the agent. Name non-secret templates .env.example / .env.sample / *.pub."
     exit 0
 fi
