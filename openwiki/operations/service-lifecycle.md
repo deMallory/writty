@@ -32,7 +32,7 @@ The suite keeps its own pair, so a test run never touches the daemon or the grap
 
 **The macOS realign.** On macOS, SessionStart runs that routine with `WRIT_REALIGN_CACHE=1`: a daemon that reports a different session store than the hooks use is stopped and started again. Two stores for one session is what made approvals vanish; see "State it does not own" in [Local service](../architecture/local-service.md). Linux skips the realign, because a restart from a hook would fight systemd.
 
-**Known gap, seen 2026-09-28.** SessionStart probes Neo4j through `timeout`, a GNU tool that stock macOS does not ship. Without it the probe fails even with Neo4j up, SessionStart stops early, and neither its start nor the realign runs. The prompt hook still starts the daemon, without the realign. Check with `command -v timeout`. Until the hook is fixed, restart the daemon by hand if approvals go missing.
+**Known gap, seen 2026-09-28.** SessionStart probes Neo4j through `timeout`, a GNU tool that stock macOS does not ship. Without it the probe fails even with Neo4j up, SessionStart stops early, and neither its start nor the realign runs. The prompt hook still starts the daemon, without the realign. Check with `command -v timeout`: no output means this machine is affected. PR 15 fixes it (open on 2026-09-28). Until the fix reaches the installed plugin, restart the daemon by hand if approvals go missing.
 
 ## When to restart
 

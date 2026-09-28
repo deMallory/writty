@@ -12,12 +12,12 @@ Hooks are how Writty acts at all. Claude Code runs a shell command on each lifec
 
 | Event | What Writty does there | Can block |
 |---|---|---|
-| `SessionStart` | Starts the daemon if nothing answers and bootstraps the session (`session-start-bootstrap.sh`) | No |
+| `SessionStart` | Starts the daemon if nothing answers and bootstraps the session (`session-start-bootstrap.sh`). On stock macOS it stops before both until PR 15 lands; see the [project log](../operations/project-log.md) | No |
 | `UserPromptSubmit` | Mints a manual-testing grant from the user's words (`writ-manual-test-grant.sh`), scans for an approval and advances a pending gate (`auto-approve-gate.sh`), sets a mode when the prompt makes it obvious, then injects the rules for this prompt in one daemon call (`writ-rag-inject.sh`) | No |
 | `PreToolUse` | The gates. Source writes checked against the mode and phase (`writ-pre-write-dispatch.sh`), writes hidden in Bash commands (`writ-bash-write-gate.sh`), reads of secret files (`writ-read-credential-gate.sh`), writes to the session store (`writ-state-write-gate.sh`), the test-first check (`validate-test-file.sh`), `plan.md` at plan-mode exit (`validate-exit-plan.sh`), sub-agent dispatch (`writ-dispatch-discipline.sh`, `writ-agent-hotswap.sh`, `writ-sdd-review-order.sh`), and more | Yes |
 | `PostToolUse` | Rules for the file just read or written (`writ-posttool-rag.sh`), post-write validators, marking a written test for the end-of-turn run (`writ-mark-pending-test.sh`), the self-review prompt after a plan or test file (`writ-quality-judge.sh`), secret redaction in Bash output (`writ-output-rewrite.sh`), the auto-memory mirror (`writ-memory-capture.sh`) | No |
 | `PostToolUseFailure` | Logs a failed Bash command to the friction log (`writ-bash-failure.sh`) | No |
-| `Stop` | Runs the tests marked this turn, and refuses to end the turn on a failing test in the implementation phase, an unresolved violation in Work mode, an unverified low self-review score, or an em dash, en dash or ` -- ` in the reply. Logs friction (`friction-logger.sh`) | Yes |
+| `Stop` | Runs the tests marked this turn (not on stock macOS until PR 15 lands; see the [project log](../operations/project-log.md)), and refuses to end the turn on a failing test in the implementation phase, an unresolved violation in Work mode, an unverified low self-review score, or an em dash, en dash or ` -- ` in the reply. Logs friction (`friction-logger.sh`) | Yes |
 | `SubagentStart` | Gives each sub-agent its own session cache seeded from the parent's mode and phase (`writ-subagent-start.sh`) | No |
 | `SubagentStop` | Records a reviewer's verdict straight from the payload, which is what holds a commit after a CRITICAL review (`writ-subagent-stop.sh`) | No |
 | `PreCompact` | Drops the full rule objects from the session cache before compaction, keeping their ids (`writ-precompact.sh`) | No |

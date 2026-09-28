@@ -11,7 +11,7 @@ The daemon is one FastAPI process on `localhost:8765`, shared by every Claude Co
 ## How it starts
 
 - `writ serve` (`writ/cli.py`) runs uvicorn on the app in `writ/server/__init__.py`. Host and port default to `localhost` and `8765`; `WRIT_HOST` and `WRIT_PORT` override them.
-- Nobody has to start it by hand. The SessionStart hook and `scripts/ensure-server.sh` both call `writ_ensure_server` in `scripts/lib/writ-server-lib.sh`. It probes `/health`, and starts `writ serve` under a lock only when nothing answers, so two sessions never start two daemons. A healthy daemon is never restarted.
+- Nobody has to start it by hand. The SessionStart hook, the prompt hook (`writ-rag-inject.sh`) and `scripts/ensure-server.sh` all call `writ_ensure_server` in `scripts/lib/writ-server-lib.sh`. It probes `/health`, and starts `writ serve` under a lock only when nothing answers, so two sessions never start two daemons. A healthy daemon is never restarted.
 - Restarting after a code change: `bash scripts/stop-server.sh; bash scripts/ensure-server.sh`. Operator detail: `HANDBOOK.md` section 16.
 
 ## Startup order

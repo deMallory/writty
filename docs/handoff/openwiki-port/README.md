@@ -11,7 +11,8 @@ claim marked "not verified" was not.
 |---|---|---|
 | Step 1: wiki skeleton and structure checks | branch `feat/openwiki`, commit `948c357` | Merged on GitHub as PR 13 (`7dd0ee0`), 2026-09-28 |
 | Side fix: plugin agent names in four hooks | branch `fix/plugin-role-names`, commit `0f15365` (off `main`) | Merged as PR 12 (`491657c`), before PR 13. Not live: the plugin cache is still 1.7.2 without it, and the fix did not bump the version |
-| Step 2: wiki content | `feat/openwiki`: `1c584f1` workflows, `82bd2a9` architecture, `e00dc0f` operations | Three sections done, not pushed. Next: integrations, then testing |
+| Step 2: wiki content | `feat/openwiki`: `1c584f1` workflows, `82bd2a9` architecture, `e00dc0f` operations | Three sections done, pushed as PR 14 (open). Next: integrations, then testing |
+| Fix: GNU `timeout` in two hooks | branch `fix/session-start-timeout`, commit `0faf853` (off `origin/main`) | PR 15, open. Once merged, see the end of "Operations section" below |
 | Step 3: environment-variable check | `feat/openwiki` | Not started |
 | Step 4: GitHub Actions wiki refresh | `feat/openwiki` | Not started |
 | Step 5: workshop touch-ups | raggidy repo, see below | Not started. Has a deadline |
@@ -98,6 +99,13 @@ The repo runs its own gates on itself. These cost turns this session:
   `${CLAUDE_PLUGIN_ROOT}` and on the untracked root `CLAUDE.md`.
 - `tests/test_hook_instrumentation.py::test_every_wired_hook_emits_hook_execution`:
   `hooks/scripts/writ-read-credential-gate.sh` never calls `hook_instrument`.
+- `tests/plugin/test_hooks_routing.py::TestHooksJsonStructure::test_hooks_json_registration_count`:
+  pins 48 registrations; PR 11's credential gate made 49.
+- `tests/test_pol5e_hook_noise.py::TestRunPendingTestsBehavior::test_implementation_phase_still_nags`:
+  writes its marker under `<repo>/cache`, so the Stop hook misses it when `WRIT_CACHE_DIR`
+  is set (it is, on the owner's Mac). Unset, it also needs PR 15 and the test Neo4j on 7688.
+
+All four fail identically on `origin/main` (checked 2026-09-28 in a clean worktree).
 
 ## The side fix, and how it goes live
 
@@ -202,8 +210,12 @@ log is now the dated resume point for the whole project; keep its "Current state
 Found while writing it: SessionStart probes Neo4j through GNU `timeout`
 (`hooks/scripts/session-start-bootstrap.sh:84`), which stock macOS lacks. The probe fails
 with Neo4j up, so the macOS cache realign never runs; the prompt hook still starts the
-daemon. Reproduced on the owner's Mac. Not fixed: it is listed under open threads in the
-project log.
+daemon. Reproduced on the owner's Mac. Fixed the same day in PR 15 (open), which also
+covers the Stop hook (`hooks/scripts/writ-run-pending-tests.sh:88`): same bug, no pending
+test ever ran on macOS. Both hooks call `bin/lib/run-bounded.py` instead, which exists only
+on that branch until it merges, so no wiki page cites it yet. Once PR 15 merges, drop the
+"Known gap" paragraph from `service-lifecycle.md`, and move the open thread in the project
+log to a timeline bullet.
 
 The local `main` is behind `origin/main` (PRs 12 and 13). `tests/test_plugin_role_names.py`
 is not on `feat/openwiki`, so no wiki page may cite that path until the branch takes
