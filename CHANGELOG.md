@@ -4,6 +4,17 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **`PBK-PROC-SDD-001` dispatches the two split reviewer roles.** `ROL-SPEC-REVIEWER-001` and `ROL-CODE-QUALITY-REVIEWER-001` ship as fork agents and sit in the live graph, but no playbook dispatched them and `writ-corpus.cypher` lacked them. The dump now carries both, each with a DISPATCHES edge from the playbook and a BELONGS_TO edge to `CAT-PROC-DISPATCH-001`. The playbook names them as the split alternative to `writ-reviewer`, spec pass first.
+- **`writ-corpus.cypher` is in canonical order.** Re-exported after a replay: same 538 nodes, 1 454 edges and properties, checked node by node. Only line and property order moved; five ANIM-GSAP nodes had been appended by hand out of id order.
+
+### Fixed
+
+- **`writ export-cypher` works on a live graph.** The runtime stamps `Rule.last_seen` with Cypher `datetime()`, and `cypher_literal` refused the driver's `neo4j.time.DateTime`. It now renders `datetime('<iso>')`, which replays to the same value.
+- **A `bible/` rebuilt from the dump imports again.** The full export (`export_graph_to_markdown`) dropped authored fields (`authority`, `confidence`, `last_validated`, `evidence`, `staleness_window`) and wrote the 62 Abstraction nodes as `ABS-*.md` files that the importer rejects. It now drops only the runtime fields (`times_seen_*`, `last_seen`, `source_origin`) and writes Abstractions to `abstractions.json`. `node_to_yaml_frontmatter` keeps its default, so promotion output is unchanged.
+- **The read gate records a `hook_execution` row under the caller's session.** `bin/lib/credential_read.py` prints the caller's identity on its first line, so the gate needs no second Python start.
+
 ## [1.7.3] - 2026-09-28
 
 Ships PRs 11 to 17 and the credential audit fix to installed plugins. The plugin cache is keyed by version, and 1.7.2 (`b73c2ed`) predates all of them.

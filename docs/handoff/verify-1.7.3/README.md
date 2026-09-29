@@ -5,9 +5,10 @@ PR 18. Read this first. It continues `docs/handoff/openwiki-port/README.md`: the
 rules and gate mechanics there still hold, and this file lists only what changed or was
 learned since. Claims were checked on that date. "Not verified" marks the rest.
 
-**Updated 2026-09-29.** Task 1 done and verified live. Task 2 diagnosed, not fixed. Task 3
-done in the vault, not committed. Task 4 not started. The sections below say what each
-found; the original task text is kept where it still guides the next step.
+**Updated 2026-09-29.** Task 1 done and verified live. Task 2 fixed on branch
+`fix/corpus-round-trip`, PR not opened yet. Task 3 done in the vault, not committed. Task 4
+not started. The sections below say what each found; the original task text is kept where
+it still guides the next step.
 
 ## Resume point
 
@@ -15,8 +16,8 @@ found; the original task text is kept where it still guides the next step.
 |---|---|---|
 | Plugin 1.7.3 (PRs 11 to 18) | Live on this machine: Claude Code and the daemon restarted on 1.7.3 | Install on the workshop machine |
 | Live check of the credential audit | Done: 5 refusals tried, 5 listed by `writ audit-session`, one with the daemon stopped | None |
-| Failing tests | Diagnosed: stale `bible/`, a lossy export, stale test pins, gaps in the dump. `bible/` now rebuilt from the dump. The two reviewer roles stay | Fix PR, see code follow-ups for the order |
-| Live graph (port 7687) | Stale against the dump, and cannot be backed up (`writ export-cypher` crashes) | Fix the export first, see task 2 |
+| Failing tests | Fixed on `fix/corpus-round-trip`: 1 left, `test_plugin_manifest` (its own PR). `bible/` rebuilt from the new dump | Open the PR |
+| Live graph (port 7687) | Stale against the dump. Backed up: `../writty-live-backup-20260929.cypher` | Replay the dump into it: the owner's call, see task 2 |
 | Workshop vault (raggidy) | Stale lines fixed from the task 1 result; 9 files modified, 1 new, nothing committed | Commit, ask before pushing |
 | Online deck and sources | Not updated: they live on another claude.ai account | The owner, by hand |
 | Stale writty docs | Listed below, not fixed | Task 4 |
@@ -108,8 +109,33 @@ The steps, kept for the workshop machine:
 
 ## Task 2: the 93 failing tests
 
-**Result, 2026-09-29.** A stale `bible/` caused most of the 93. Rebuilt from the dump, 36
-fail. Nothing is fixed in code yet. Full suite, test graph up, each row a fresh run:
+**Fixed, 2026-09-29, branch `fix/corpus-round-trip`.** Full suite, test graph up:
+1 failed, 7 990 passed, 158 skipped. The one left is `test_plugin_manifest`, see the single failures below. The
+fix, in the planned order:
+
+- `cypher_literal` renders a neo4j DateTime as `datetime('<iso>')`, so `writ export-cypher`
+  works on 7687.
+- Live graph backed up to `../writty-live-backup-20260929.cypher`: 536 nodes, 1 435 edges,
+  112 `last_seen` values. It holds no Decision, Memory or Project. The dump query leaves
+  records out by design (`writ/graph/db/node_store.py:202`), and a replay keeps them.
+- `writ-corpus.cypher` re-exported in canonical order first: same nodes, edges and
+  properties, checked node by node. Then the two split reviewer roles, dispatched by
+  PBK-PROC-SDD-001: 2 nodes, 4 edges, 1 changed playbook line. A replay re-exports to the
+  same bytes.
+- The full export keeps authored fields and writes `abstractions.json` instead of
+  `ABS-*.md`. `bible/` rebuilt with `rebuild_bible.py`: 540 nodes, and
+  `writ import-markdown --dry-run` reports 478 nodes and 0 errors. The new
+  `abstractions.json` is byte-identical to the old one (62 entries). The previous `bible/`
+  is at `../writty-bible-aside-20260929`.
+- The read gate calls `hook_instrument`; `credential_read.py` hands it the caller's
+  identity, so its rows are not filed under `unknown`.
+- Stale pins moved (49 hooks, 21 TEC, 7 roles). Four test files read the old layout or the
+  wrong edge format; fixed.
+
+What is still open is under code follow-ups.
+
+**Diagnosis, 2026-09-29.** A stale `bible/` caused most of the 93. Rebuilt from the dump, 36
+failed. Full suite, test graph up, each row a fresh run:
 
 | `bible/` | Failed | Passed | Skipped |
 |---|---|---|---|
@@ -143,7 +169,8 @@ self-heal completeness check, expect 7 roles.
 | Known drift | 2: `test_hook_instrumentation` (read gate), `test_plugin_manifest` (strict warnings) | See single failures below |
 | Cause not read | 3: `test_phase_abstraction_parity` and `test_phase18a_push_by_action` (`run_all_checks` exits 1; both appeared once the two roles were added, so the orphans are the suspect, unproven); `test_phase52a_field_drift` (source-null, graph-non-null not reported as drift) | Read before the fix PR |
 
-**The live graph (7687) is stale too, and cannot be backed up.**
+**The live graph (7687) is stale too, and cannot be backed up.** (Backed up since the
+fix, see above.)
 
 - It lacks ENF-PROC-FIXLOOP-001, TEC-PROC-CONDITION-WAIT-001, TEC-PROC-DEFENSE-DEPTH-001 and
   TEC-PROC-TEST-POLLUTION-001. It still has the two reviewer roles. Counts on 2026-09-28:
@@ -323,14 +350,26 @@ forwards SIGTERM, SIGHUP, SIGINT. Stdlib only.
 
 - Log `gate_denial` for the Bash gate's other refusals (gate state, egress), or make
   `writ audit-session` list denied `gate_decision` rows, so the audit and slide 12 agree.
-- Add `hook_instrument` to `hooks/scripts/writ-read-credential-gate.sh`.
-- The task 2 fix PR, in this order: `cypher_literal` learns DateTime; back up the live graph;
-  give the two reviewer roles a dispatching playbook (they stay, owner's call 2026-09-29);
-  regenerate the dump with them; make the full export lossless; update the stale pins.
-  Details in task 2.
+- Replay the new dump into 7687. It resets 112 `last_seen` values and the `times_seen`
+  counters; records survive. The owner's call.
+- `hooks/scripts/writ-sdd-review-order.sh:55` waits for `spec_reviewer_completed`, which
+  nothing writes, and no `/review-ordering` route exists in `writ/`. In Work mode the
+  code-quality reviewer is always refused. Separate PR.
+- `render_cypher_dump` keeps each graph's storage order for properties: live and the dump
+  agree on 127 of 534 nodes, so an export from 7687 reorders most lines. Sort the keys in
+  `_render_props`.
+- The RULE-START import resets rule `confidence`, `authority`, `evidence` and
+  `last_validated` (`writ/graph/ingest.py:168-175`).
+- `ROL-REVIEWER-001` still says it "replaces the separate reviewers"; the corpus now has
+  both.
+- `test_plugin_manifest`: 49 unquoted `${CLAUDE_PLUGIN_ROOT}` and the untracked root
+  `CLAUDE.md`. Quoting breaks `hooks_lint.py:61`, `doctor.py:451-458` and the routing
+  checks; the exec form needs its own PR.
 - The dotfiles repo's project-scope install is pinned at 1.7.0 (`1042412`) and does not follow
   the user-scope one.
-- ruff flags an unused `re` in `tests/test_bash_write_gate.py:21`. Pre-existing on `main`.
+- ruff flags an unused `re` in `tests/test_bash_write_gate.py:21`, 4 errors in
+  `tests/plugin/test_hooks_routing.py` and 3 in `tests/test_inc2_edge_direction.py`.
+  Pre-existing on `main`.
 
 ## Gotchas learned this session
 
