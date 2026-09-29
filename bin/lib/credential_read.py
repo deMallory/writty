@@ -10,7 +10,8 @@ Known gaps (see README limits): a path built from variables, eval, base64,
 sh -c, an interpreter reaching the file by a computed name, a program file
 (python read_env.py), and Grep over a directory that holds a committed .env.
 
-CLI: reads a hook envelope on stdin, prints the offending path (or nothing).
+CLI: reads a hook envelope on stdin, prints the caller's identity (agent_id, else
+session_id) on the first line and the offending path, if any, on the second.
 """
 
 from __future__ import annotations
@@ -176,6 +177,9 @@ def main() -> None:
         envelope = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return
+    # The gate files its hook_execution row under this; returning it here saves the
+    # gate a second python3 start (20ms) on every Read, Grep and Bash call.
+    sys.stdout.write((envelope.get("agent_id") or envelope.get("session_id") or "") + "\n")
     hit = find_credential_read(envelope.get("tool_name", ""), envelope.get("tool_input", {}))
     if hit:
         sys.stdout.write(hit)
