@@ -16,7 +16,7 @@ The latest released version on the `main` branch. There are no long-term support
 
 Read this before you decide how much to trust it. Writ is not a sandbox and its gates are not a security boundary.
 
-**It runs shell scripts with your privileges.** Writ installs about 44 hook registrations that Claude Code invokes on your behalf. Those hooks are bash, they run as your user, and they read and write inside your repositories. Anything your shell can do, a hook can do.
+**It runs shell scripts with your privileges.** Writ installs 49 hook registrations that Claude Code invokes on your behalf. Those hooks are bash, they run as your user, and they read and write inside your repositories. Anything your shell can do, a hook can do.
 
 **The daemon has no authentication.** `writ-server` listens on port 8765 and every route is unauthenticated. The bind address is the whole access control, and it defaults to `localhost`. Any process on the machine that can reach that port can read and modify session state, gate approvals, and the rule corpus, so treat a shared or multi-tenant host as one where Writ's session state is readable by anyone on it.
 

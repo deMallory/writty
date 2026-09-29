@@ -6,16 +6,18 @@ Writ runs the same way under three install paths; pick one:
 - **B. Skills-directory checkout**: a clone at `~/.claude/skills/writ/`, auto-discovered by Claude Code as the user-scope plugin `writ@skills-dir`.
 - **C. Anywhere else**: a clone at a path Claude Code does not discover; hooks must be seeded into `~/.claude/settings.json` (section 3).
 
-In every path, hook registrations come from one place, `hooks/hooks.json` (44 registrations across 12 events over 40 scripts). Editing that file is all a hook change needs.
+In every path, hook registrations come from one place, `hooks/hooks.json` (49 registrations across 12 events over 45 scripts). Editing that file is all a hook change needs.
 
 **Prerequisites (all paths):** Python 3.11+, Docker (Neo4j runs in a container), and `git` for the clone paths. That is the whole list. `jq` and `curl` are optional accelerators: every JSON read has a Python fallback and every HTTP call has a `urllib` fallback, so their absence changes speed, never behavior. Nothing needs `envsubst`/gettext.
 
 ## 1. Install (path A: marketplace plugin)
 
 ```bash
-claude plugin marketplace add infinri/Writ
-claude plugin install writ@writ
+claude plugin marketplace add deMallory/writty
+claude plugin install writty@writty
 ```
+
+These are the fork's names. Upstream's are `infinri/Writ` and `writ@writ`.
 
 Now open Claude Code once in any project. Writ sees the un-bootstrapped install and prints one absolute command on its own line:
 
@@ -75,9 +77,9 @@ This merges the hook events from the generated `templates/settings.json` (render
 
 **Never run `--hooks` on a plugin-loaded install.** Both surfaces would register the same events and every hook would fire twice: doubled rule injection, doubled gate evaluation, duplicated telemetry. The script detects a plugin-loaded install and refuses; `writ doctor` reports the condition (`duplicate-hook-registration`) if it arises another way.
 
-## 4. Optional: run the daemon as a systemd user service
+## 4. Optional, Linux only: run the daemon as a systemd user service
 
-By default the daemon starts on demand (SessionStart hook or `scripts/ensure-server.sh`, both singleton-safe via a file lock). For auto-restart on crash and clean lifecycle management:
+By default the daemon starts on demand (SessionStart hook or `scripts/ensure-server.sh`, both singleton-safe via a lock: `flock` where it exists, a lock directory on macOS). On macOS that is the only path: systemd does not exist there. On Linux, for auto-restart on crash and clean lifecycle management:
 
 ```bash
 bash "$WRIT_DIR/scripts/install-server-service.sh"
@@ -143,7 +145,7 @@ The standalone install keeps working; the plugin path is additive. To move over:
 - **`python3 version is 3.9; need >= 3.11`**: install a newer Python (`pyenv` works well).
 - **`port 7687 already in use`**: another Neo4j is running; stop it or change the `ports:` mapping in `docker-compose.yml`.
 - **`Neo4j did not become reachable within 60s`**: `docker compose logs neo4j`; the common cause is too little memory for Docker (Neo4j wants ~1 GB).
-- **Daemon not healthy**: check the daemon log; the location is install-dependent: `$WRIT_LOG` if set, else `<install>/var/logs/server.log` (standalone) or `${CLAUDE_PLUGIN_DATA:-~/.cache/writ}/server.log` (plugin), or `journalctl --user -u writ-server` under systemd. Usually an import error; re-run `pip install -e .` inside the venv.
+- **Daemon not healthy**: check the daemon log. The first match wins: `$WRIT_LOG`, then `$WRIT_LOG_ROOT/server.log`, then `${CLAUDE_PLUGIN_DATA:-~/.cache/writ}/server.log` when `CLAUDE_PLUGIN_ROOT` is set (a plugin install), then `~/.cache/writ/logs/server.log` (`writ_default_server_log` in `scripts/lib/writ-server-lib.sh`). Under systemd, `journalctl --user -u writ-server`. `scripts/ensure-server.sh` prints the log path when it starts the daemon. Usually an import error; re-run `pip install -e .` inside the venv.
 - **A GPU-discovery warning from onnxruntime at startup** on CPU-only machines is unsuppressible and harmless; CPU execution works normally.
 - **Default Neo4j credentials (`neo4j/writdevpass`)**: a development default, silently used whenever `writ.toml` is missing. For any non-local use, change `NEO4J_AUTH` in `docker-compose.yml` and the `[neo4j]` section of `writ.toml`.
 

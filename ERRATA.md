@@ -12,6 +12,38 @@ matter. That trade is the reason this file exists.
 
 ---
 
+## 2026-09-29: the corpus and hook counts drifted again
+
+The same drift as the 2026-08-14 entry below: fifteen days for the corpus figures, 24 for the
+hook counts. All checkable against `writ-corpus.cypher` and `hooks/hooks.json` in this
+repository.
+
+- **The rule total and the mandatory floor.** README, HANDBOOK, `SCALE_BENCHMARK_RESULTS.md`,
+  `docs/reference/retrieval.md` and the marketplace listing copy published 288 rules in the
+  present tense, and README, HANDBOOK and the listing copy put 32 of them in the mandatory
+  floor. The 1.7.2 sync (`b0ca5d1`, 2026-09-14) raised the dump to 336 rules, 36 mandatory,
+  and none of those sentences moved with it.
+- **The census.** HANDBOOK's shipped-corpus table and the schema reference's dump paragraph
+  still gave the 2026-08-14 dump as the shipped graph: 468 nodes, 1,268 edges. From
+  2026-09-14 the dump held 538 nodes and 1,454 edges, and PR 21's two split reviewer roles
+  (`c9e864d`, 2026-09-29) made it 540 and 1,458. Per-type rows drifted with it:
+  Category 22 to 23, Phase 20 to 25, Playbook 15 to 16, AntiPattern 14 to 22, Technique 14 to
+  21, SubagentRole 5 to 7.
+- **The hook counts.** `SECURITY.md` said "about 44 hook registrations" and
+  `.claude/CODEBASE.md` said 44 registrations over 40 scripts. `hooks/hooks.json` carried that
+  from 2026-09-01 to 2026-09-05 only, and has carried 49 registrations over 45 scripts since
+  PR 11 (`7931e57`, 2026-09-25). The marketplace listing copy said 41 hook scripts.
+
+**These have a consumer**, for the reason the 2026-08-14 entry gives: anyone who cited 288
+rules, 32 mandatory or the 468-node census as current cited something this tree no longer
+says. As then, each figure is replaced in the sentence that carried it, so no README
+disclosure is added. Measurements taken against the 287- and 288-rule corpora keep their
+numbers and now read as that day's figures.
+
+Three earlier entries in this file record a count in prose drifting from its source; this is
+the fourth. A check that reads these figures from the dump and from `hooks/hooks.json` is the
+durable fix.
+
 ## 2026-08-14: the published corpus counts stopped matching the corpus
 
 Three related figures, all corrected on 2026-08-14, all checkable against

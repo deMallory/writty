@@ -11,8 +11,10 @@ not started. The sections below say what each found; the original task text is k
 it still guides the next step.
 
 **Superseded as the resume point, 2026-09-29.** PRs 21 and 22 are merged. Start from
-`docs/handoff/replay-and-docs/README.md`. The task 4 list, reference facts and gotchas here
-still hold.
+`docs/handoff/replay-and-docs/README.md`. The "Updated" paragraph above and the resume table
+below date from before those merges. The reference facts and gotchas here still hold.
+Task 4 is done: the stale-docs PR fixed the doc lines; the hook-code items moved to the open
+threads of `openwiki/operations/project-log.md`.
 
 ## Resume point
 
@@ -311,9 +313,12 @@ directly afterwards.
 "!" but not the space before it. "oui", "validé", "c'est bon", "d'accord", "vas-y" fail. An
 approval word inside a sentence ("le plan est approuvé") fails. The deck was wrong from day one.
 
-**Validation does not spend the token.** `writ/session/approval_workflow.py:465-468` returns on
-a failed validation before `claim_gate_token` at line 504. After fixing `plan.md`, retype
-`approved`; the token is still on disk.
+**A failed validation spends the token** (corrected 2026-09-29; this paragraph first said the
+opposite). The approval hook and `/writ-approve` post to the `/advance-phase` route, which calls
+`consume_gate_token` on a failed validation (`writ/server/routes/gate.py:173`) and answers
+`token_spent: true`; the hook then asks for a new approval. Only the CLI `advance-phase`
+(`writ/session/approval_workflow.py:465-468`) returns before claiming, and the hook never takes
+that path. `HANDBOOK.md:126` and `:143` were right.
 
 **Five fork-only hooks** (against `upstream/main:hooks/scripts/`): `writ-agent-hotswap.sh`,
 `writ-sdd-review-order.sh`, `writ-output-rewrite.sh`, `writ-bash-failure.sh`,

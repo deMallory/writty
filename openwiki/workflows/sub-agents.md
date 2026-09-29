@@ -6,7 +6,7 @@ description: The agents Writty ships, how a generic dispatch becomes a Writty ro
 
 # Sub-agents
 
-Writty ships seven Claude Code agents in `agents/`. Five are the roles of the gated workflow. Two are an older split of the reviewer, kept because a hook still orders them. On a plugin install, Claude Code prefixes each name with the plugin name: dispatch `writ:writ-explorer`, not the bare name.
+Writty ships seven Claude Code agents in `agents/`. Five are the roles of the gated workflow. The other two split the reviewer in two passes: `PBK-PROC-SDD-001` offers them as the alternative to `writ-reviewer`, spec first, and `writ-sdd-review-order.sh` enforces that order. On a plugin install, Claude Code prefixes each name with the plugin name: dispatch `writ:writ-explorer`, not the bare name.
 
 | Agent | Role | Tools | Use it for |
 |---|---|---|---|
@@ -15,10 +15,10 @@ Writty ships seven Claude Code agents in `agents/`. Five are the roles of the ga
 | `writ-test-writer` | Test writer | Read, Glob, Grep, Write, Edit, Bash | test skeletons, after the plan is approved |
 | `writ-implementer` | Implementer | Read, Glob, Grep, Write, Edit, Bash | the code, after the tests are approved |
 | `writ-reviewer` | Reviewer | Read, Glob, Grep, Bash | a diff review in two passes, spec first, then quality |
-| `writ-spec-reviewer` | older split | Read, Glob, Grep, Bash | spec compliance only |
-| `writ-code-quality-reviewer` | older split | Read, Glob, Grep, Bash | code quality only, after the spec review |
+| `writ-spec-reviewer` | split reviewer | Read, Glob, Grep, Bash | spec compliance only |
+| `writ-code-quality-reviewer` | split reviewer | Read, Glob, Grep, Bash | code quality only, after the spec review |
 
-The five roles are also nodes in the rule graph (`ROL-*` in `writ-corpus.cypher`). `writ role-prompt <role>` prints a role's prompt from the graph.
+All seven are also nodes in the rule graph (`ROL-*` in `writ-corpus.cypher`). `writ role-prompt <role>` prints a role's prompt from the graph.
 
 ## Dispatch discipline
 

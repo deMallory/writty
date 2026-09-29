@@ -64,6 +64,7 @@ The advance only happens in `work` mode with a gate pending. Anywhere else, an a
 | `lgtm` | advances | on the list in `bin/lib/approval_match.py` |
 | `yes` | advances | also on the list, so type it only when you mean it |
 | `approuvé` | advances | a short message within two letters of approve, approved, proceed, accept or accepted counts |
+| `approuvé !` | nothing | the cleanup strips a trailing `!` but not the space before it, so the message is no longer within two letters. `approuvé!` advances |
 | `approved, and add a test for the empty case` | advances | an approval word first, then an instruction |
 | `ok remember we want to fix all our findings, approved` | asks | an approval word inside a longer sentence: Claude asks whether you meant to approve the pending gate, nothing advances |
 | `is this approved?` | nothing | a question is not an approval |

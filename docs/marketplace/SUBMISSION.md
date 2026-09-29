@@ -35,7 +35,7 @@ Maintainer reference for submitting `writ@writ` to the official Anthropic plugin
 > Hybrid-RAG rule retrieval plus workflow gates for Claude Code: the right rules per prompt, no risky writes before an approved plan.
 
 **Short description**:
-> Writ is a Claude Code harness with two co-equal layers. A librarian retrieves the rules that fit the current task through a five-stage hybrid pipeline (BM25 + vector + graph traversal + weighted ranking, with an abstention gate) over a Neo4j knowledge graph: sub-millisecond ranked retrieval, roughly flat retrieved tokens as the corpus grows (749x reduction versus prompt-stuffing at 10,000 rules, measured 2026-08-01). A process keeper of 41 hook scripts and a session state machine enforces mode-based workflow gates: plan approval, then test skeletons, then implementation, and approval requires a token only the user's keystroke produces. 288 rules ship out of the box across security, clean code, architecture, testing, performance, and process, with authoring tooling to grow your own.
+> Writ is a Claude Code harness with two co-equal layers. A librarian retrieves the rules that fit the current task through a five-stage hybrid pipeline (BM25 + vector + graph traversal + weighted ranking, with an abstention gate) over a Neo4j knowledge graph: sub-millisecond ranked retrieval, roughly flat retrieved tokens as the corpus grows (749x reduction versus prompt-stuffing at 10,000 rules, measured 2026-08-01). A process keeper of 45 hook scripts and a session state machine enforces mode-based workflow gates: plan approval, then test skeletons, then implementation, and approval requires a token only the user's keystroke produces. 336 rules ship out of the box across security, clean code, architecture, testing, performance, and process, with authoring tooling to grow your own.
 
 (Rule count re-verified against `writ-corpus.cypher` on 2026-08-14; re-run the count
 before submitting if the corpus has moved since.)
@@ -52,7 +52,7 @@ before submitting if the corpus has moved since.)
 
 1. Rule injection: a session showing the `--- WRIT RULES ---` block on a real prompt.
 2. Gate denial: a Write blocked with `[ENF-GATE-PLAN]` before plan approval.
-3. `writ status` / `curl localhost:8765/health` showing the live corpus (288 rules, 32 mandatory as of 2026-08-14, warm index; capture whatever the live daemon actually reports).
+3. `writ status` / `curl localhost:8765/health` showing the live corpus (336 rules, 36 mandatory as of 2026-09-29, warm index; capture whatever the live daemon actually reports).
 4. The `/dashboard` friction analytics view, or the `/explore` graph explorer.
 5. Optional: the architecture pages under `docs/architecture/`.
 

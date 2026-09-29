@@ -68,6 +68,9 @@ capabilities.md
 plan-*.md
 capabilities-*.md
 
+# Inventory workflow datasets (docs/inventory-workflow.md): raw output, regenerable
+/inventory/
+
 # Plugin distribution: never ship
 .claude/settings.local.json
 .claude/skills/

@@ -132,7 +132,7 @@ reproduce with this file's own arithmetic and is superseded by the 26.4x above.
 
 ## Context reduction: an honest note on the baseline (2026-08-01)
 
-The often quoted "749 times less context" is measured against pasting the entire 10,000 rule corpus (1.19 million tokens) into every single message. That is a theoretical ceiling, not something anyone does, since no context window holds it. Against the realistic comparison, a hand curated instructions file of about 5,000 tokens, Writ's per turn cost is roughly comparable while covering the whole shipped rulebook instead of a dozen rules, 287 of them at the time of that measurement and 288 today. The advantage grows with the size of your rulebook rather than with the size of the claim.
+The often quoted "749 times less context" is measured against pasting the entire 10,000 rule corpus (1.19 million tokens) into every single message. That is a theoretical ceiling, not something anyone does, since no context window holds it. Against the realistic comparison, a hand curated instructions file of about 5,000 tokens, Writ's per turn cost is roughly comparable while covering the whole shipped rulebook instead of a dozen rules, 287 of them at the time of that measurement and 336 as of 2026-09-29. The advantage grows with the size of your rulebook rather than with the size of the claim.
 
 ---
 
@@ -162,7 +162,7 @@ Search quality against a 193 question test set (47 of them deliberately ambiguou
 
 ## Corpus growth since those runs, and the floors re-run against it (2026-08-14)
 
-One rule has been added since 2026-08-06, so the shipped rulebook is 288 rather than the 287 those columns were measured against. The quality figures have not been re-measured against the new corpus and are deliberately not restated as if they had been. What was re-run is the gate suite itself: `make bench` passed 17 of 17 on 2026-08-14, and every floor in the table above is one of those 17 targets, so each one still holds against today's rulebook. That is a pass or fail result, not a fresh score.
+Those columns were measured against 287 rules. The shipped rulebook has grown since: 336 rules as of 2026-09-29. The quality figures have not been re-measured against the new corpus and are deliberately not restated as if they had been. What was re-run is the gate suite itself: `make bench` passed 17 of 17 on 2026-08-14, and every floor in the table above is one of those 17 targets, so each one held against that day's 288-rule rulebook. That is a pass or fail result, not a fresh score.
 
 ---
 
