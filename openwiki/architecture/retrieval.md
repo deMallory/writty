@@ -28,14 +28,14 @@ flowchart LR
   kw --> filt["candidate filter"]
   ann --> filt
   filt --> merge["merge by reciprocal rank"]
-  merge --> nbrs["graph neighbors"]
+  merge --> nbrs["proximity bonus on those hits"]
   nbrs --> rank["two-pass ranking"]
   rank --> budget["context budget"]
 ```
 
-- **Keyword and vector search.** A Tantivy BM25 index (`writ/retrieval/keyword.py`) and an hnswlib vector index over ONNX embeddings (`writ/retrieval/embeddings.py`). The BM25 index is rebuilt at every start; the vector index is cached on disk and rebuilt when the corpus changes.
+- **Keyword and vector search.** A Tantivy BM25 index (`writ/retrieval/keyword.py`) and an hnswlib vector index over ONNX embeddings (`writ/retrieval/embeddings.py`). Both are cached on disk and reopened when their corpus hash matches. BM25's hash covers the fields it indexes (`_compute_bm25_hash` in `writ/retrieval/pipeline.py`). An in-memory BM25 index is the fallback when that cache cannot be written.
 - **Candidate filter.** Keeps the node types, domain and route the query asks for, and drops records from other projects (`writ/retrieval/node_scope.py`).
-- **Graph neighbors.** An in-memory adjacency cache adds each candidate's related nodes (`writ/retrieval/traversal.py`).
+- **Graph neighbors.** The candidate list is already fixed, from keyword and vector only. An in-memory adjacency cache (`writ/retrieval/traversal.py`) then does two quieter jobs: a proximity bonus reranks a candidate that sits one or two hops from a top seed, and the full render names neighbor ids on a `RELATED` line. A rule neither search returned is not added.
 - **Two-pass ranking.** A first pass without the graph picks the top seeds; the second adds a bonus for nodes one or two hops from a seed. The weights are code constants in `writ/retrieval/ranking.py`, not configuration.
 - **Context budget.** Picks how much of each rule to render. When the budget is tight, an `Abstraction` summary can stand in for the rules it covers.
 

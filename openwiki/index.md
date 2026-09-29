@@ -13,9 +13,10 @@ Writty is a fork of [Writ](https://github.com/infinri/Writ) by Lucio Saldivar.
 ## Start here
 
 1. First contact: [Quickstart](quickstart.md). What Writty does and does not do, install, a first gated task.
-2. Daily use: `HANDBOOK.md` at the repo root is the operator manual.
-3. Exact contracts (hooks, HTTP API, graph schema, gates): `docs/reference/`.
-4. Editing this wiki: `INSTRUCTIONS.md` in this folder holds the format rules and the checks.
+2. The stack, for a first reading: [The core stack](architecture/core-stack.md). Claude Code, the gates, the librarian, and why Neo4j, Tantivy, ONNX and hnswlib are all in the box.
+3. Daily use: `HANDBOOK.md` at the repo root is the operator manual.
+4. Exact contracts (hooks, HTTP API, graph schema, gates): `docs/reference/`.
+5. Editing this wiki: `INSTRUCTIONS.md` in this folder holds the format rules and the checks.
 
 ## Files
 
