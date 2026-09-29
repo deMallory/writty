@@ -10,6 +10,10 @@ learned since. Claims were checked on that date. "Not verified" marks the rest.
 not started. The sections below say what each found; the original task text is kept where
 it still guides the next step.
 
+**Superseded as the resume point, 2026-09-29.** PRs 21 and 22 are merged. Start from
+`docs/handoff/replay-and-docs/README.md`. The task 4 list, reference facts and gotchas here
+still hold.
+
 ## Resume point
 
 | What | State | Next |
