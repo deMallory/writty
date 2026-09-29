@@ -12,7 +12,9 @@ as such. A schema canary fails loud rather than emit a number on an unverified s
 from __future__ import annotations
 
 import json
+import os
 import re
+from pathlib import Path
 
 from writ.analysis import token_tree
 from writ.analysis.jsonl import read_jsonl
@@ -355,6 +357,131 @@ def aggregate_file_usage(path: str) -> dict:
     return _file_summary(path)
 
 
+SUMMARY_EVENT = "subagent_usage"
+SUMMARY_SCHEMA = 1
+SUMMARY_NO_TRANSCRIPT = "no_transcript"
+SUMMARY_ERROR = "error"
+_SUMMARY_COUNTS = ("responses", "records", "duplicates_collapsed",
+                   "streaming_snapshot_updates", "conflicts")
+
+
+def _json_dict(path) -> dict | None:
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _summary_dispatch_id(agent_id: str, transcript_path) -> str | None:
+    """The dispatching tool_use id: the transcript's sibling .meta.json toolUseId, else the
+    toolUseId of the sidecar subagent_role.sidecar_path finds for agent_id, else None."""
+    meta = token_tree.read_meta(transcript_path) if transcript_path else None
+    if meta is None:
+        from writ.session.subagent_role import sidecar_path
+        found = sidecar_path(agent_id)
+        meta = _json_dict(found) if found else None
+    tool_use_id = (meta or {}).get("toolUseId")
+    return tool_use_id if isinstance(tool_use_id, str) and tool_use_id else None
+
+
+def usage_summary_event(agent_id: str, parent_session: str, transcript_path,
+                        role: str | None, role_source: str | None) -> dict:
+    """The durable `subagent_usage` row the SubagentStop hook appends to the metrics stream.
+
+    Built on aggregate_file_usage, so the hook and the audit share one dedup rule. Tokens
+    only, never dollars: pricing happens at audit time. status is "ok" when the transcript
+    was read, "no_transcript" when there is no path or no file, and "error" (with the
+    exception class name) when reading or the schema check failed."""
+    row = {
+        "event": SUMMARY_EVENT, "session": agent_id, "agent_id": agent_id,
+        "parent_session": parent_session,
+        "dispatch_id": _summary_dispatch_id(agent_id, transcript_path),
+        "role": token_tree.normalize_role(role), "role_source": role_source or "unresolved",
+        "status": SUMMARY_NO_TRANSCRIPT, "schema": SUMMARY_SCHEMA,
+        **{k: 0 for k in _SUMMARY_COUNTS},
+        "model_usage": {}, "child_dispatches": {}, "first_ts": None, "last_ts": None,
+    }
+    if not transcript_path or not os.path.exists(transcript_path):
+        return row
+    try:
+        agg = aggregate_file_usage(str(transcript_path))
+    except Exception as e:
+        row["status"] = SUMMARY_ERROR
+        row["error"] = type(e).__name__
+        return row
+    row.update({k: agg[k] for k in _SUMMARY_COUNTS})
+    row.update({"status": token_tree.SUMMARY_OK, "model_usage": agg["model_usage"],
+                "child_dispatches": agg["child_dispatches"],
+                "first_ts": agg["first_ts"], "last_ts": agg["last_ts"]})
+    return row
+
+
+class UsageSummaries(dict):
+    """{agent_id: first subagent_usage row}. `conflicts` holds one summary_conflict warning
+    per agent_id whose later rows differ from its first (ts excluded)."""
+
+    def __init__(self, session_id: str | None = None) -> None:
+        super().__init__()
+        self.session_id = session_id
+        self.conflicts: dict[str, dict] = {}
+
+
+def load_usage_summaries(session_id: str, project: str) -> UsageSummaries:
+    """subagent_usage rows from the project's metrics stream, live file plus rotated archives.
+
+    First row per agent_id wins; a later row that differs is ignored and recorded as a
+    summary_conflict warning. Rows are keyed by agent_id alone (agent ids are unique), so a
+    row whose parent_session is not `session_id` still matches; the audit flags that as
+    summary_parent_mismatch."""
+    from writ.shared.logging import read_streams
+    out = UsageSummaries(session_id)
+    for row in read_streams(project, ["metrics"]):
+        if not isinstance(row, dict) or row.get("event") != SUMMARY_EVENT:
+            continue
+        agent_id = row.get("agent_id")
+        if not isinstance(agent_id, str) or not agent_id:
+            continue
+        first = out.get(agent_id)
+        if first is None:
+            out[agent_id] = row
+            continue
+        differing = {k for k in set(first) | set(row)
+                     if k != "ts" and first.get(k) != row.get(k)}
+        if differing:
+            w = out.conflicts.setdefault(agent_id, {"kind": "summary_conflict",
+                                                    "agent_id": agent_id,
+                                                    "conflicting_rows": 0, "differing": []})
+            w["conflicting_rows"] += 1
+            w["differing"] = sorted(set(w["differing"]) | differing)
+    return out
+
+
+def _count(v) -> int:
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+
+
+def _summary_usage(row: dict) -> dict:
+    """A stored summary row in the shape _file_summary returns, with a sanitized model_usage
+    (non-dict buckets dropped, non-integer counts read as 0)."""
+    raw = row.get("model_usage")
+    model_usage = {}
+    for key, bucket in (raw.items() if isinstance(raw, dict) else ()):
+        if isinstance(key, str) and isinstance(bucket, dict):
+            model_usage[key] = {k: _count(bucket.get(k)) for k in ("responses",) + TOKEN_CATEGORIES}
+    responses = sum(b["responses"] for b in model_usage.values())
+    return {
+        "responses": responses,
+        "records": _count(row.get("records")) or responses,
+        "duplicates_collapsed": _count(row.get("duplicates_collapsed")),
+        "streaming_snapshot_updates": _count(row.get("streaming_snapshot_updates")),
+        "duplicate_conflicts": _count(row.get("conflicts")),
+        "model_usage": model_usage,
+        "warnings": [],
+    }
+
+
 def price_model_usage(model_usage: dict, fallback_model: str | None = None,
                       scope: str | None = None) -> dict:
     """Price a model_usage mapping (raw model or "<none>" -> token bucket).
@@ -577,7 +704,7 @@ def _dispatch_row(td, summary: dict | None, priced: dict | None) -> dict:
         "models": [], "resolved_model": td.resolved_model,
         "tokens": {c: 0 for c in TOKEN_CATEGORIES}, "usd": None,
         "partial": True, "empty": None,
-        "first_ts": td.first_ts, "last_ts": td.last_ts,
+        "first_ts": td.first_ts, "last_ts": td.last_ts, "summary_status": td.summary_status,
         **{k: None for k in _DEDUP_COUNTS},
     }
     if summary is not None and priced is not None:
@@ -592,12 +719,32 @@ def _dispatch_row(td, summary: dict | None, priced: dict | None) -> dict:
     return row
 
 
+def _summary_warnings(tree, session_id: str, usage_summaries) -> list[dict]:
+    """summary_parent_mismatch for every consulted row filed under neither the audited
+    session nor the parent dispatch's agent, and summary_conflict for consulted agents."""
+    agent_of = {td.dispatch_id: td.agent_id for td in tree.dispatches}
+    conflicts = getattr(usage_summaries, "conflicts", {}) or {}
+    out: list[dict] = []
+    for td in tree.dispatches:
+        if td.summary is None:
+            continue
+        parent = td.summary.get("parent_session")
+        if parent != session_id and parent != agent_of.get(td.parent_dispatch_id):
+            out.append({"kind": "summary_parent_mismatch", "agent_id": td.agent_id,
+                        "parent_session": parent, "session": session_id})
+        if td.agent_id in conflicts:
+            out.append(dict(conflicts[td.agent_id]))
+    return out
+
+
 def _account_tree(transcript_path: str, main: dict, main_priced: dict, main_ids: set,
-                  model: str | None) -> dict:
-    """Walk the session tree and price every accounted dispatch and every orphan file."""
-    tree = token_tree.walk_tree(transcript_path)
+                  model: str | None, usage_summaries=None) -> dict:
+    """Walk the session tree and price every accounted dispatch (from its transcript, or
+    from its subagent_usage row when the transcript is gone) and every orphan file."""
+    tree = token_tree.walk_tree(transcript_path, summaries=usage_summaries)
     seen = set(main_ids)
-    warnings: list[dict] = []
+    warnings: list[dict] = _summary_warnings(
+        tree, token_tree.session_dir(transcript_path).name, usage_summaries)
     by_model: dict = {}
     unpriced: dict = {}
     roles: dict = {}
@@ -611,8 +758,11 @@ def _account_tree(transcript_path: str, main: dict, main_priced: dict, main_ids:
     partial = bool(main_priced["unpriced"])
     for td in tree.dispatches:
         summary = priced = None
-        if td.status == token_tree.ACCOUNTED and td.file is not None:
-            summary = _file_summary(td.file.path, seen, with_children=False)
+        if td.status == token_tree.ACCOUNTED:
+            if td.source == token_tree.SOURCE_SUMMARY:
+                summary = _summary_usage(td.summary)
+            else:
+                summary = _file_summary(td.file.path, seen, with_children=False)
             priced = price_model_usage(summary["model_usage"], model, scope=td.dispatch_id)
             warnings.extend(summary["warnings"])
             _merge_by_model(by_model, priced["by_model"])
@@ -752,19 +902,22 @@ def reconcile_cost_state(transcript_path: str, main_by_model: dict, session_by_m
     }
 
 
-def scorecard(transcript_path: str, friction_path: str | None, model: str | None = None) -> dict:
+def scorecard(transcript_path: str, friction_path: str | None, model: str | None = None,
+              usage_summaries: dict | None = None) -> dict:
     """Per-session FOOTPRINT scorecard. Runs the schema canary FIRST -- refuses on drift.
 
     `model` is only a fallback for responses whose record carries no model; None means no
     fallback (such responses are unpriced). `measured` covers the main thread only; `session`,
-    `cost_by_*`, `orphans` and `dispatch_coverage` cover the subagent tree."""
+    `cost_by_*`, `orphans` and `dispatch_coverage` cover the subagent tree.
+    `usage_summaries` ({agent_id: subagent_usage row}, e.g. load_usage_summaries) prices a
+    dispatch whose transcript is gone; None means no fallback."""
     scan = _scan_responses(transcript_path)
     turns = [_turn(r) for r in scan["responses"]]
     assert_usage_schema(turns)  # fail loud before computing anything
     main = _summarize_scan(scan)
     priced = price_model_usage(main["model_usage"], model, scope="main")
     main_ids = {r["message_id"] for r in scan["responses"] if r["message_id"]}
-    tree = _account_tree(transcript_path, main, priced, main_ids, model)
+    tree = _account_tree(transcript_path, main, priced, main_ids, model, usage_summaries)
     tokens = {c: sum(b[c] for b in main["model_usage"].values()) for c in TOKEN_CATEGORIES}
 
     read_cost = sum((u.get("cache_read_input_tokens", 0) or 0) * COST_WEIGHTS["cache_read"]

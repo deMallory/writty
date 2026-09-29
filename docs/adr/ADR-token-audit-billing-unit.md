@@ -6,7 +6,8 @@ Plan: `.claude/plans/54fe1ac9-a554-401f-bbe7-2419043b40f2/plan.md`
 Touches: `writ/analysis/token_audit.py`, `writ/analysis/token_tree.py`, `writ/cli.py`,
 `writ/analysis/efficacy_ab.py`, `tests/test_token_audit_accounting.py`,
 `tests/test_token_audit_tree.py`, `tests/test_efficacy_ab.py`,
-`tests/fixtures/token_audit_helpers.py`
+`tests/fixtures/token_audit_helpers.py`; Task 2: `hooks/scripts/writ-subagent-stop.sh`,
+`writ/shared/logging.py`, `tests/test_subagent_usage_summary.py`
 
 ## Context
 
@@ -205,8 +206,8 @@ before a baseline exists.
 - Workflow-layout subagent spend is listed but not attributed to the session; that limit
   is stated in the output rather than hidden.
 - Spend in a subagent whose transcript Claude Code has already deleted appears only as a
-  `missing_transcript` gap with `session.partial` true until the durable summary (Task 2)
-  lands.
+  `missing_transcript` gap with `session.partial` true, unless a durable `subagent_usage`
+  summary (Task 2, below) exists for it.
 
 ## Validation result: requestId to message.id mapping
 
@@ -219,3 +220,79 @@ If `pairs == ids == reqs`, `requestId` and `message.id` are 1:1 on that transcri
 Observed on a snapshot of session `54fe1ac9-a554-401f-bbe7-2419043b40f2` (2026-09-29): `pairs 56, ids 56, reqs 56`, so the two keys are 1:1 and `message.id` stays the dedup key. On the same snapshot the audit's 56 responses, 57,700 output tokens and 10,704,650 cache-read tokens equal an independent Python dedup count exactly.
 
 Conflicting duplicates in real data: across the full session tree (main plus 9 subagents), 26 response ids carried differing usage. In all 26, only `output_tokens` differed and the last record held the largest value (streaming snapshots written before the final count). Last-record-wins is therefore the correct rule; a first-record rule would undercount output.
+
+## Decision (Task 2): durable subagent usage summaries
+
+### Location: a `subagent_usage` event on the existing `metrics` stream
+
+At SubagentStop, `writ-subagent-stop.sh` appends one `subagent_usage` row per subagent to
+`<log_root>/<project>/metrics.jsonl` through `bin/lib/friction-append.py --stdin-json`, the
+same writer `subagent_complete` uses. STREAM_MAP classifies the event as `metrics`, beside
+`subagent_complete`.
+
+- It reuses the one sanctioned writer: the durable `_fallback.jsonl` on a write failure,
+  the per-project scoping, and the state root that survives plugin upgrades
+  (ADR-state-root).
+- `read_streams(project, ["metrics"])` already unions the live file with its rotated
+  `archive/*.jsonl.gz` generations, so rotation does not hide a summary within the 90-day
+  metrics retention. A summary older than that retention is lost; this is accepted.
+- The lifecycle census reads one stream for both `subagent_complete` and `subagent_usage`.
+
+Rejected: a separate per-agent file store. It would be a second persistence path with its
+own retention, sanitization and fallback behavior.
+
+### Row shape: tokens only
+
+`{event: "subagent_usage", session: <agent_id>, agent_id, parent_session, dispatch_id,
+role, role_source, status: "ok"|"no_transcript"|"error", schema: 1, responses, records,
+duplicates_collapsed, streaming_snapshot_updates, conflicts, model_usage{<raw model>:
+{responses, input, output, cache_read, cache_write_5m, cache_write_1h}},
+child_dispatches{<tool_use_id>: <agent_id or null>}, first_ts, last_ts}`.
+
+- Dollars are never stored. A rate-card correction therefore applies retroactively when a
+  summary is priced at audit time.
+- Model ids are stored raw (`claude-haiku-4-5-20251001`); normalization and the `--model`
+  fallback for the `"<none>"` key happen at audit time.
+- `dispatch_id` is the `toolUseId` of the transcript's sibling `.meta.json`, else of the
+  sidecar `subagent_role.sidecar_path` finds for the agent id, else null. `role` is
+  normalized (leading `writ:` stripped) and `role_source` records where it came from.
+- `child_dispatches` lets the audit continue into nested children after the parent
+  subagent's transcript is gone.
+- The row is built by `usage_summary_event`, which wraps `aggregate_file_usage`, so the hook
+  and the audit apply the same dedup rule (including the streaming-snapshot rule) by
+  construction.
+- `no_transcript`: no path resolved, or the file does not exist. The parent-collapse
+  refusal of `resolve_subagent_transcript` lands here, so a collapsed payload never records
+  the parent's usage as the subagent's. `error`: reading the file or the schema check
+  failed (the exception class name is recorded). Neither status carries usage.
+
+### The hook never blocks the stop
+
+The block runs after role resolution and before the `subagent_complete` block, as a
+single-quoted `python3 -c` piped to friction-append with stderr and stdout discarded and
+`|| true`. It prints nothing to the hook's stdout, because a Stop-family
+additionalContext acts as a turn block. Any failure becomes an `error` row or no row; the
+hook still exits 0 and every other block still runs. The block registers `writ.analysis`
+without running its `__init__` (which imports pydantic, a dependency this block neither
+needs nor can rely on in a hook interpreter), so only the stdlib-only `token_audit`,
+`token_tree` and `jsonl` modules load.
+
+### Immutability: append-only rows, first row wins on read
+
+The hook never rewrites history; a second stop appends a second row. `load_usage_summaries`
+keeps the FIRST row per agent_id, even when it is the worse one (`no_transcript` before
+`ok`). A later row that differs (ignoring `ts`) is ignored and produces a
+`summary_conflict` warning when that agent is audited. Rows match by agent_id alone because
+agent ids are unique; a row whose `parent_session` is neither the audited session nor the
+parent dispatch's agent still matches and adds `summary_parent_mismatch`.
+
+### Audit fallback
+
+`scorecard(..., usage_summaries=None)`: None means no fallback, so efficacy_ab and the
+unit tests stay hermetic. The walk always prefers a live transcript. When the file is
+missing and an `ok` summary exists, the dispatch is `accounted` with `source: "summary"`,
+priced from `model_usage`, and the walk continues into the summary's `child_dispatches`. A
+`no_transcript` or `error` summary leaves the dispatch `missing_transcript` with
+`summary_status` recorded. The CLI gains `--project` (default
+`resolve_project(os.getcwd())`) and always loads the summaries for the audited session id
+(the transcript filename stem).

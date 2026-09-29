@@ -222,6 +222,10 @@ STREAM_MAP: dict[str, str] = {
     "always_on_inject": "metrics",
     "subagent_start": "metrics",
     "subagent_complete": "metrics",
+    # The durable per-subagent token summary SubagentStop writes before Claude Code deletes
+    # the transcript. Metrics, beside subagent_complete, because token-audit reads it back
+    # from this stream (read_streams covers the rotated archives).
+    "subagent_usage": "metrics",
     # Emitted when a hook running inside a sub-agent seeds a cache SubagentStart never
     # created. Metrics, beside its lifecycle siblings, because the governance census
     # counts lazily seeded agents from it and reads that stream.

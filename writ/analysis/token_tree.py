@@ -21,9 +21,16 @@ extract_dispatches(path) -> list[Dispatch]
     Agent tool_use blocks in assistant records, joined to the user record whose
     ``tool_result.tool_use_id`` matches, in file order of the tool_use.
 
+read_meta(jsonl_path) -> dict | None
+    The ``agent-<id>.meta.json`` sidecar beside a transcript path, or None.
+
 walk_tree(main_transcript_path, index=None, summaries=None) -> TreeResult
     Walks dispatches from the main transcript, recursing into each accounted subagent's
-    own transcript, and lists every indexed file never reached as an orphan.
+    own transcript, and lists every indexed file never reached as an orphan. ``summaries``
+    ({agent_id: subagent_usage row}) is the fallback for a dispatch whose transcript file is
+    gone: an ``ok`` row accounts it with source "summary" and the walk continues into the
+    row's ``child_dispatches``; any other row leaves it missing_transcript with
+    ``summary_status`` recorded. A live transcript is always preferred over a row.
 
 Field names
 -----------
@@ -38,15 +45,17 @@ Dispatch: dispatch_id, subagent_type, agent_id (toolUseResult.agentId or None),
 TreeDispatch: dispatch_id, agent_id, role (normalized), parent_dispatch_id (None for
     main-thread dispatches), depth (1 for main-thread dispatches, parent depth + 1 below),
     status ("accounted"|"missing_transcript"|"missing_metadata"), source ("transcript"
-    when accounted from a file, else None), meta_present, resolved_model, first_ts,
-    last_ts, subagent_type (raw dispatch input), file (SubagentFile or None).
+    when accounted from a file, "summary" when accounted from a subagent_usage row, else
+    None), meta_present, resolved_model, first_ts, last_ts, subagent_type (raw dispatch
+    input), file (SubagentFile or None), summary (the row consulted, or None) and
+    summary_status (that row's status, or None when no row was consulted).
 
 Orphan: agent_id, layout, spawn_depth, role (normalized meta.agentType or "unknown"),
     file (SubagentFile).
 
 TreeResult: dispatches (list[TreeDispatch], walk order: parents before children),
     orphans (list[Orphan], index order), workflow_layout_present (bool: any indexed file
-    has layout "workflow"), index (the dict used), summaries (as passed; not yet used),
+    has layout "workflow"), index (the dict used), summaries (as passed),
     warnings (list of dicts; kind "duplicate_agent_link" when a second dispatch resolves
     to an agent already linked, in which case that second dispatch is not listed so its
     file is never billed twice).
@@ -68,6 +77,10 @@ _ROLE_PREFIX = "writ:"
 ACCOUNTED = "accounted"
 MISSING_TRANSCRIPT = "missing_transcript"
 MISSING_METADATA = "missing_metadata"
+
+SOURCE_TRANSCRIPT = "transcript"
+SOURCE_SUMMARY = "summary"
+SUMMARY_OK = "ok"
 
 
 @dataclass
@@ -110,6 +123,8 @@ class TreeDispatch:
     last_ts: object
     subagent_type: object = None
     file: SubagentFile | None = None
+    summary: dict | None = None
+    summary_status: object = None
 
 
 @dataclass
@@ -154,7 +169,10 @@ def _normalize_agent_id(raw) -> str | None:
     return candidate if _VALID_AGENT_ID.match(candidate) else None
 
 
-def _read_meta(jsonl_path: Path) -> dict | None:
+def read_meta(jsonl_path) -> dict | None:
+    jsonl_path = Path(jsonl_path)
+    if not jsonl_path.name.endswith(".jsonl"):
+        return None
     meta_path = jsonl_path.with_name(jsonl_path.name[: -len(".jsonl")] + ".meta.json")
     try:
         with open(meta_path) as f:
@@ -176,7 +194,7 @@ def index_subagent_files(session_dir) -> dict[str, SubagentFile]:
             agent_id = _normalize_agent_id(path.name[: -len(".jsonl")])
             if agent_id is None or agent_id in index:
                 continue
-            meta = _read_meta(path)
+            meta = read_meta(path)
             m = meta or {}
             index[agent_id] = SubagentFile(
                 agent_id=agent_id, path=path, layout=layout, meta_present=meta is not None,
@@ -229,9 +247,19 @@ def extract_dispatches(path) -> list[Dispatch]:
     return list(dispatches.values())
 
 
+def _summary_children(row: dict) -> list[Dispatch]:
+    """Dispatches recorded in a summary row's child_dispatches ({tool_use_id: agent_id})."""
+    children = row.get("child_dispatches")
+    if not isinstance(children, dict):
+        return []
+    return [Dispatch(dispatch_id=did, agent_id=_normalize_agent_id(aid))
+            for did, aid in children.items() if isinstance(did, str) and did]
+
+
 def walk_tree(main_transcript_path, index=None, summaries=None) -> TreeResult:
     if index is None:
         index = index_subagent_files(session_dir(main_transcript_path))
+    summaries = summaries if isinstance(summaries, dict) else None
     by_tool_use_id: dict[str, str] = {}
     for agent_id, sf in index.items():
         if isinstance(sf.tool_use_id, str) and sf.tool_use_id not in by_tool_use_id:
@@ -242,10 +270,12 @@ def walk_tree(main_transcript_path, index=None, summaries=None) -> TreeResult:
                                                     for sf in index.values()))
     seen_dispatches: set[str] = set()
     linked_agents: set[str] = set()
-    stack = [(Path(main_transcript_path), None, 1)]
+    # (transcript path or None, summary row or None, parent dispatch id, depth)
+    stack: list[tuple] = [(Path(main_transcript_path), None, None, 1)]
     while stack:
-        path, parent_id, depth = stack.pop(0)
-        for d in extract_dispatches(path):
+        path, parent_row, parent_id, depth = stack.pop(0)
+        found = extract_dispatches(path) if path is not None else _summary_children(parent_row)
+        for d in found:
             if d.dispatch_id in seen_dispatches:
                 continue
             seen_dispatches.add(d.dispatch_id)
@@ -255,23 +285,37 @@ def walk_tree(main_transcript_path, index=None, summaries=None) -> TreeResult:
                                         "dispatch_id": d.dispatch_id, "agent_id": agent_id})
                 continue
             sf = index.get(agent_id) if agent_id is not None else None
+            row = None
+            if agent_id is not None and sf is None and summaries is not None:
+                candidate = summaries.get(agent_id)
+                row = candidate if isinstance(candidate, dict) else None
             if agent_id is None:
                 status, source = MISSING_METADATA, None
-            elif sf is None:
-                status, source = MISSING_TRANSCRIPT, None
+            elif sf is not None:
+                status, source = ACCOUNTED, SOURCE_TRANSCRIPT
+            elif row is not None and row.get("status") == SUMMARY_OK:
+                status, source = ACCOUNTED, SOURCE_SUMMARY
             else:
-                status, source = ACCOUNTED, "transcript"
+                status, source = MISSING_TRANSCRIPT, None
             if agent_id is not None:
                 linked_agents.add(agent_id)
-            raw_role = sf.agent_type if sf is not None and sf.agent_type else d.subagent_type
+            if sf is not None and sf.agent_type:
+                raw_role = sf.agent_type
+            elif row is not None and normalize_role(row.get("role")) != "unknown":
+                raw_role = row.get("role")
+            else:
+                raw_role = d.subagent_type
             result.dispatches.append(TreeDispatch(
                 dispatch_id=d.dispatch_id, agent_id=agent_id, role=normalize_role(raw_role),
                 parent_dispatch_id=parent_id, depth=depth, status=status, source=source,
                 meta_present=bool(sf is not None and sf.meta_present),
                 resolved_model=d.resolved_model, first_ts=d.first_ts, last_ts=d.last_ts,
-                subagent_type=d.subagent_type, file=sf))
+                subagent_type=d.subagent_type, file=sf, summary=row,
+                summary_status=row.get("status") if row is not None else None))
             if sf is not None:
-                stack.append((sf.path, d.dispatch_id, depth + 1))
+                stack.append((sf.path, None, d.dispatch_id, depth + 1))
+            elif source == SOURCE_SUMMARY:
+                stack.append((None, row, d.dispatch_id, depth + 1))
 
     for agent_id, sf in index.items():
         if agent_id not in linked_agents:

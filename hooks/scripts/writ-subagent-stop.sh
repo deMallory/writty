@@ -326,6 +326,45 @@ if [ "$CACHE_STATE" = "present" ] && [ -n "$PARENT_SESSION" ] && [ "$PARENT_SESS
     fi
 fi
 
+# DURABLE USAGE SUMMARY: this sub-agent's deduped per-model token usage, saved HERE because
+# Claude Code deletes the transcript when the session ends and token-audit would otherwise
+# lose the spend. One `subagent_usage` row on the metrics stream, tokens only (dollars are
+# priced at audit time), built by the same aggregator the audit uses.
+#
+# The path comes from resolve_subagent_transcript, so the parent-collapse refusal applies:
+# a collapsed payload yields a no_transcript row, never the parent's usage. Any failure
+# becomes a status error row, or no row at all; nothing reaches this hook's stdout (a
+# Stop-family additionalContext is a turn block). Cost: one read of one file per stop.
+printf '%s' "$STDIN_JSON" | python3 -c '
+import json, os, sys, types
+sys.path.insert(0, sys.argv[1])
+agent_id, parent_session, role, role_source = sys.argv[2:6]
+# writ/analysis/__init__.py imports pydantic, which this block neither needs nor can rely
+# on (a hook interpreter may lack it). Register the package without running its __init__,
+# so only the stdlib-only token_audit, token_tree and jsonl modules load.
+_pkg = types.ModuleType("writ.analysis")
+_pkg.__path__ = [os.path.join(sys.argv[1], "writ", "analysis")]
+sys.modules.setdefault("writ.analysis", _pkg)
+try:
+    from writ.analysis.token_audit import SUMMARY_ERROR, usage_summary_event
+except Exception:
+    sys.exit(0)
+resolved = True
+try:
+    from writ.session.transcript_tripwire import resolve_subagent_transcript
+    path = resolve_subagent_transcript(json.load(sys.stdin))
+except Exception:
+    path, resolved = None, False
+try:
+    row = usage_summary_event(agent_id, parent_session, path, role, role_source)
+    if not resolved:
+        row["status"] = SUMMARY_ERROR
+    print(json.dumps(row, separators=(",", ":"), default=str))
+except Exception:
+    sys.exit(0)
+' "$WRIT_DIR" "$AGENT_ID" "$PARENT_SESSION" "$AGENT_TYPE" "$ROLE_SOURCE" 2>/dev/null \
+    | python3 "$FA" --stdin-json >/dev/null 2>&1 || true
+
 # Read the agent's session cache for summary metrics
 CACHE=$(_writ_session read "$AGENT_ID" 2>/dev/null || echo '{}')
 

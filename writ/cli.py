@@ -255,16 +255,25 @@ def token_audit(
     model: str = typer.Option(
         None, help="Fallback model id, used only for responses whose record carries no model"),
     as_json: bool = typer.Option(False, "--json", help="Emit the scorecard as JSON."),
+    project: str = typer.Option(
+        None, help="Log project whose metrics stream holds subagent_usage summaries "
+                   "(default: resolved from the current directory)."),
 ) -> None:
     """FOOTPRINT observer (WRIT-TOKEN-BLUEPRINT P0): per-session token COST from a CC transcript.
 
     Denominator only -- silent on trajectory/efficacy (that is the P0.5 A/B harness). Fails loud
     (exit 2) if the transcript usage schema is unrecognized, rather than emit a wrong number."""
+    import os
+    from pathlib import Path
+
     from writ.analysis.token_audit import (
-        TokenAuditSchemaError, render_json, render_text, scorecard,
+        TokenAuditSchemaError, load_usage_summaries, render_json, render_text, scorecard,
     )
+    from writ.shared.logging import resolve_project
+    summaries = load_usage_summaries(Path(transcript).stem,
+                                     project or resolve_project(os.getcwd()))
     try:
-        card = scorecard(transcript, friction, model)
+        card = scorecard(transcript, friction, model, usage_summaries=summaries)
     except TokenAuditSchemaError as e:
         typer.echo(f"[token-audit] SCHEMA CANARY FAILED: {e}", err=True)
         raise typer.Exit(2)
