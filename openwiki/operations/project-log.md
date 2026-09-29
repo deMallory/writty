@@ -10,15 +10,16 @@ Read this first when coming back to the project. "Current state" is what is true
 
 ## Current state as of 2026-09-29
 
-- `main` on GitHub has PRs 12 to 26. PR 25 releases 1.7.4; PR 26 carries the two commits pushed after PR 25 merged. PR 28 releases 1.7.5.
-- `main` says 1.7.4, which carries PRs 21 and 22 to installed plugins. This machine's plugin cache has 1.7.4 since 2026-09-29: marketplace and plugin updated, bootstrap run. The daemon was not restarted: it runs from this checkout's `.venv`.
-- The 1.7.4 bootstrap replaced `~/.claude/CLAUDE.md` whole and deleted the owner's own sections; they were restored from the `.bak` copy. 1.7.5 (PR 28) writes a marked block instead and never touches text outside it.
+- `main` on GitHub has PRs 12 to 26 and 28; PR 27 is open. PR 25 released 1.7.4 and PR 28 released 1.7.5; PR 26 carries the two commits pushed after PR 25 merged.
+- `main` says 1.7.5. This machine's plugin cache has 1.7.5 since 2026-09-29: marketplace and plugin updated, bootstrap run, `~/.claude/CLAUDE.md` unchanged byte for byte. The daemon runs from this checkout's `.venv`.
+- Every bootstrap before 1.7.5 replaced `~/.claude/CLAUDE.md` whole and deleted the owner's own sections; this machine's were restored from `~/.claude/CLAUDE.md.bak.20260929073012`. 1.7.5 writes a marked block instead and never touches text outside it.
 - Full suite with the test graph up, on the 1.7.5 branch: 20 failed, 8,009 passed, 154 skipped, in 20 min 42 s, with other sessions loading the machine. A rerun of the 20: 12 passed, 2 skipped, 6 failed. Five of the 6 scan the repo and trip on another session's worktree, `.claude/worktrees/dashboard-split-logs`; the sixth is `tests/test_plugin_manifest.py`: 49 unquoted `${CLAUDE_PLUGIN_ROOT}` warnings, plus one for the untracked root `CLAUDE.md`.
 - The live graph (port 7687) was replayed from `writ-corpus.cypher` on 2026-09-29. A fresh export matches the dump in content: 540 nodes, 1,458 edges, the same property values; property order differs on 468 lines; `/health` reports 336 rules, 36 mandatory. The runtime counters (`last_seen`, `times_seen_positive`) restarted from zero.
 - Wiki sections left: integrations, then testing. Plan and gate notes: `docs/handoff/openwiki-port/README.md`.
 - Upstream is 146 commits ahead, at release 1.10.1 (re-checked 2026-09-29, merge base `e608659`). Since the merge base it added `writ-output-compress.sh`, next to the fork's `writ-output-rewrite.sh`; how the two overlap is not checked. How to sync: [Upstream sync](upstream-sync.md).
-- Workshop for the dev team around 2026-10-09. The deck fixes are made in the vault, not committed. The workshop machine needs 1.7.5: the 1.7.4 bootstrap replaces its `~/.claude/CLAUDE.md` whole.
-- Resume point: step 3 of `docs/handoff/release-1.7.4/README.md`, the live review-order check, in a new session (this machine has 1.7.4). After PR 28 merges, repeat steps 1 and 2 with 1.7.5. Then commit the vault; older context in `docs/handoff/replay-and-docs/README.md`.
+- Workshop for the dev team around 2026-10-09. The deck fixes are made in the vault, not committed. The workshop machine needs 1.7.5: any earlier bootstrap replaces its `~/.claude/CLAUDE.md` whole.
+- The live review-order check (step 3 of `docs/handoff/release-1.7.4/README.md`) passed on 1.7.5 on 2026-09-29: the code-quality reviewer was refused before the spec review ran and admitted after it, with one false refusal in between (see Open threads).
+- Resume point: commit the vault; older context in `docs/handoff/replay-and-docs/README.md`.
 
 ## Open threads
 
@@ -29,6 +30,7 @@ Read this first when coming back to the project. "Current state" is what is true
 - `agents/writ-reviewer.md` and the `ROL-REVIEWER-001` description still say the two-pass reviewer "Replaces the separate spec/code-quality reviewers." The corpus carries the split reviewers since PR 21.
 - The Bash gate's state-dir, review-record, state-file and strict-mode refusals write a `gate_decision` row but no `gate_denial` row, and `writ audit-session` lists only `gate_denial` rows.
 - `writ-sdd-review-order.sh` looks for the spec review under the dispatch's `task_id` when one is sent, but the spec review is always recorded under the phase (`record_spec_review` in `bin/lib/review_findings.py`). Its header says "Feature-flag gated"; no flag exists.
+- The spec reviewer's report can reach the parent session before its stop hook records the review. On 2026-09-29 a code-quality dispatch sent right after the report was refused with `ENF-PROC-SDD-001`; the record was written at 14:04:26, after that refusal, and the same dispatch then passed. Cause not checked. Not sure it is Writ's: other sessions were working on this repo at the same time.
 - `tests/test_pol5e_hook_noise.py::TestRunPendingTestsBehavior::test_implementation_phase_still_nags` runs only when a daemon already answers on the suite's port 8799 at collection, so full runs skip it. With one up, it fails: the Stop hook prints nothing. Pointing `WRIT_CACHE_DIR` at the marker's directory does not fix it, so the cache-dir explanation in `docs/handoff/openwiki-port/README.md` is wrong; the cause is not found (checked 2026-09-29). Its fixture also leaves the session file behind: cleanup looks in the temp dir, not in `WRIT_CACHE_DIR`.
 - `hooks/scripts/writ-rag-inject.sh`: the comment above the auto-route block says only investigate is auto-set, but `mode init "$MODE_HINT"` sets any hinted mode. Its auto-route message names the bare `writ-explorer`; a plugin install calls it `writ:writ-explorer`.
 - `writ-dispatch-discipline.sh` and `writ-agent-hotswap.sh` both return `updatedInput` on the same dispatch. Which one wins is not checked.
@@ -36,7 +38,7 @@ Read this first when coming back to the project. "Current state" is what is true
 
 ## Timeline
 
-- 2026-09-29: PR 28, 1.7.5. The installer owns a marked block in `~/.claude/CLAUDE.md` instead of the whole file, which it had replaced on every bootstrap, deleting the owner's own sections (`85f5234`).
+- 2026-09-29: PR 28, 1.7.5. The installer owns a marked block in `~/.claude/CLAUDE.md` instead of the whole file, which it had replaced on every bootstrap, deleting the owner's own sections (`85f5234`, `b9a0a2f`).
 - 2026-09-29: PR 26, `writ.__version__` says 1.7.4 and the version test now checks it; it had said 1.7.1 since 1.7.2 (`830ae55`). The after-merge checklist for 1.7.4 (`8018562`).
 - 2026-09-29: PR 25, 1.7.4. It ships PRs 21 and 22 to installed plugins, since the plugin cache is keyed by version (`95beeab`).
 - 2026-09-29: PR 24, the docs that drifted from the code since 1.7.2 match it again, and `ERRATA.md` records the count drift (`28c4e08`).
