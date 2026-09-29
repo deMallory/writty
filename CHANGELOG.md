@@ -4,6 +4,12 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.5] - 2026-09-29
+
+### Fixed
+
+- **The installer no longer deletes your own `~/.claude/CLAUDE.md` sections.** `writ_install.py claude-md` replaced the whole file with `templates/CLAUDE.md` on every bootstrap and kept only a `.bak` copy. It now owns one block between a `<!-- writ:begin sha256=... -->` line and a `<!-- writ:end -->` line. Text outside the block is never changed. A file without the block gets it appended, or is left alone when it already holds every Writ line. The fingerprint in the begin line tells a template upgrade from a user edit: an edited block is replaced under a boxed warning on stderr that names the backup and lists the removed lines. Markers that do not pair up leave the file untouched and exit 1.
+
 ## [1.7.4] - 2026-09-29
 
 Ships PRs 21 and 22 to installed plugins, with the wiki and doc updates of PRs 19, 20, 23 and 24. The plugin cache is keyed by version, and 1.7.3 was cut at `4540ba7`, before all of them.
