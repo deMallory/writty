@@ -216,3 +216,21 @@ def write_e2e_tree(tmp_path: Path, session_id: str = "sess-e2e") -> Path:
         },
     }
     return write_session_tree(tmp_path, session_id, main_records, subagents)
+
+
+LOG_PROJECT = "token-audit-test"
+
+
+def isolate_log_env(monkeypatch, tmp_path: Path) -> Path:
+    """Point the Writ log root and project at ``tmp_path`` so a token-audit CLI run never
+    reads the real metrics stream. Returns the sandboxed log root."""
+    log_root = tmp_path / "writ-logs"
+    monkeypatch.setenv("WRIT_LOG_ROOT", str(log_root))
+    monkeypatch.setenv("WRIT_LOG_PROJECT", LOG_PROJECT)
+    monkeypatch.delenv("WRIT_FRICTION_LOG", raising=False)
+    return log_root
+
+
+def write_metrics_rows(log_root: Path, rows: list[dict], project: str = LOG_PROJECT) -> Path:
+    """Write ``<log_root>/<project>/metrics.jsonl`` with one JSON row per line."""
+    return write_records(log_root / project / "metrics.jsonl", rows)

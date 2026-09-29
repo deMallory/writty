@@ -694,3 +694,54 @@ class TestScoreRunSessionFields:
         for key in ("cc_total_usd", "reconciliation_delta_usd", "reconciliation_delta_pct",
                     "reconciliation_scope"):
             assert key in out and out[key] is None, key
+
+    # --- review fixes: orphan exclusion and reconciliation floor flag (additive) ----
+
+    def test_orphan_usd_excluded_is_reported_without_touching_partial(
+            self, tmp_path: Path, monkeypatch):
+        from tests.fixtures.token_audit_helpers import write_e2e_tree
+        ab = _ab()
+        out = self._score(ab, monkeypatch, write_e2e_tree(tmp_path), tmp_path)
+        assert out["session_orphan_usd_excluded"] == pytest.approx(1000 * 4 / 1e6)
+        assert out["session_partial"] is False
+
+    def test_orphan_usd_excluded_zero_without_orphans(self, tmp_path: Path, monkeypatch):
+        ab = _ab()
+        tpath = _write_transcript(tmp_path / "t.jsonl", [_usage(inp=200, out=20, read=0, write=0)],
+                                  model="claude-opus-4-8")
+        out = self._score(ab, monkeypatch, tpath, tmp_path)
+        assert out["session_orphan_usd_excluded"] == 0.0
+
+    def test_reconciliation_writ_partial_false_on_complete_session(
+            self, tmp_path: Path, monkeypatch):
+        ab = _ab()
+        out = self._score(ab, monkeypatch, self._e2e_with_state(tmp_path, 0.3), tmp_path)
+        assert out["reconciliation_writ_partial"] is False
+
+    def test_reconciliation_writ_partial_true_on_partial_session(
+            self, tmp_path: Path, monkeypatch):
+        from tests.fixtures.token_audit_helpers import (
+            agent_tool_use, cost_state_record, response_records, tool_result_record, usage,
+            write_session_tree,
+        )
+        ab = _ab()
+        main_records = (
+            response_records("msg_m1", "claude-opus-5-5",
+                             usage(inp=1000, out=500, read=0, write=0),
+                             tool_uses=[agent_tool_use("toolu_Z", "writ-planner")])
+            + [tool_result_record("toolu_Z", "zzz"),
+               cost_state_record(0.02, {"claude-opus-5-5": {
+                   "usd": 0.02, "input": 1000, "output": 500, "cache_read": 0,
+                   "cache_write": 0}})])
+        tpath = write_session_tree(tmp_path, "sess-floor", main_records)   # no agent-zzz
+        out = self._score(ab, monkeypatch, tpath, tmp_path)
+        assert out["session_partial"] is True
+        assert out["reconciliation_writ_partial"] is True
+
+    def test_reconciliation_writ_partial_none_when_cost_state_absent(
+            self, tmp_path: Path, monkeypatch):
+        from tests.fixtures.token_audit_helpers import write_e2e_tree
+        ab = _ab()
+        out = self._score(ab, monkeypatch, write_e2e_tree(tmp_path), tmp_path)
+        assert "reconciliation_writ_partial" in out
+        assert out["reconciliation_writ_partial"] is None

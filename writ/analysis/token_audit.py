@@ -320,23 +320,25 @@ def _check_file_schema(path, responses: list[dict]) -> None:
 
 def _file_summary(path, seen_ids: set | None = None, with_children: bool = True) -> dict:
     """aggregate_file_usage body. With `seen_ids`, responses whose message.id was already
-    counted in another file of the tree are dropped (cross_file_duplicate_id warning) and the
-    remaining ids are added to the set."""
+    counted in another file of the tree are dropped (cross_file_duplicate_id warning), their
+    records leave the file's record count, and the remaining ids are added to the set."""
     scan = _scan_responses(path)
     _check_file_schema(path, scan["responses"])
     cross: list[dict] = []
     if seen_ids is not None:
         kept = []
+        dropped_records = 0
         for r in scan["responses"]:
             mid = r["message_id"]
             if mid is not None and mid in seen_ids:
                 cross.append({"kind": "cross_file_duplicate_id", "message_id": mid,
                               "file": str(path)})
+                dropped_records += r["records"]
                 continue
             if mid is not None:
                 seen_ids.add(mid)
             kept.append(r)
-        scan = {**scan, "responses": kept}
+        scan = {**scan, "responses": kept, "records": scan["records"] - dropped_records}
     summary = _summarize_scan(scan)
     summary["warnings"].extend(cross)
     if with_children:
@@ -376,13 +378,17 @@ def _json_dict(path) -> dict | None:
 
 def _summary_dispatch_id(agent_id: str, transcript_path) -> str | None:
     """The dispatching tool_use id: the transcript's sibling .meta.json toolUseId, else the
-    toolUseId of the sidecar subagent_role.sidecar_path finds for agent_id, else None."""
-    meta = token_tree.read_meta(transcript_path) if transcript_path else None
-    if meta is None:
-        from writ.session.subagent_role import sidecar_path
-        found = sidecar_path(agent_id)
-        meta = _json_dict(found) if found else None
-    tool_use_id = (meta or {}).get("toolUseId")
+    toolUseId of the sidecar subagent_role.sidecar_path finds for agent_id, else None. Any
+    failure of either lookup yields None."""
+    try:
+        meta = token_tree.read_meta(transcript_path) if transcript_path else None
+        if meta is None:
+            from writ.session.subagent_role import sidecar_path
+            found = sidecar_path(agent_id)
+            meta = _json_dict(found) if found else None
+        tool_use_id = (meta or {}).get("toolUseId")
+    except Exception:
+        return None
     return tool_use_id if isinstance(tool_use_id, str) and tool_use_id else None
 
 
@@ -393,7 +399,8 @@ def usage_summary_event(agent_id: str, parent_session: str, transcript_path,
     Built on aggregate_file_usage, so the hook and the audit share one dedup rule. Tokens
     only, never dollars: pricing happens at audit time. status is "ok" when the transcript
     was read, "no_transcript" when there is no path or no file, and "error" (with the
-    exception class name) when reading or the schema check failed."""
+    exception class name) when reading or the schema check failed. dispatch_id is null when
+    the meta/sidecar lookup finds nothing or fails; that never changes the status."""
     row = {
         "event": SUMMARY_EVENT, "session": agent_id, "agent_id": agent_id,
         "parent_session": parent_session,
@@ -420,12 +427,14 @@ def usage_summary_event(agent_id: str, parent_session: str, transcript_path,
 
 class UsageSummaries(dict):
     """{agent_id: first subagent_usage row}. `conflicts` holds one summary_conflict warning
-    per agent_id whose later rows differ from its first (ts excluded)."""
+    per agent_id whose later rows differ from its first (ts excluded). `warnings` holds one
+    summary_schema_unsupported warning per (agent_id, schema) of a skipped row."""
 
     def __init__(self, session_id: str | None = None) -> None:
         super().__init__()
         self.session_id = session_id
         self.conflicts: dict[str, dict] = {}
+        self.warnings: list[dict] = []
 
 
 def load_usage_summaries(session_id: str, project: str) -> UsageSummaries:
@@ -434,7 +443,8 @@ def load_usage_summaries(session_id: str, project: str) -> UsageSummaries:
     First row per agent_id wins; a later row that differs is ignored and recorded as a
     summary_conflict warning. Rows are keyed by agent_id alone (agent ids are unique), so a
     row whose parent_session is not `session_id` still matches; the audit flags that as
-    summary_parent_mismatch."""
+    summary_parent_mismatch. A row whose schema is not SUMMARY_SCHEMA is skipped (it neither
+    wins nor conflicts) with a summary_schema_unsupported warning."""
     from writ.shared.logging import read_streams
     out = UsageSummaries(session_id)
     for row in read_streams(project, ["metrics"]):
@@ -442,6 +452,12 @@ def load_usage_summaries(session_id: str, project: str) -> UsageSummaries:
             continue
         agent_id = row.get("agent_id")
         if not isinstance(agent_id, str) or not agent_id:
+            continue
+        schema = row.get("schema")
+        if schema != SUMMARY_SCHEMA or isinstance(schema, bool):
+            w = {"kind": "summary_schema_unsupported", "agent_id": agent_id, "schema": schema}
+            if w not in out.warnings:
+                out.warnings.append(w)
             continue
         first = out.get(agent_id)
         if first is None:
@@ -721,10 +737,13 @@ def _dispatch_row(td, summary: dict | None, priced: dict | None) -> dict:
 
 def _summary_warnings(tree, session_id: str, usage_summaries) -> list[dict]:
     """summary_parent_mismatch for every consulted row filed under neither the audited
-    session nor the parent dispatch's agent, and summary_conflict for consulted agents."""
+    session nor the parent dispatch's agent, summary_conflict for consulted agents, and
+    summary_schema_unsupported for skipped rows of agents dispatched in this tree."""
     agent_of = {td.dispatch_id: td.agent_id for td in tree.dispatches}
     conflicts = getattr(usage_summaries, "conflicts", {}) or {}
-    out: list[dict] = []
+    linked = {td.agent_id for td in tree.dispatches if td.agent_id is not None}
+    out: list[dict] = [dict(w) for w in getattr(usage_summaries, "warnings", None) or []
+                       if isinstance(w, dict) and w.get("agent_id") in linked]
     for td in tree.dispatches:
         if td.summary is None:
             continue
@@ -802,6 +821,9 @@ def _account_tree(transcript_path: str, main: dict, main_priced: dict, main_ids:
         "accounted": counts[token_tree.ACCOUNTED],
         "missing_transcript": counts[token_tree.MISSING_TRANSCRIPT],
         "missing_metadata": counts[token_tree.MISSING_METADATA],
+        # dispatches dropped because their agent was already linked; never billed, never a gap
+        "duplicate_links": sum(1 for w in tree.warnings
+                               if w.get("kind") == "duplicate_agent_link"),
         "orphan_transcripts": len(orphans),
         "by_source": by_source,
         "workflow_layout": WORKFLOW_LAYOUT_NOTE if workflow else None,
@@ -840,12 +862,12 @@ def _last_cost_state(transcript_path: str) -> dict | None:
 
 
 def reconcile_cost_state(transcript_path: str, main_by_model: dict, session_by_model: dict,
-                         session_usd: float) -> dict:
+                         session_usd: float, session_partial: bool = False) -> dict:
     """Compare Writ's session pricing with the LAST Claude Code `cost-state` record of the main
     transcript (flat record: top-level totalCostUSD, hasUnknownModelCost and modelUsage{model:
     {inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, costUSD}}).
-    delta_usd is writ minus cc. Never raises: an unreadable or malformed record is
-    reported, not fatal."""
+    delta_usd is writ minus cc; writ_partial (session.partial) marks the Writ figure as a
+    floor. Never raises: an unreadable or malformed record is reported, not fatal."""
     try:
         rec = _last_cost_state(transcript_path)
     except OSError:
@@ -895,6 +917,7 @@ def reconcile_cost_state(transcript_path: str, main_by_model: dict, session_by_m
         "present": True,
         "cc_total_usd": cc_total,
         "writ_session_usd": session_usd,
+        "writ_partial": bool(session_partial),
         "delta_usd": session_usd - cc_total if cc_total is not None else None,
         "has_unknown_model_cost": unknown if isinstance(unknown, bool) else None,
         "per_model": per_model,
@@ -976,7 +999,8 @@ def scorecard(transcript_path: str, friction_path: str | None, model: str | None
         "dispatch_coverage": tree["dispatch_coverage"],
         "reconciliation": reconcile_cost_state(transcript_path, priced["by_model"],
                                                tree["cost_by_model"],
-                                               tree["session"]["total_usd"]),
+                                               tree["session"]["total_usd"],
+                                               tree["session"]["partial"]),
         "unpriced": tree["unpriced"],
         "warnings": (main["warnings"] + tree["warnings"]
                      + unpriced_warnings(tree["unpriced"])),
@@ -1092,9 +1116,11 @@ def _render_tree_sections(card: dict) -> list[str]:
     if not r.get("present"):
         lines.append("  cost-state: absent")
     else:
+        floor = "  (Writ figure is a floor)" if r.get("writ_partial") else ""
         lines.append(f"  cc_total {_usd(r.get('cc_total_usd'), 'n/a')}  "
                      f"writ_session {_usd(r.get('writ_session_usd'), 'n/a')}  "
-                     f"delta(writ-cc) {_usd(r.get('delta_usd'), 'n/a')}  scope={r.get('scope')}")
+                     f"delta(writ-cc) {_usd(r.get('delta_usd'), 'n/a')}  scope={r.get('scope')}"
+                     f"{floor}")
         for key, pm in sorted((r.get("per_model") or {}).items()):
             lines.append(f"  {key:<28} cc={_usd(pm['cc_usd'], 'n/a')}  "
                          f"writ={_usd(pm['writ_usd'], 'n/a')}  "

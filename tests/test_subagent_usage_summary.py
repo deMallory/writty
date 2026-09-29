@@ -765,3 +765,116 @@ class TestHookToAuditRoundTrip:
         # the stored summary's own child (toolu_X -> zzz) has neither transcript nor summary
         assert _dispatch(card, "zzz")["status"] == "missing_transcript"
         assert card["session"]["partial"] is True
+
+
+# --------------------------------------------------------------------------- #
+# Review fixes: dispatch-id lookup never raises; unsupported summary schemas skip
+# --------------------------------------------------------------------------- #
+
+def _plain_subagent(tmp_path: Path, meta: dict | None) -> Path:
+    return write_subagent(
+        tmp_path / "proj" / PARENT_SESSION, AGENT_ID,
+        response_records("msg_1", "claude-opus-5-5", usage(inp=1000, out=0, read=0, write=0)),
+        meta=meta)
+
+
+class TestUsageSummaryDispatchLookupNeverRaises:
+
+    @pytest.fixture(autouse=True)
+    def _projects_sandbox(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("WRIT_PROJECTS_DIR", str(tmp_path / "no-projects"))
+
+    def test_read_meta_failure_yields_null_dispatch_id_and_ok_row(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        ta = load_token_audit()
+        path = _plain_subagent(tmp_path, {"toolUseId": DISPATCH_ID})
+
+        def boom(*_a, **_k):
+            raise RuntimeError("sidecar exploded")
+        monkeypatch.setattr(ta.token_tree, "read_meta", boom)
+        row = ta.usage_summary_event(AGENT_ID, PARENT_SESSION, str(path), "writ-explorer",
+                                     "sidecar")
+        assert row["dispatch_id"] is None
+        assert row["status"] == "ok"
+        assert row["responses"] == 1
+
+    def test_sidecar_lookup_failure_yields_null_dispatch_id_and_ok_row(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import writ.session.subagent_role as sr
+        ta = load_token_audit()
+        path = _plain_subagent(tmp_path, None)   # no .meta.json: falls to sidecar_path
+
+        def boom(*_a, **_k):
+            raise PermissionError("projects dir unreadable")
+        monkeypatch.setattr(sr, "sidecar_path", boom)
+        row = ta.usage_summary_event(AGENT_ID, PARENT_SESSION, str(path), None, None)
+        assert row["dispatch_id"] is None
+        assert row["status"] == "ok"
+
+    def test_lookup_failure_without_transcript_is_a_no_transcript_row(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import writ.session.subagent_role as sr
+        ta = load_token_audit()
+
+        def boom(*_a, **_k):
+            raise RuntimeError("x")
+        monkeypatch.setattr(sr, "sidecar_path", boom)
+        row = ta.usage_summary_event(AGENT_ID, PARENT_SESSION, None, None, None)
+        assert row["dispatch_id"] is None
+        assert row["status"] == "no_transcript"
+
+    def test_meta_tool_use_id_still_resolves(self, tmp_path) -> None:
+        ta = load_token_audit()
+        path = _plain_subagent(tmp_path, {"toolUseId": DISPATCH_ID})
+        row = ta.usage_summary_event(AGENT_ID, PARENT_SESSION, str(path), None, None)
+        assert row["dispatch_id"] == DISPATCH_ID
+
+
+class TestUnsupportedSummarySchema:
+
+    def test_row_with_another_schema_is_skipped_with_a_warning(self, metrics_env) -> None:
+        _write_metrics(metrics_env, PROJECT, [
+            {**_summary_row("aaa", "toolu_A", SONNET_AAA), "schema": 2},
+            _summary_row("bbb", "toolu_B", SONNET_AAA),
+        ])
+        loaded = load_token_audit().load_usage_summaries("sess-sum", PROJECT)
+        assert set(loaded) == {"bbb"}
+        assert loaded.warnings == [{"kind": "summary_schema_unsupported", "agent_id": "aaa",
+                                    "schema": 2}]
+
+    def test_row_without_a_schema_is_skipped(self, metrics_env) -> None:
+        row = _summary_row("aaa", "toolu_A", SONNET_AAA)
+        del row["schema"]
+        _write_metrics(metrics_env, PROJECT, [row])
+        loaded = load_token_audit().load_usage_summaries("sess-sum", PROJECT)
+        assert loaded == {}
+        assert loaded.warnings == [{"kind": "summary_schema_unsupported", "agent_id": "aaa",
+                                    "schema": None}]
+
+    def test_skipped_row_neither_wins_nor_conflicts(self, metrics_env) -> None:
+        _write_metrics(metrics_env, PROJECT, [
+            {**_summary_row("aaa", "toolu_A", HAIKU_CCC), "schema": 2},
+            _summary_row("aaa", "toolu_A", SONNET_AAA),
+        ])
+        loaded = load_token_audit().load_usage_summaries("sess-sum", PROJECT)
+        assert loaded["aaa"]["model_usage"] == SONNET_AAA
+        assert loaded.conflicts == {}
+
+    def test_audit_surfaces_the_warning_for_a_dispatched_agent_only(
+        self, metrics_env, tmp_path
+    ) -> None:
+        _write_metrics(metrics_env, PROJECT, [
+            {**_summary_row("aaa", "toolu_A", SONNET_AAA), "schema": 2},
+            {**_summary_row("unrelated", "toolu_U", SONNET_AAA), "schema": 3},
+        ])
+        main = write_session_tree(tmp_path / "t", "sess-sum", _main_records())
+        ta = load_token_audit()
+        card = ta.scorecard(str(main), None, None,
+                            usage_summaries=ta.load_usage_summaries("sess-sum", PROJECT))
+        assert _dispatch(card, "aaa")["status"] == "missing_transcript"
+        hits = [w for w in card["warnings"] if w.get("kind") == "summary_schema_unsupported"]
+        assert hits == [{"kind": "summary_schema_unsupported", "agent_id": "aaa",
+                         "schema": 2}]

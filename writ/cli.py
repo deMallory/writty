@@ -269,9 +269,14 @@ def token_audit(
     from writ.analysis.token_audit import (
         TokenAuditSchemaError, load_usage_summaries, render_json, render_text, scorecard,
     )
-    from writ.shared.logging import resolve_project
-    summaries = load_usage_summaries(Path(transcript).stem,
-                                     project or resolve_project(os.getcwd()))
+    summaries = None
+    summaries_warning = None
+    try:
+        from writ.shared.logging import resolve_project
+        summaries = load_usage_summaries(Path(transcript).stem,
+                                         project or resolve_project(os.getcwd()))
+    except Exception as e:  # summaries are a fallback; losing them must not fail the audit
+        summaries_warning = {"kind": "usage_summaries_unavailable", "error": type(e).__name__}
     try:
         card = scorecard(transcript, friction, model, usage_summaries=summaries)
     except TokenAuditSchemaError as e:
@@ -280,6 +285,8 @@ def token_audit(
     except OSError as e:
         typer.echo(f"[token-audit] cannot read transcript: {e}", err=True)
         raise typer.Exit(1)
+    if summaries_warning is not None:
+        card["warnings"].append(summaries_warning)
     typer.echo(render_json(card) if as_json else render_text(card))
 
 

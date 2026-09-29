@@ -440,3 +440,80 @@ class TestEndToEndTree:
         assert sum(v["usd"] for v in card["cost_by_model"].values()) == pytest.approx(total)
         assert sum(v["usd"] for v in card["cost_by_role"].values()) == pytest.approx(total)
         assert card["session"]["main_usd"] + _priced_dispatch_usd(card) == pytest.approx(total)
+
+
+# ---------------------------------------------------------------------------
+# Review fixes: cross-file duplicate record counts, duplicate agent links
+# ---------------------------------------------------------------------------
+
+class TestCrossFileDuplicateCounts:
+    def _tree(self, tmp_path: Path) -> Path:
+        main_records = (
+            response_records("msg_m1", "claude-opus-5-5",
+                             usage(inp=1000, out=0, read=0, write=0),
+                             tool_uses=[agent_tool_use("toolu_A", "writ-explorer")])
+            + [tool_result_record("toolu_A", "aaa")]
+        )
+        # the subagent file repeats main's msg_m1 in 3 records, then its own msg_a1 once
+        sub_records = (
+            response_records("msg_m1", "claude-opus-5-5",
+                             usage(inp=1000, out=0, read=0, write=0), n_records=3)
+            + response_records("msg_a1", "claude-sonnet-5-5",
+                               usage(inp=1000, out=1000, read=0, write=0))
+        )
+        return write_session_tree(tmp_path, "sess-xdup", main_records, {
+            "aaa": {"records": sub_records,
+                    "meta": {"agentType": "writ-explorer", "toolUseId": "toolu_A"}}})
+
+    def test_dropped_response_records_are_not_counted_as_collapsed(self, tmp_path: Path):
+        card = _card(self._tree(tmp_path))
+        d = _dispatch(card, "toolu_A")
+        assert d["responses"] == 1
+        assert d["records"] == 1
+        assert d["duplicates_collapsed"] == 0
+
+    def test_cross_file_duplicate_still_warns_and_bills_once(self, tmp_path: Path):
+        card = _card(self._tree(tmp_path))
+        warns = [w for w in card["warnings"] if w["kind"] == "cross_file_duplicate_id"]
+        assert [w["message_id"] for w in warns] == ["msg_m1"]
+        main_usd = 1000 * 4 / 1e6
+        aaa_usd = (1000 * 2 + 1000 * 10) / 1e6
+        assert card["session"]["total_usd"] == pytest.approx(main_usd + aaa_usd)
+
+    def test_aggregate_file_usage_alone_keeps_the_full_record_count(self, tmp_path: Path):
+        path = self._tree(tmp_path)
+        sub = path.with_suffix("") / "subagents" / "agent-aaa.jsonl"
+        agg = load_token_audit().aggregate_file_usage(str(sub))
+        assert (agg["records"], agg["responses"], agg["duplicates_collapsed"]) == (4, 2, 2)
+
+
+class TestDuplicateAgentLinks:
+    def _tree(self, tmp_path: Path) -> Path:
+        main_records = (
+            response_records("msg_m1", "claude-opus-5-5",
+                             usage(inp=1000, out=0, read=0, write=0), n_records=2,
+                             tool_uses=[agent_tool_use("toolu_A", "writ-explorer"),
+                                        agent_tool_use("toolu_B", "writ-explorer")])
+            + [tool_result_record("toolu_A", "aaa"), tool_result_record("toolu_B", "aaa")]
+        )
+        return write_session_tree(tmp_path, "sess-duplink", main_records, {
+            "aaa": {"records": response_records("msg_a1", "claude-sonnet-5-5",
+                                                usage(inp=1000, out=1000, read=0, write=0)),
+                    "meta": {"agentType": "writ-explorer", "toolUseId": "toolu_A"}}})
+
+    def test_duplicate_links_counted_in_coverage(self, tmp_path: Path):
+        cov = _card(self._tree(tmp_path))["dispatch_coverage"]
+        assert cov["duplicate_links"] == 1
+        assert cov["dispatches"] == 1
+        assert cov["accounted"] == 1
+        assert cov["summary"] == "1/1 dispatches accounted"
+
+    def test_duplicate_link_neither_bills_nor_marks_partial(self, tmp_path: Path):
+        card = _card(self._tree(tmp_path))
+        assert card["session"]["partial"] is False
+        assert card["session"]["total_usd"] == pytest.approx(
+            1000 * 4 / 1e6 + (1000 * 2 + 1000 * 10) / 1e6)
+        assert "duplicate_agent_link" in [w["kind"] for w in card["warnings"]]
+
+    def test_no_duplicate_links_is_zero(self, tmp_path: Path):
+        assert _card(write_e2e_tree(tmp_path))["dispatch_coverage"]["duplicate_links"] == 0

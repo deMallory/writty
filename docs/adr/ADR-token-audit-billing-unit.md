@@ -4,10 +4,11 @@ Status: accepted
 Date: 2026-09-29
 Plan: `.claude/plans/54fe1ac9-a554-401f-bbe7-2419043b40f2/plan.md`
 Touches: `writ/analysis/token_audit.py`, `writ/analysis/token_tree.py`, `writ/cli.py`,
-`writ/analysis/efficacy_ab.py`, `tests/test_token_audit_accounting.py`,
-`tests/test_token_audit_tree.py`, `tests/test_efficacy_ab.py`,
-`tests/fixtures/token_audit_helpers.py`; Task 2: `hooks/scripts/writ-subagent-stop.sh`,
-`writ/shared/logging.py`, `tests/test_subagent_usage_summary.py`
+`writ/analysis/efficacy_ab.py`, `tests/test_token_audit.py`,
+`tests/test_token_audit_accounting.py`, `tests/test_token_audit_tree.py`,
+`tests/test_efficacy_ab.py`, `tests/fixtures/token_audit_helpers.py`; Task 2:
+`hooks/scripts/writ-subagent-stop.sh`, `writ/shared/logging.py`,
+`tests/test_subagent_usage_summary.py`
 
 ## Context
 
@@ -69,7 +70,10 @@ below checks whether it maps 1:1 with `message.id`.
   case on real transcripts, so the real conflicts would be buried under noise.
 - A `message.id` seen in two files of one tree is counted once (main first, then walk
   order) and warns `cross_file_duplicate_id`. The evidence says this does not happen; it is
-  an invariant check.
+  an invariant check. The dropped response's records also leave the later file's `records`
+  count, so that file's `duplicates_collapsed` (records minus responses) counts only its own
+  in-file repeats and is not inflated by the cross-file drop. `aggregate_file_usage` on one
+  file alone has no cross-file context and keeps the full count.
 - `parse_turns` keeps its signature and return shape but returns deduped responses. The
   schema canary still runs on the main transcript before anything is computed, and a
   subagent or orphan file whose usage record lacks a required field raises the same
@@ -139,7 +143,10 @@ the matching user record's top-level `toolUseResult.agentId`, else through the f
 recurses into each accounted subagent's own transcript (parent dispatch id, depth + 1, a
 visited set against cycles); a nested child is found wherever its file sits in the index.
 A second dispatch resolving to an already-linked agent is dropped with a
-`duplicate_agent_link` warning so no file is billed twice.
+`duplicate_agent_link` warning so no file is billed twice. Those drops are counted in
+`dispatch_coverage.duplicate_links`. They are not in `dispatches` or `accounted`, add
+nothing to any session total, and do not set `session.partial`: the spend they point at is
+already billed once through the first link.
 
 Each dispatch is `accounted` (source `transcript`), `missing_transcript` (agent id known,
 no file) or `missing_metadata` (no agent id resolvable). Every indexed file the walk never
@@ -181,21 +188,33 @@ before comparison. Only this flat shape is read. The report carries
 the data: `main_only` when cost-state per-model tokens equal the main-thread totals,
 `main_plus_subagents` when they equal main plus the accounted tree, else
 `superset_or_unknown` (expected when cost-state lists models the tree never used, such as
-Claude Code internal calls). It never raises and never changes the exit code; absent, it
-is `{present: false}`.
+Claude Code internal calls). `writ_partial` copies `session.partial`: when it is true the
+Writ side of `delta_usd` is a priced floor, so a negative delta may be a coverage gap rather
+than a pricing error, and the `render_text` RECONCILIATION line ends with
+`(Writ figure is a floor)`. It never raises and never changes the exit code; absent, it is
+`{present: false}`.
 
 ### Experiment contract (efficacy_ab)
 
 `score_run` rows keep `total_cost` and `total_usd` with their legacy main-thread meaning,
 and `compare_arms` still compares on `total_cost`. Rows additively gain `session_usd`,
-`session_partial` and `session_dispatch_coverage`, read straight from the card.
+`session_partial`, `session_orphan_usd_excluded` (the card's
+`session.orphan_usd_excluded`), `session_dispatch_coverage`, and, from the reconciliation
+block, `cc_total_usd`, `reconciliation_delta_usd`, `reconciliation_delta_pct`,
+`reconciliation_scope` and `reconciliation_writ_partial` (all None when cost-state is
+absent), read straight from the card.
 
 Model and effort routing experiments must use `session_usd`, not the legacy
 `total_cost`/`total_usd` fields, because routing moves spend between the main thread and
-subagents. A row with `session_partial == true` is an incomplete observation (for example
-a missing subagent transcript) and must never be read as a cheaper completed task. A
-`--cost-scope main|session` flag for efficacy_ab is deferred; it would change A/B behavior
-before a baseline exists.
+subagents. A row is an incomplete observation when `session_partial` is true (for example
+a missing subagent transcript) OR `session_orphan_usd_excluded > 0` (subagent spend exists
+on disk that no dispatch of the session links to, so `session_usd` may omit it). An
+incomplete observation must never be read as a cheaper completed task.
+`session.partial` deliberately stays false for an excluded orphan: partial means a known
+dispatch could not be priced, while an orphan is spend the tree cannot attribute, and the
+approved end-to-end fixture (one orphan, `session_partial` false) pins that split. The
+experiment contract therefore reads both fields. A `--cost-scope main|session` flag for
+efficacy_ab is deferred; it would change A/B behavior before a baseline exists.
 
 ## Consequences
 
@@ -254,8 +273,11 @@ child_dispatches{<tool_use_id>: <agent_id or null>}, first_ts, last_ts}`.
 - Model ids are stored raw (`claude-haiku-4-5-20251001`); normalization and the `--model`
   fallback for the `"<none>"` key happen at audit time.
 - `dispatch_id` is the `toolUseId` of the transcript's sibling `.meta.json`, else of the
-  sidecar `subagent_role.sidecar_path` finds for the agent id, else null. `role` is
-  normalized (leading `writ:` stripped) and `role_source` records where it came from.
+  sidecar `subagent_role.sidecar_path` finds for the agent id, else null. The lookup is
+  guarded: any exception from the meta read or the sidecar search yields a null
+  `dispatch_id`, never an exception and never a status change, so an aggregation that
+  succeeded still writes an `ok` row. `role` is normalized (leading `writ:` stripped) and
+  `role_source` records where it came from.
 - `child_dispatches` lets the audit continue into nested children after the parent
   subagent's transcript is gone.
 - The row is built by `usage_summary_event`, which wraps `aggregate_file_usage`, so the hook
@@ -272,10 +294,18 @@ The block runs after role resolution and before the `subagent_complete` block, a
 single-quoted `python3 -c` piped to friction-append with stderr and stdout discarded and
 `|| true`. It prints nothing to the hook's stdout, because a Stop-family
 additionalContext acts as a turn block. Any failure becomes an `error` row or no row; the
-hook still exits 0 and every other block still runs. The block registers `writ.analysis`
-without running its `__init__` (which imports pydantic, a dependency this block neither
-needs nor can rely on in a hook interpreter), so only the stdlib-only `token_audit`,
-`token_tree` and `jsonl` modules load.
+hook still exits 0 and every other block still runs. The block is skipped when the
+envelope carries no agent id.
+
+`writ/analysis/__init__.py` defines its pydantic models (`AnalyzeRequest`, `Finding`,
+`AnalyzeResponse`) lazily through a PEP 562 module `__getattr__`, so importing the package
+or its stdlib-only submodules (`token_audit`, `token_tree`, `jsonl`) never imports
+pydantic, and the hook imports `token_audit` normally. The models are built once under a
+lock and cached in the module namespace with their original `__name__`, `__qualname__`
+and `__module__`, so every access returns the same class object and JSON schema, repr,
+pickling and isinstance checks are unchanged. Rejected: registering a stub `writ.analysis`
+package in `sys.modules` inside the hook, which worked but would break silently (no row,
+no diagnostic) as soon as a submodule imported anything from the package namespace.
 
 ### Immutability: append-only rows, first row wins on read
 
@@ -285,6 +315,13 @@ keeps the FIRST row per agent_id, even when it is the worse one (`no_transcript`
 `summary_conflict` warning when that agent is audited. Rows match by agent_id alone because
 agent ids are unique; a row whose `parent_session` is neither the audited session nor the
 parent dispatch's agent still matches and adds `summary_parent_mismatch`.
+
+A row whose `schema` is not 1 (including a missing schema) is skipped before first-row-wins
+applies: it neither wins nor conflicts, and a later schema-1 row for the same agent is
+used. Each skipped (agent_id, schema) pair is recorded as a
+`{kind: "summary_schema_unsupported", agent_id, schema}` warning on the loaded mapping, and
+the audit surfaces it only for agents dispatched in the audited tree (the metrics stream
+is project-wide, so surfacing every skipped row would report other sessions' agents).
 
 ### Audit fallback
 
@@ -296,3 +333,22 @@ priced from `model_usage`, and the walk continues into the summary's `child_disp
 `summary_status` recorded. The CLI gains `--project` (default
 `resolve_project(os.getcwd())`) and always loads the summaries for the audited session id
 (the transcript filename stem).
+
+Loading summaries never fails the audit. `resolve_project` and `load_usage_summaries` run
+inside their own error handling; on any exception the CLI audits with no summary fallback
+and appends `{kind: "usage_summaries_unavailable", error: <exception class name>}` to the
+card's warnings. Exit codes are otherwise unchanged (2 on a schema canary failure, 1 on an
+unreadable transcript, else 0).
+
+Summary-sourced dispatches do not take part in cross-file `message.id` dedup. A summary
+stores per-model token totals, not the message ids behind them, so there is nothing to
+check against the seen-id set, and its tokens cannot be deduped against the main thread
+or any other file. This is accepted: a cross-file duplicate id was never observed on real
+trees (the invariant check exists only as a guard), and a live transcript always wins over
+a summary, so the gap applies only after Claude Code has deleted the transcript, when the
+alternative is no figure at all.
+
+Tests that invoke `writ token-audit` (`tests/test_token_audit.py`,
+`tests/test_token_audit_accounting.py`) point `WRIT_LOG_ROOT` and `WRIT_LOG_PROJECT` at
+`tmp_path` through an autouse fixture, so the CLI's summary load never reads the real
+metrics stream.

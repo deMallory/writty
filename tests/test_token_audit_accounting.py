@@ -18,12 +18,14 @@ import pytest
 from tests.fixtures.token_audit_helpers import (
     agent_tool_use,
     cost_state_record,
+    isolate_log_env,
     load_token_audit,
     response_records,
     tool_result_record,
     write_e2e_tree,
     write_records,
     write_session_tree,
+    write_metrics_rows,
     write_transcript,
 )
 from tests.fixtures.token_audit_helpers import usage as _usage
@@ -39,6 +41,12 @@ HAIKU_DATED = "claude-haiku-4-5-20251001"
 
 def _ta():
     return load_token_audit(force_reimport=False)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_log_env(tmp_path, monkeypatch):
+    """token-audit CLI runs load subagent_usage summaries; never from the real stream."""
+    return isolate_log_env(monkeypatch, tmp_path)
 
 
 def _main_only(tmp_path: Path, records: list[dict], name: str = "sess") -> Path:
@@ -586,3 +594,126 @@ class TestRenderText:
     def test_complete_session_is_not_labeled_partial(self, tmp_path: Path):
         text = _ta().render_text(_audit(tmp_path, _one(OPUS48, inp=1000)))
         assert "PARTIAL" not in text
+
+
+# ---------------------------------------------------------------------------
+# Review fixes: reconciliation floor flag, CLI hermeticity and summary-load degradation
+# ---------------------------------------------------------------------------
+
+def _partial_tree_with_state(tmp_path: Path) -> Path:
+    """Main opus-4-8 1M input dispatching toolu_Z -> zzz (no transcript) plus a cost-state."""
+    main = (response_records("msg_m", OPUS48, _usage(inp=1_000_000, out=0, read=0, write=0),
+                             tool_uses=[agent_tool_use("toolu_Z")])
+            + [tool_result_record("toolu_Z", "zzz")]
+            + [cost_state_record(5.0, {OPUS48: {"usd": 5.0, "input": 1_000_000, "output": 0,
+                                                "cache_read": 0, "cache_write": 0}})])
+    return write_session_tree(tmp_path, "sess-floor", main)
+
+
+class TestReconciliationWritPartial:
+    def test_writ_partial_true_when_session_is_partial(self, tmp_path: Path):
+        card = _ta().scorecard(str(_partial_tree_with_state(tmp_path)), None, None)
+        assert card["session"]["partial"] is True
+        assert card["reconciliation"]["writ_partial"] is True
+
+    def test_writ_partial_false_when_session_is_complete(self, tmp_path: Path):
+        state = cost_state_record(5.0, {OPUS48: {"usd": 5.0, "input": 1_000_000, "output": 0,
+                                                 "cache_read": 0, "cache_write": 0}})
+        path = _main_only(tmp_path, _one(OPUS48, inp=1_000_000) + [state])
+        card = _ta().scorecard(str(path), None, None)
+        assert card["session"]["partial"] is False
+        assert card["reconciliation"]["writ_partial"] is False
+
+    def test_render_text_labels_writ_figure_a_floor_when_partial(self, tmp_path: Path):
+        ta = _ta()
+        text = ta.render_text(ta.scorecard(str(_partial_tree_with_state(tmp_path)), None, None))
+        line = next(ln for ln in text.splitlines() if ln.strip().startswith("cc_total"))
+        assert line.endswith("(Writ figure is a floor)")
+
+    def test_render_text_no_floor_label_when_complete(self, tmp_path: Path):
+        state = cost_state_record(5.0, {OPUS48: {"usd": 5.0, "input": 1_000_000, "output": 0,
+                                                 "cache_read": 0, "cache_write": 0}})
+        ta = _ta()
+        text = ta.render_text(ta.scorecard(
+            str(_main_only(tmp_path, _one(OPUS48, inp=1_000_000) + [state])), None, None))
+        assert "cc_total" in text
+        assert "(Writ figure is a floor)" not in text
+
+
+def _summary_main(tmp_path: Path) -> Path:
+    """Main opus-4-8 1M input dispatching toolu_S -> sss, whose transcript is gone."""
+    main = (response_records("msg_m", OPUS48, _usage(inp=1_000_000, out=0, read=0, write=0),
+                             tool_uses=[agent_tool_use("toolu_S")])
+            + [tool_result_record("toolu_S", "sss")])
+    return write_session_tree(tmp_path / "tree", "sess-cli-sum", main)
+
+
+def _sss_row(parent_session: str = "sess-cli-sum") -> dict:
+    return {"event": "subagent_usage", "session": "sss", "agent_id": "sss",
+            "parent_session": parent_session, "dispatch_id": "toolu_S",
+            "role": "writ-explorer", "role_source": "sidecar", "status": "ok", "schema": 1,
+            "responses": 1, "records": 1, "duplicates_collapsed": 0,
+            "streaming_snapshot_updates": 0, "conflicts": 0,
+            "model_usage": {OPUS48: {"responses": 1, "input": 200_000, "output": 0,
+                                     "cache_read": 0, "cache_write_5m": 0,
+                                     "cache_write_1h": 0}},
+            "child_dispatches": {}, "first_ts": None, "last_ts": None}
+
+
+class TestCliSummaryLoading:
+    def test_cli_reads_summaries_from_the_sandboxed_log_root(self, tmp_path: Path):
+        write_metrics_rows(Path(os.environ["WRIT_LOG_ROOT"]), [_sss_row()])
+        result = _cli(["token-audit", str(_summary_main(tmp_path)), "--json"])
+        assert result.exit_code == 0, result.output
+        card = json.loads(result.output)
+        assert card["dispatch_coverage"]["by_source"]["summary"] == 1
+        assert card["session"]["total_usd"] == pytest.approx(1_200_000 * 5 / 1e6)
+
+    def test_cli_degrades_when_loading_summaries_raises(self, tmp_path: Path, monkeypatch):
+        def boom(*_a, **_k):
+            raise RuntimeError("metrics stream unreadable")
+        monkeypatch.setattr(_ta(), "load_usage_summaries", boom)
+        result = _cli(["token-audit", str(_summary_main(tmp_path)), "--json"])
+        assert result.exit_code == 0, result.output
+        card = json.loads(result.output)
+        assert {"kind": "usage_summaries_unavailable", "error": "RuntimeError"} \
+            in card["warnings"]
+        assert card["dispatch_coverage"]["missing_transcript"] == 1
+        assert card["session"]["partial"] is True
+
+    def test_cli_degrades_when_resolving_the_project_raises(self, tmp_path: Path,
+                                                            monkeypatch):
+        import writ.shared.logging as wlog
+
+        def boom(*_a, **_k):
+            raise ValueError("no project")
+        monkeypatch.setattr(wlog, "resolve_project", boom)
+        result = _cli(["token-audit", str(_summary_main(tmp_path)), "--json"])
+        assert result.exit_code == 0, result.output
+        card = json.loads(result.output)
+        assert {"kind": "usage_summaries_unavailable", "error": "ValueError"} \
+            in card["warnings"]
+
+    def test_cli_text_output_shows_the_degradation_warning(self, tmp_path: Path, monkeypatch):
+        def boom(*_a, **_k):
+            raise RuntimeError("x")
+        monkeypatch.setattr(_ta(), "load_usage_summaries", boom)
+        result = _cli(["token-audit", str(_summary_main(tmp_path))])
+        assert result.exit_code == 0, result.output
+        assert "usage_summaries_unavailable" in result.output
+
+    def test_canary_exit_code_unchanged_when_summaries_fail(self, tmp_path: Path,
+                                                            monkeypatch):
+        def boom(*_a, **_k):
+            raise RuntimeError("x")
+        monkeypatch.setattr(_ta(), "load_usage_summaries", boom)
+        bad = tmp_path / "bad.jsonl"
+        bad.write_text(json.dumps({"type": "assistant",
+                                   "message": {"usage": {"input_tokens": 1}}}) + "\n")
+        assert _cli(["token-audit", str(bad)]).exit_code == 2
+
+    def test_cli_no_warning_when_summaries_load(self, tmp_path: Path):
+        result = _cli(["token-audit", str(_summary_main(tmp_path)), "--json"])
+        assert result.exit_code == 0, result.output
+        kinds = _kinds(json.loads(result.output))
+        assert "usage_summaries_unavailable" not in kinds

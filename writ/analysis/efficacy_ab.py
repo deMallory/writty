@@ -96,14 +96,16 @@ def defect_caught(task: dict, run_repo: str, transcript_path: str,
 def _reconciliation_fields(rec: dict) -> dict:
     """Additive A/B row fields from the card's cost-state reconciliation; all None when
     cost-state is absent. delta_pct is delta / cc_total_usd * 100, None when cc is absent or
-    zero."""
+    zero. reconciliation_writ_partial true means the Writ side of the delta is a floor."""
     if not rec.get("present"):
         return {"cc_total_usd": None, "reconciliation_delta_usd": None,
-                "reconciliation_delta_pct": None, "reconciliation_scope": None}
+                "reconciliation_delta_pct": None, "reconciliation_scope": None,
+                "reconciliation_writ_partial": None}
     cc, delta = rec.get("cc_total_usd"), rec.get("delta_usd")
     pct = delta / cc * 100 if cc and delta is not None else None
     return {"cc_total_usd": cc, "reconciliation_delta_usd": delta,
-            "reconciliation_delta_pct": pct, "reconciliation_scope": rec.get("scope")}
+            "reconciliation_delta_pct": pct, "reconciliation_scope": rec.get("scope"),
+            "reconciliation_writ_partial": rec.get("writ_partial")}
 
 
 def score_run(task: dict, run_result: dict, variant_name: str,
@@ -117,6 +119,7 @@ def score_run(task: dict, run_result: dict, variant_name: str,
            "result_usd": run_result.get("result_usd"), "transcript": tpath,
            "session_usd": card["session"]["total_usd"],
            "session_partial": card["session"]["partial"],
+           "session_orphan_usd_excluded": card["session"]["orphan_usd_excluded"],
            "session_dispatch_coverage": card["dispatch_coverage"]["summary"],
            **_reconciliation_fields(card["reconciliation"])}
     if task["arm"] == "defect":

@@ -335,16 +335,14 @@ fi
 # a collapsed payload yields a no_transcript row, never the parent's usage. Any failure
 # becomes a status error row, or no row at all; nothing reaches this hook's stdout (a
 # Stop-family additionalContext is a turn block). Cost: one read of one file per stop.
-printf '%s' "$STDIN_JSON" | python3 -c '
-import json, os, sys, types
+# No AGENT_ID, no row: the summary is keyed by agent id and an anonymous one could never be
+# matched to its dispatch. writ.analysis resolves its pydantic models lazily, so importing
+# token_audit here loads only the stdlib.
+if [ -n "$AGENT_ID" ]; then
+    printf '%s' "$STDIN_JSON" | python3 -c '
+import json, sys
 sys.path.insert(0, sys.argv[1])
 agent_id, parent_session, role, role_source = sys.argv[2:6]
-# writ/analysis/__init__.py imports pydantic, which this block neither needs nor can rely
-# on (a hook interpreter may lack it). Register the package without running its __init__,
-# so only the stdlib-only token_audit, token_tree and jsonl modules load.
-_pkg = types.ModuleType("writ.analysis")
-_pkg.__path__ = [os.path.join(sys.argv[1], "writ", "analysis")]
-sys.modules.setdefault("writ.analysis", _pkg)
 try:
     from writ.analysis.token_audit import SUMMARY_ERROR, usage_summary_event
 except Exception:
@@ -363,7 +361,8 @@ try:
 except Exception:
     sys.exit(0)
 ' "$WRIT_DIR" "$AGENT_ID" "$PARENT_SESSION" "$AGENT_TYPE" "$ROLE_SOURCE" 2>/dev/null \
-    | python3 "$FA" --stdin-json >/dev/null 2>&1 || true
+        | python3 "$FA" --stdin-json >/dev/null 2>&1 || true
+fi
 
 # Read the agent's session cache for summary metrics
 CACHE=$(_writ_session read "$AGENT_ID" 2>/dev/null || echo '{}')
