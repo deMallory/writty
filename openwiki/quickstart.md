@@ -77,6 +77,7 @@ The modes are defined in `writ/session/mode_engine.py`.
 
 ## Where to go next
 
+- [The core stack](architecture/core-stack.md): what Claude Code, the gates, Neo4j, Tantivy, ONNX and hnswlib each do.
 - `HANDBOOK.md`: modes, gates, helper agents, the command line.
 - `docs/reference/session-and-gates.md`: the exact gate contract.
 - `docs/install.md`: the other install paths, running the service under systemd, troubleshooting.
