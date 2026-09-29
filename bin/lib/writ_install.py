@@ -20,7 +20,9 @@ BEHAVIOR IS PORTED ONE-FOR-ONE from the jq-plus-gettext implementation that used
 scripts/patch-global-config.sh, with exactly one deliberate change: a missing settings.json
 is CREATED (parents included) instead of being a hard error, because that is the common case
 on a fresh machine and was the single largest reason the install needed hand-holding. A file
-that never existed gets no `.bak`, mirroring the CLAUDE.md create branch.
+that never existed gets no `.bak`, mirroring the CLAUDE.md create branch. A second deliberate
+change came in 1.7.5: `claude-md` owns a marked block in the target instead of the whole file
+(see the CLAUDE.md render section).
 
 Preserved exactly: append-only allow/deny merge (existing entries keep their order), the
 two-guard stale-entry pruner (basename must be writ/Writ AND the directory must be gone, so a
@@ -42,12 +44,14 @@ Usage:
 
 Exit codes (unchanged from patch-global-config.sh):
   0  patched / already up to date / dry-run success
-  1  missing template, missing settings target (hooks), or the plugin-install refusal
-  2  write failure (including a target that is not readable JSON)
+  1  missing template, missing settings target (hooks), the plugin-install refusal, or
+     CLAUDE.md markers that do not pair up
+  2  write failure (including a target that is not readable JSON or not readable at all)
 """
 
 import argparse
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -162,17 +166,26 @@ def _print_diff(label, target, current, new_text):
     sys.stdout.writelines(line if line.endswith("\n") else line + "\n" for line in diff)
 
 
-def _write(label, target, new_text, backup):
-    """Write new_text to target, backing the previous content up first. Returns an exit code."""
+def _backup_name(target):
+    return "%s.bak.%s" % (target, _timestamp())
+
+
+def _write(label, target, new_text, backup, backup_path=None):
+    """Write new_text to target, backing the previous content up first. Returns an exit code.
+
+    backup_path lets a caller that must report the copy choose its name; the default is
+    the timestamped name."""
     try:
         os.makedirs(os.path.dirname(os.path.abspath(target)) or ".", exist_ok=True)
     except OSError as exc:
         print("[%s] ERROR: cannot create %s: %s"
               % (label, os.path.dirname(target), exc), file=sys.stderr)
         return EXIT_WRITE_FAILURE
-    backup_path = None
-    if backup and os.path.isfile(target):
-        backup_path = "%s.bak.%s" % (target, _timestamp())
+    if not (backup and os.path.isfile(target)):
+        backup_path = None
+    elif backup_path is None:
+        backup_path = _backup_name(target)
+    if backup_path:
         try:
             shutil.copy2(target, backup_path)
         except OSError as exc:
@@ -336,16 +349,93 @@ def cmd_settings(args):
 
 # --------------------------------------------------------------------------- #
 # CLAUDE.md render
+#
+# Writ owns one marked block in the target, never the whole file: ~/.claude/CLAUDE.md is
+# often the user's own unversioned file, and a whole-file replace deleted their sections on
+# every bootstrap. The begin marker carries a fingerprint of the body Writ last wrote, so a
+# template upgrade replaces the block quietly and a body the user edited is replaced only
+# under a boxed warning that names the backup.
 # --------------------------------------------------------------------------- #
 
 # `$HOME` and `${HOME}` only -- the exact substitution surface of the single-variable
 # gettext call this replaces. Any other $VAR in the template is left alone, as it was.
 _HOME_RE = re.compile(r"\$(?:HOME\b|\{HOME\})")
 
+_BLOCK_NOTE = ("managed by the Writ installer: edits between these markers are replaced "
+               "on the next install")
+_BLOCK_BEGIN_RE = re.compile(r"^<!-- writ:begin(?: sha256=([0-9a-f]{16}))?\b[^\n]*-->\n", re.M)
+_BLOCK_END_RE = re.compile(r"^<!-- writ:end -->$\n?", re.M)
+
+_CLAUDE_MD_DONE = {
+    "created": "Created %s holding the Writ block.",
+    "upgraded": "Updated the Writ block in %s; text outside it is unchanged.",
+    "edited": "Replaced the Writ block in %s; text outside it is unchanged.",
+    "appended": ("Appended the Writ block to the end of %s; nothing above it changed. If the "
+                 "file holds an older Writ render without markers, some lines may now appear "
+                 "twice: delete the old ones by hand."),
+}
+
 
 def _render_home(text):
     home = os.environ.get("HOME") or os.path.expanduser("~")
     return _HOME_RE.sub(lambda _m: home, text)
+
+
+def _fingerprint(body):
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
+
+
+def _block(body):
+    return "<!-- writ:begin sha256=%s %s -->\n%s<!-- writ:end -->\n" % (
+        _fingerprint(body), _BLOCK_NOTE, body)
+
+
+def _plan_claude_md(current, body):
+    """(new_text, status) for a target holding `current`, None when the target is absent.
+
+    status is one of: created, unchanged, upgraded, edited, already-present, appended,
+    malformed. Only "edited" removes text the user wrote."""
+    block = _block(body)
+    if current is None:
+        return block, "created"
+    begins = list(_BLOCK_BEGIN_RE.finditer(current))
+    ends = list(_BLOCK_END_RE.finditer(current))
+    if not begins and not ends:
+        have = {line.strip() for line in current.splitlines()}
+        if all(line.strip() in have for line in body.splitlines() if line.strip()):
+            return current, "already-present"
+        if not current or current.endswith("\n\n"):
+            sep = ""
+        elif current.endswith("\n"):
+            sep = "\n"
+        else:
+            sep = "\n\n"
+        return current + sep + block, "appended"
+    if len(begins) != 1 or len(ends) != 1 or ends[0].start() < begins[0].end():
+        return current, "malformed"
+    begin, end = begins[0], ends[0]
+    new_text = current[:begin.start()] + block + current[end.end():]
+    if new_text == current:
+        return current, "unchanged"
+    old_body = current[begin.end():end.start()]
+    return new_text, "upgraded" if begin.group(1) == _fingerprint(old_body) else "edited"
+
+
+def _removed_lines(old, new):
+    return [line[2:] for line in difflib.ndiff(old.splitlines(), new.splitlines())
+            if line.startswith("- ") and not line[2:].startswith("<!-- writ:begin")]
+
+
+def _warn_box(lines):
+    """The banner printed when this module removes, or refuses to touch, text the user
+    wrote, sized to stand out in a long bootstrap log."""
+    sys.stdout.flush()
+    bar = "!" * 72
+    print(bar, file=sys.stderr)
+    for line in lines:
+        print("!! " + line, file=sys.stderr)
+    print(bar, file=sys.stderr)
+    sys.stderr.flush()
 
 
 def cmd_claude_md(args):
@@ -362,26 +452,61 @@ def cmd_claude_md(args):
     if raw is None:
         print("[CLAUDE.md] ERROR: cannot read template: %s" % template, file=sys.stderr)
         return EXIT_PRECONDITION
-    rendered = _render_home(raw)
+    body = _render_home(raw)
+    if not body.endswith("\n"):
+        body += "\n"
 
     existed = os.path.isfile(target)
     current = _read_text(target) if existed else None
-    if existed and current == rendered:
-        print("[CLAUDE.md] No changes needed: %s already matches the Writ template." % target)
+    if existed and current is None:
+        print("[CLAUDE.md] ERROR: cannot read %s; left untouched." % target, file=sys.stderr)
+        return EXIT_WRITE_FAILURE
+
+    new_text, status = _plan_claude_md(current, body)
+    if status == "malformed":
+        _warn_box([
+            "WARNING: %s has Writ markers that do not pair up." % target,
+            "Expected one '<!-- writ:begin' line, then one '<!-- writ:end -->' line.",
+            "The file was left untouched. Fix or delete the markers, then re-run.",
+        ])
+        return EXIT_PRECONDITION
+    if status == "unchanged":
+        print("[CLAUDE.md] No changes needed: the Writ block in %s matches the template."
+              % target)
+        return EXIT_OK
+    if status == "already-present":
+        print("[CLAUDE.md] %s has no Writ block but already holds every Writ line; "
+              "left untouched." % target)
+        print("[CLAUDE.md] To receive template updates, put a '<!-- writ:begin -->' line "
+              "and a '<!-- writ:end -->' line around the Writ lines.")
         return EXIT_OK
 
+    removed = _removed_lines(current, new_text) if status == "edited" else []
     if args.dry_run:
         if existed:
-            _print_diff("CLAUDE.md", target, current or "", rendered)
+            _print_diff("CLAUDE.md", target, current, new_text)
         else:
-            print("[CLAUDE.md] [dry-run] would create %s from template (%d lines)."
-                  % (target, len(rendered.splitlines())))
+            print("[CLAUDE.md] [dry-run] would create %s holding the Writ block (%d lines)."
+                  % (target, len(new_text.splitlines())))
+        if removed:
+            _warn_box(["WARNING: [dry-run] would replace text you edited inside the Writ "
+                       "block of %s." % target, "Lines that would be removed:"]
+                      + ["  " + line for line in removed])
         return EXIT_OK
 
-    rc = _write("CLAUDE.md", target, rendered, backup=existed)
+    backup_path = _backup_name(target) if existed else None
+    rc = _write("CLAUDE.md", target, new_text, backup=existed, backup_path=backup_path)
     if rc != EXIT_OK:
         return rc
-    print("[CLAUDE.md] %s %s" % ("Replaced" if existed else "Created", target))
+    print("[CLAUDE.md] " + _CLAUDE_MD_DONE[status] % target)
+    if removed:
+        _warn_box(
+            ["WARNING: Writ replaced text you edited inside the Writ block of %s." % target,
+             "Your version is saved in: %s" % backup_path,
+             "Lines removed:"]
+            + ["  " + line for line in removed]
+            + ["Edits between the writ:begin and writ:end markers do not survive an install.",
+               "Keep your own instructions outside the markers."])
     return EXIT_OK
 
 
