@@ -49,7 +49,7 @@ Both bootstraps are idempotent and safe to re-run. Each does the whole install:
 
 Each accepts `--preflight` to run only the prerequisite checks (tool presence and the Python version) and exit, which is a quick way to confirm a machine is ready before committing to a full install.
 
-The global-config part exists because a plugin manifest cannot ship a permission allowlist, a statusLine, or `~/.claude/CLAUDE.md`. It merges the Writ allow/deny entries into `~/.claude/settings.json` (preserving your ordering and your non-Writ entries), sets the Writ statusLine (a foreign statusLine is left untouched), and renders `templates/CLAUDE.md` into `~/.claude/CLAUDE.md`, backing up anything it replaces. A missing `settings.json` is created. By default it never touches the `hooks` block: the plugin loader owns hooks.
+The global-config part exists because a plugin manifest cannot ship a permission allowlist, a statusLine, or `~/.claude/CLAUDE.md`. It merges the Writ allow/deny entries into `~/.claude/settings.json` (preserving your ordering and your non-Writ entries), sets the Writ statusLine (a foreign statusLine is left untouched), and writes `templates/CLAUDE.md` into a marked Writ block in `~/.claude/CLAUDE.md`. Text outside the block is never changed. A file without the block gets it appended, unless it already holds every Writ line. Edits inside the block are replaced on the next install, under a boxed warning that names the backup. A missing `settings.json` is created. By default it never touches the `hooks` block: the plugin loader owns hooks.
 
 To run either piece on its own, or to preview it:
 
@@ -107,7 +107,7 @@ Then open Claude Code in any project and type a prompt: you should see a `[Writ:
 
 ## Updating
 
-After `git pull` (or a plugin update), hook changes in `hooks/hooks.json` apply on the next session automatically. For everything else, re-run the one bootstrap: it is idempotent, and it re-applies the permissions, the statusLine, `~/.claude/CLAUDE.md` and the slash commands, and re-installs the package so a dependency change lands.
+After `git pull` (or a plugin update), hook changes in `hooks/hooks.json` apply on the next session automatically. For everything else, re-run the one bootstrap: it is idempotent, and it re-applies the permissions, the statusLine, the Writ block in `~/.claude/CLAUDE.md` and the slash commands, and re-installs the package so a dependency change lands.
 
 ```bash
 bash "$WRIT_DIR/scripts/bootstrap-plugin.sh"    # path A

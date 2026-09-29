@@ -37,6 +37,7 @@ before the venv exists). The real ~/.claude is never touched.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -309,7 +310,32 @@ class TestStatusLinePolicy:
 
 # --------------------------------------------------------------------------- #
 # 5. claude-md render
+#
+# Since 1.7.5 the module owns one marked block in the target, never the whole file:
+# ~/.claude/CLAUDE.md is often the user's own unversioned file.
 # --------------------------------------------------------------------------- #
+
+BLOCK_BEGIN = re.compile(r"^<!-- writ:begin sha256=([0-9a-f]{16}) [^\n]*-->\n", re.M)
+BLOCK_END = "<!-- writ:end -->\n"
+
+
+def _block_body(text: str) -> str:
+    """The text between the Writ markers; fails the test unless there is exactly one block."""
+    begins = list(BLOCK_BEGIN.finditer(text))
+    assert len(begins) == 1, f"expected one writ:begin line:\n{text}"
+    assert text.count(BLOCK_END) == 1, f"expected one writ:end line:\n{text}"
+    return text[begins[0].end():text.index(BLOCK_END)]
+
+
+def _render(tmp_path: Path, template_text: str, target_text: str | None = None, *extra: str):
+    """Run claude-md with a tmp template; target_text=None keeps whatever the target holds."""
+    template = tmp_path / "CLAUDE.md.tpl"
+    template.write_text(template_text)
+    target = tmp_path / "CLAUDE.md"
+    if target_text is not None:
+        target.write_text(target_text)
+    r = run_module("claude-md", "--target", str(target), "--template", str(template), *extra)
+    return r, target
 
 
 class TestClaudeMdRender:
@@ -319,14 +345,14 @@ class TestClaudeMdRender:
         target = tmp_path / "CLAUDE.md"
         r = run_module("claude-md", "--target", str(target), "--template", str(template))
         assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
-        assert target.read_text() == f"Home is {os.environ['HOME']}/.claude\n"
+        assert _block_body(target.read_text()) == f"Home is {os.environ['HOME']}/.claude\n"
 
     def test_substitutes_braced_home_form(self, tmp_path):
         template = tmp_path / "CLAUDE.md.tpl"
         template.write_text("Home is ${HOME}/.claude\n")
         target = tmp_path / "CLAUDE.md"
         run_module("claude-md", "--target", str(target), "--template", str(template))
-        assert target.read_text() == f"Home is {os.environ['HOME']}/.claude\n"
+        assert _block_body(target.read_text()) == f"Home is {os.environ['HOME']}/.claude\n"
 
     def test_skips_write_when_target_already_matches(self, tmp_path):
         template = tmp_path / "CLAUDE.md.tpl"
@@ -338,7 +364,7 @@ class TestClaudeMdRender:
         assert target.stat().st_mtime_ns == before, "an identical target must not be rewritten"
         assert not list(tmp_path.glob("CLAUDE.md.bak.*"))
 
-    def test_backs_up_existing_different_target_before_replace(self, tmp_path):
+    def test_appends_block_to_a_file_without_one_and_backs_it_up(self, tmp_path):
         template = tmp_path / "CLAUDE.md.tpl"
         template.write_text("new content\n")
         target = tmp_path / "CLAUDE.md"
@@ -347,7 +373,9 @@ class TestClaudeMdRender:
         backups = list(tmp_path.glob("CLAUDE.md.bak.*"))
         assert len(backups) == 1
         assert backups[0].read_text() == "old content\n"
-        assert target.read_text() == "new content\n"
+        text = target.read_text()
+        assert text.startswith("old content\n\n<!-- writ:begin "), text
+        assert _block_body(text) == "new content\n"
 
     def test_backup_filename_is_timestamped(self, tmp_path):
         template = tmp_path / "CLAUDE.md.tpl"
@@ -364,7 +392,9 @@ class TestClaudeMdRender:
         template.write_text("fresh\n")
         target = tmp_path / "CLAUDE.md"
         run_module("claude-md", "--target", str(target), "--template", str(template))
-        assert target.read_text() == "fresh\n"
+        text = target.read_text()
+        assert text.startswith("<!-- writ:begin "), text
+        assert _block_body(text) == "fresh\n"
         assert not list(tmp_path.glob("CLAUDE.md.bak.*"))
 
     def test_missing_template_returns_one_and_writes_nothing(self, tmp_path):
@@ -379,7 +409,115 @@ class TestClaudeMdRender:
         target = tmp_path / "CLAUDE.md"
         r = run_module("claude-md", "--target", str(target), "--skill-dir", str(install))
         assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
-        assert target.read_text() == f"Skill-dir template {os.environ['HOME']}\n"
+        assert _block_body(target.read_text()) == f"Skill-dir template {os.environ['HOME']}\n"
+
+
+class TestClaudeMdManagedBlock:
+    def test_begin_line_carries_the_body_fingerprint(self, tmp_path):
+        r, target = _render(tmp_path, "one\ntwo\n")
+        assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+        text = target.read_text()
+        body = _block_body(text)
+        assert BLOCK_BEGIN.search(text).group(1) == hashlib.sha256(body.encode()).hexdigest()[:16]
+        assert text.endswith(BLOCK_END)
+
+    def test_rerun_with_same_template_writes_nothing(self, tmp_path):
+        _, target = _render(tmp_path, "same\n")
+        before_bytes = target.read_bytes()
+        before_mtime = target.stat().st_mtime_ns
+        r, _ = _render(tmp_path, "same\n")
+        assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+        assert target.read_bytes() == before_bytes
+        assert target.stat().st_mtime_ns == before_mtime
+        assert not list(tmp_path.glob("CLAUDE.md.bak.*"))
+        assert "No changes needed" in r.stdout
+
+    def test_template_upgrade_keeps_text_around_the_block(self, tmp_path):
+        _, target = _render(tmp_path, "v1\n")
+        target.write_text("# Mine\n\n" + target.read_text() + "\n## Also mine\n")
+        r, _ = _render(tmp_path, "v2\n")
+        assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+        text = target.read_text()
+        assert text.startswith("# Mine\n\n<!-- writ:begin "), text
+        assert text.endswith(BLOCK_END + "\n## Also mine\n"), text
+        assert _block_body(text) == "v2\n"
+        assert "WARNING" not in r.stderr, r.stderr
+        assert len(list(tmp_path.glob("CLAUDE.md.bak.*"))) == 1
+
+    def test_edited_block_is_replaced_under_a_loud_warning(self, tmp_path):
+        _, target = _render(tmp_path, "writ line\n")
+        target.write_text(target.read_text().replace("writ line\n", "writ line\nmy own line\n"))
+        r, _ = _render(tmp_path, "writ line\n")
+        assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+        assert _block_body(target.read_text()) == "writ line\n"
+        backups = list(tmp_path.glob("CLAUDE.md.bak.*"))
+        assert len(backups) == 1
+        assert "my own line" in backups[0].read_text()
+        assert "WARNING" in r.stderr
+        assert "my own line" in r.stderr
+        assert str(backups[0]) in r.stderr
+
+    def test_block_without_fingerprint_counts_as_edited(self, tmp_path):
+        r, target = _render(tmp_path, "writ line\n",
+                            "<!-- writ:begin -->\nhand placed\n<!-- writ:end -->\n")
+        assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+        assert _block_body(target.read_text()) == "writ line\n"
+        assert "WARNING" in r.stderr
+        assert "hand placed" in r.stderr
+
+    def test_file_holding_every_writ_line_is_left_untouched(self, tmp_path):
+        template = tmp_path / "CLAUDE.md.tpl"
+        template.write_text("alpha\n\nbeta\n")
+        target = tmp_path / "CLAUDE.md"
+        original = "alpha\n# Mine\nmy rule\n\nbeta\n"
+        target.write_text(original)
+        before = target.stat().st_mtime_ns
+        r = run_module("claude-md", "--target", str(target), "--template", str(template))
+        assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+        assert target.read_text() == original
+        assert target.stat().st_mtime_ns == before
+        assert not list(tmp_path.glob("CLAUDE.md.bak.*"))
+        assert "writ:begin" in r.stdout, "the notice must say how to opt in to updates"
+
+    def test_append_notice_warns_about_an_older_unmarked_render(self, tmp_path):
+        original = "# Mine\nmy rule\n"
+        r, target = _render(tmp_path, "writ line\n", original)
+        assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+        assert target.read_text().startswith(original)
+        assert "appear twice" in r.stdout
+
+    def test_append_to_file_without_trailing_newline_adds_a_blank_line(self, tmp_path):
+        r, target = _render(tmp_path, "writ line\n", "no newline at end")
+        assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+        assert target.read_text().startswith("no newline at end\n\n<!-- writ:begin ")
+
+    @pytest.mark.parametrize("original", [
+        "mine\n<!-- writ:begin sha256=0123456789abcdef note -->\nwrit line\n",
+        "mine\nwrit line\n<!-- writ:end -->\n",
+        "<!-- writ:end -->\nmine\n<!-- writ:begin sha256=0123456789abcdef note -->\n",
+        "<!-- writ:begin -->\na\n<!-- writ:end -->\n<!-- writ:begin -->\nb\n<!-- writ:end -->\n",
+    ], ids=["begin-only", "end-only", "end-before-begin", "two-blocks"])
+    def test_markers_that_do_not_pair_up_leave_the_file_untouched(self, tmp_path, original):
+        r, target = _render(tmp_path, "writ line\n", original)
+        assert r.returncode == 1, f"{r.stdout}\n{r.stderr}"
+        assert target.read_text() == original
+        assert "WARNING" in r.stderr
+        assert not list(tmp_path.glob("CLAUDE.md.bak.*"))
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 file")
+    def test_unreadable_target_is_not_overwritten(self, tmp_path):
+        template = tmp_path / "CLAUDE.md.tpl"
+        template.write_text("writ line\n")
+        target = tmp_path / "CLAUDE.md"
+        target.write_text("secret\n")
+        target.chmod(0)
+        try:
+            r = run_module("claude-md", "--target", str(target), "--template", str(template))
+        finally:
+            target.chmod(0o600)
+        assert r.returncode == 2, f"{r.stdout}\n{r.stderr}"
+        assert target.read_text() == "secret\n"
+        assert not list(tmp_path.glob("CLAUDE.md.bak.*"))
 
 
 # --------------------------------------------------------------------------- #
@@ -568,6 +706,17 @@ class TestDryRun:
         run_module("claude-md", "--target", str(target), "--template", str(template), "--dry-run")
         assert target.read_text() == "old\n"
         assert not list(tmp_path.glob("CLAUDE.md.bak.*"))
+
+    def test_claude_md_dry_run_on_edited_block_writes_nothing_and_warns(self, tmp_path):
+        _, target = _render(tmp_path, "writ line\n")
+        target.write_text(target.read_text().replace("writ line\n", "writ line\nmy own line\n"))
+        before = target.read_bytes()
+        r, _ = _render(tmp_path, "writ line\n", None, "--dry-run")
+        assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+        assert target.read_bytes() == before
+        assert not list(tmp_path.glob("CLAUDE.md.bak.*"))
+        assert "WARNING" in r.stderr
+        assert "my own line" in r.stderr
 
     def test_hooks_dry_run_creates_no_hooks_block(self, tmp_path):
         install = _fake_install(tmp_path)
