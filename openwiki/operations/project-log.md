@@ -10,14 +10,14 @@ Read this first when coming back to the project. "Current state" is what is true
 
 ## Current state as of 2026-09-29
 
-- `main` on GitHub has PRs 12 to 23; the last merge is `0717265`.
-- The installed plugin is 1.7.3 (PR 18). PRs 21 and 22 also fix hooks, but `main` still says 1.7.3, so they reach installed plugins only with 1.7.4: hooks load from the plugin cache, one folder per version.
-- Full suite with the test graph up, measured on PR 21's branch: 1 failure, `tests/test_plugin_manifest.py` (36 before). Not re-run on `main` after PRs 21 and 22 merged.
+- `main` on GitHub has PRs 12 to 25; PR 25 releases 1.7.4.
+- `main` says 1.7.4, which carries PRs 21 and 22 to installed plugins. An install stays on 1.7.3 until the owner updates the marketplace and the plugin, then restarts Claude Code and the daemon: hooks load from the plugin cache, one folder per version.
+- Full suite with the test graph up, on the 1.7.4 branch: 1 failed, 8,009 passed, 158 skipped, in 10 min 34 s. The failure is `tests/test_plugin_manifest.py`: 49 unquoted `${CLAUDE_PLUGIN_ROOT}` warnings, plus one for the untracked root `CLAUDE.md`.
 - The live graph (port 7687) was replayed from `writ-corpus.cypher` on 2026-09-29. A fresh export matches the dump in content: 540 nodes, 1,458 edges, the same property values; property order differs on 468 lines; `/health` reports 336 rules, 36 mandatory. The runtime counters (`last_seen`, `times_seen_positive`) restarted from zero.
 - Wiki sections left: integrations, then testing. Plan and gate notes: `docs/handoff/openwiki-port/README.md`.
 - Upstream is 146 commits ahead, at release 1.10.1 (re-checked 2026-09-29, merge base `e608659`). Since the merge base it added `writ-output-compress.sh`, next to the fork's `writ-output-rewrite.sh`; how the two overlap is not checked. How to sync: [Upstream sync](upstream-sync.md).
 - Workshop for the dev team around 2026-10-09. The deck fixes are made in the vault, not committed.
-- Resume point: `docs/handoff/replay-and-docs/README.md`. Next: release 1.7.4, then commit the vault.
+- Resume point: `docs/handoff/replay-and-docs/README.md`. Next: after the plugin update, check the review order live. In Work mode, dispatch `writ-spec-reviewer`, then `writ-code-quality-reviewer`; the second must go through. Then commit the vault.
 
 ## Open threads
 
@@ -34,6 +34,8 @@ Read this first when coming back to the project. "Current state" is what is true
 
 ## Timeline
 
+- 2026-09-29: PR 25, 1.7.4. It ships PRs 21 and 22 to installed plugins, since the plugin cache is keyed by version (`95beeab`).
+- 2026-09-29: PR 24, the docs that drifted from the code since 1.7.2 match it again, and `ERRATA.md` records the count drift (`28c4e08`).
 - 2026-09-29: PR 23, the handoff for the live graph replay, the stale docs and 1.7.4 (`53be1d1`).
 - 2026-09-29: PR 22, the code-quality reviewer is admitted once `writ-spec-reviewer` stops. In Work mode it was refused forever: nothing recorded the spec review (`038bfb7`).
 - 2026-09-29: PR 21, the corpus round-trips. `export-cypher` renders DateTime, so the live graph can be backed up (`18df244`); the export keeps authored fields (`48f968f`); the dump carries the two split reviewers, dispatched by `PBK-PROC-SDD-001` (`c9e864d`). Full suite: 36 failures down to 1.

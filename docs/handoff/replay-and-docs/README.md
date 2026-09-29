@@ -15,10 +15,10 @@ subject`, one line that says why. This overrides the French rule in
 
 | What | State | Next |
 |---|---|---|
-| `main` | `0717265`: PRs 21 to 23 merged | None |
-| Installed plugin | 1.7.3. `main` still says 1.7.3, so PRs 21 and 22 are not live | Task C |
+| `main` | PRs 21 to 25 merged; PR 25 releases 1.7.4 (`95beeab`) | None |
+| Installed plugin | 1.7.3 until the owner updates it; 1.7.4 carries PRs 21 and 22 | Plugin update, then the live check in task C |
 | Live graph (port 7687) | Done 2026-09-29: replayed, matches the dump in content | None |
-| Stale writty docs | Done 2026-09-29 on `docs/stale-docs` | Merge its PR, then task C |
+| Stale writty docs | Done 2026-09-29: PR 24 merged (`9ebd520`) | None |
 | Workshop vault (raggidy) | 9 files modified, 1 new, uncommitted; last commit `14fbc8c` | Task D |
 | Test graph (port 7688) | `writ-test-neo4j` running | `make test-graph-down` when done |
 
