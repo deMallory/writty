@@ -12,9 +12,11 @@ from __future__ import annotations
 import html
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from writ.analysis.friction import (
+    _SPLIT_STREAMS,
     FrictionEvent,
     aggregate_by_event,
     analyze_graduation_candidates,
@@ -24,8 +26,8 @@ from writ.analysis.friction import (
     analyze_skill_usage,
     analyze_trim_candidates,
     parse_log,
-    resolve_log_path,
 )
+from writ.shared.logging import resolve_project, stream_path
 
 REFRESH_SECONDS = 60
 
@@ -50,38 +52,54 @@ def _section(title: str, body: str) -> str:
 
 
 # A9: parse_log is ~785ms (Pydantic-bound) and ran on EVERY GET /dashboard.
-# Cache the parsed events keyed on the log's mtime -- the friction log is
-# append-only, so mtime is an exact change key (a stale read only survives until
-# the next append). Idempotent under concurrent GETs (same mtime -> same events),
-# so no lock is needed.
-_EVENTS_CACHE: dict = {"mtime": None, "events": None}
+# Cache the parsed events keyed on each file's (path, mtime_ns, size) -- the logs
+# are append-only, so that stamp is an exact change key; size catches two appends
+# inside one mtime tick, and a rolled stream starts a new file with a new stamp.
+# Idempotent under concurrent GETs (same key -> same events), so no lock is needed.
+_EVENTS_CACHE: dict = {"key": None, "events": None}
 
 
-def _safe_load_events() -> list[FrictionEvent]:
-    """Best-effort parse. Missing log -> empty list. No exceptions escape."""
+def _log_files() -> tuple[str | None, list[Path]]:
+    """The project and files the dashboard reads.
+
+    WRIT_FRICTION_LOG, when set, collapses the logs into that one file (project None).
+    Otherwise: the daemon project's split streams, the same ones `writ analyze-friction`
+    reads. The old ./workflow-friction.log fallback stopped receiving rows at the split.
+    """
+    env = os.environ.get("WRIT_FRICTION_LOG")
+    if env:
+        return None, [Path(env)]
+    project = resolve_project()
+    return project, [stream_path(project, s) for s in _SPLIT_STREAMS]
+
+
+def _stamp(path: Path) -> tuple[int, int] | None:
     try:
-        path = resolve_log_path()
-    except Exception:
-        return []
-    try:
-        mtime = os.stat(path).st_mtime
+        st = path.stat()
     except OSError:
-        mtime = None
-    if mtime is not None and _EVENTS_CACHE["mtime"] == mtime and _EVENTS_CACHE["events"] is not None:
+        return None
+    return st.st_mtime_ns, st.st_size
+
+
+def _safe_load_events(project: str | None, files: list[Path]) -> list[FrictionEvent]:
+    """Best-effort parse. Missing logs -> empty list. No exceptions escape."""
+    key = tuple((str(f), _stamp(f)) for f in files)
+    if _EVENTS_CACHE["key"] == key and _EVENTS_CACHE["events"] is not None:
         return _EVENTS_CACHE["events"]
     try:
-        events = parse_log(path)
+        events = parse_log(project=project)
     except Exception:
         return []
-    if mtime is not None:
-        _EVENTS_CACHE["mtime"] = mtime
-        _EVENTS_CACHE["events"] = events
+    _EVENTS_CACHE["key"] = key
+    _EVENTS_CACHE["events"] = events
     return events
 
 
 def render_dashboard() -> str:
     """Compose the dashboard HTML. Always returns a complete page."""
-    events = _safe_load_events()
+    # Resolved once per request: without WRIT_LOG_PROJECT, resolve_project() shells out to git.
+    project, files = _log_files()
+    events = _safe_load_events(project, files)
 
     # Live counts
     total_events = len(events)
@@ -153,7 +171,7 @@ def render_dashboard() -> str:
     ]
 
     rendered_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    log_path = resolve_log_path()
+    log_label = str(files[0] if project is None else files[0].parent)
 
     return f"""<!doctype html>
 <html lang="en">
@@ -177,7 +195,7 @@ def render_dashboard() -> str:
 <body>
   <h1>Writ friction dashboard</h1>
   <p class="meta">
-    rendered at {_esc(rendered_at)} -- log: {_esc(str(log_path))} -- auto-refresh every {REFRESH_SECONDS}s
+    rendered at {_esc(rendered_at)} -- log: {_esc(log_label)} -- auto-refresh every {REFRESH_SECONDS}s
   </p>
   {''.join(sections)}
 </body>
