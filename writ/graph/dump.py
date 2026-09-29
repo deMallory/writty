@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+import neo4j.time
+
 if TYPE_CHECKING:
     from writ.graph.db import Neo4jConnection
 
@@ -38,6 +40,10 @@ def cypher_literal(value: object) -> str:
         return f"'{escaped}'"
     if isinstance(value, list):
         return "[" + ", ".join(cypher_literal(v) for v in value) + "]"
+    # The runtime stamps Rule.last_seen with Cypher datetime(); the driver hands
+    # it back as neo4j.time.DateTime, which is not a datetime.datetime subclass.
+    if isinstance(value, neo4j.time.DateTime):
+        return f"datetime('{value.iso_format()}')"
     raise TypeError(f"cypher_literal: unsupported type {type(value).__name__}")
 
 
