@@ -1,23 +1,33 @@
-# After merging PR 25: get 1.7.4 onto this machine
+# After merging PR 26: get 1.7.4 onto this machine
 
-Written 2026-09-29. Merging PR 25 changes nothing on a machine until its plugin is updated:
-hooks load from the plugin cache, one folder per version. Do the steps in order.
+Written 2026-09-29. PR 25 released 1.7.4 but merged before its last two commits; PR 26 carries
+them (the `writ.__version__` fix and this checklist). Merging changes nothing on a machine
+until its plugin is updated: hooks load from the plugin cache, one folder per version. Do the
+steps in order.
+
+Other sessions can keep running through all of it. A running session keeps the hooks it
+loaded at start, and the update leaves the 1.7.3 folder on disk (1.7.2's folder was still
+there after the last update).
 
 ## 1. Merge and update the plugin
 
-- [ ] Merge PR 25: https://github.com/deMallory/writty/pull/25
+- [ ] Merge PR 26: https://github.com/deMallory/writty/pull/26
 - [ ] `claude plugin marketplace update writty`
 - [ ] `claude plugin update writty@writty`
 - [ ] `ls ~/.claude/plugins/cache/writty/writty/` lists `1.7.4` (today: 1.7.0, 1.7.2, 1.7.3)
 
 The marketplace pulls from GitHub, not from this checkout, so no `git pull` is needed first.
 
-## 2. Bootstrap and restart
+## 2. Bootstrap and open a new session
 
-- [ ] `bash ~/.claude/plugins/cache/writty/writty/1.7.4/scripts/bootstrap-plugin.sh`
-- [ ] Restart the daemon: `bash ~/.claude/plugins/cache/writty/writty/1.7.4/scripts/stop-server.sh; bash ~/.claude/plugins/cache/writty/writty/1.7.4/scripts/ensure-server.sh`
+- [ ] While any other session sits idle between prompts: `bash ~/.claude/plugins/cache/writty/writty/1.7.4/scripts/bootstrap-plugin.sh`. It reinstalls the Python package in the environment every session shares (`~/.cache/writ/.venv`), so a hook running mid-install could fail.
 - [ ] `curl -s localhost:8765/health` shows `"status":"healthy"` and `"rule_count":336`
-- [ ] Quit Claude Code, start a new session in this repo
+- [ ] Open a new session in this repo, in another tab. Nothing else needs a restart.
+
+No daemon restart. On this machine the daemon runs from this repo's own `.venv`
+(`writty/.venv/bin/writ serve --port 8765`), whose `writ` package is this checkout, not the
+plugin cache. The plugin update does not change its code. On another machine, check what
+serves port 8765 first ([Service lifecycle](../../../openwiki/operations/service-lifecycle.md)).
 
 ## 3. Live check: the reviewer order (the PR 22 fix)
 
@@ -34,7 +44,7 @@ sent, but the spec review is recorded under the phase.
 
 ## 4. Clean up
 
-- [ ] Ask Claude to switch to an updated `main` and delete `chore/release-1.7.4`, local and remote.
+- [ ] Ask Claude to switch to an updated `main` and delete `chore/release-1.7.4` and `fix/release-1.7.4-leftovers`, local and remote.
 
 ## Not part of this release, still on the list
 
