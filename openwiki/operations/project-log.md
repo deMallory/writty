@@ -17,7 +17,7 @@ Read this first when coming back to the project. "Current state" is what is true
 - Wiki sections left: integrations, then testing. Plan and gate notes: `docs/handoff/openwiki-port/README.md`.
 - Upstream is 146 commits ahead, at release 1.10.1 (re-checked 2026-09-29, merge base `e608659`). Since the merge base it added `writ-output-compress.sh`, next to the fork's `writ-output-rewrite.sh`; how the two overlap is not checked. How to sync: [Upstream sync](upstream-sync.md).
 - Workshop for the dev team around 2026-10-09. The deck fixes are made in the vault, not committed.
-- Resume point: `docs/handoff/replay-and-docs/README.md`. Next: after the plugin update, check the review order live. In Work mode, dispatch `writ-spec-reviewer`, then `writ-code-quality-reviewer`; the second must go through. Then commit the vault.
+- Resume point: `docs/handoff/release-1.7.4/README.md`, the checklist after PR 25 merges: plugin update, restart, then the live review-order check. Then commit the vault; older context in `docs/handoff/replay-and-docs/README.md`.
 
 ## Open threads
 
