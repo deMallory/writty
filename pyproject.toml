@@ -138,7 +138,10 @@ include = ["writ*"]
 # runs an hour apart while the code moved zero. The marker existed and was applied
 # since Item 4, but nothing ever read it, so the gates were running in exactly the
 # environment that makes them unreliable. Run them alone: `make perf`.
-addopts = "-m 'not perf'"
+# tests._log_isolation keeps even `--noconftest` runs out of the operator's log root;
+# pythonpath lets bare `pytest` import it (addopts plugins load before conftest).
+addopts = "-m 'not perf' -p tests._log_isolation"
+pythonpath = ["."]
 markers = [
     "perf: hook latency p95 regression floor tests (Item 4). Deselected by default; run with `make perf`",
     "integration: tests that require a live Claude Code install or external service",
