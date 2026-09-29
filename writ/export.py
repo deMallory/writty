@@ -8,9 +8,11 @@ Per ARCH-SSOT-001: the graph is the canonical source; exported Markdown is deriv
 Per ARCH-ORG-001: export is a separate concern from ingest and retrieval.
 
 The exported format must round-trip through ingest.py without field loss (INV-RT).
-mandatory is written as a metadata line so it survives the round trip; the
-remaining graph-only fields (confidence, evidence, staleness_window,
-last_validated) are excluded from output and re-derived on re-ingest.
+mandatory is written as a metadata line so it survives the round trip. The
+rules.md path and node_to_yaml_frontmatter's default leave GRAPH_ONLY_FIELDS
+out; the full export (export_graph_to_markdown) keeps the authored ones and
+drops only RUNTIME_ONLY_FIELDS, so bible/ rebuilt from the corpus dump
+re-imports to the same graph.
 """
 
 from __future__ import annotations
@@ -47,6 +49,13 @@ GRAPH_ONLY_FIELDS = {
     "last_seen",
     # 0.10: set at write time by the creation path (ingest | graph-authored), never
     # authored in markdown. Excluded from export and from 5.2's field-level parity diff.
+    "source_origin",
+}
+# Written by the runtime, never authored; the full export leaves them out.
+RUNTIME_ONLY_FIELDS = {
+    "times_seen_positive",
+    "times_seen_negative",
+    "last_seen",
     "source_origin",
 }
 
@@ -209,11 +218,15 @@ def rule_to_markdown(rule: dict, edges: list | None = None) -> str:
 
 
 def node_to_yaml_frontmatter(
-    node: dict, edges: list | None = None, node_type: str | None = None
+    node: dict,
+    edges: list | None = None,
+    node_type: str | None = None,
+    exclude: set[str] = GRAPH_ONLY_FIELDS,
 ) -> str:
     """Serialise a methodology node dict to a YAML front-matter Markdown block.
 
-    Emits '---\\n', the node's fields as YAML (excluding GRAPH_ONLY_FIELDS),
+    Emits '---\\n', the node's fields as YAML (excluding `exclude`, by default
+    GRAPH_ONLY_FIELDS),
     an injected 'edges:' key when edges are present (each edge carries its
     target id and edge type), a closing '---', then the node body.
 
@@ -226,9 +239,7 @@ def node_to_yaml_frontmatter(
     node dict takes precedence.
     """
     fields = {
-        k: v
-        for k, v in node.items()
-        if k not in GRAPH_ONLY_FIELDS and k not in ("edges", "body")
+        k: v for k, v in node.items() if k not in exclude and k not in ("edges", "body")
     }
     # 6.1 (D2): provenance is graph-side lineage. Omit the default hand-authored so
     # the ~350-file corpus never churns; emit only a non-default value (graduated),
@@ -411,10 +422,13 @@ async def export_graph_to_markdown(db: Neo4jConnection, output_dir: Path) -> dic
     <output_dir>/methodology/<id>.md via node_to_yaml_frontmatter, with their
     outgoing edges injected into the front-matter. Plain Rules are written via
     the existing domain rules.md path (group_rules_by_file + rule_to_markdown).
+    Abstraction nodes go to <output_dir>/abstractions.json, the only form the
+    importer accepts for them.
 
     Returns:
         {"nodes_exported": int, "edges_exported": int}
     """
+    from writ.graph.methodology_ingest import ARTIFACT_AUTHORED_NODE_TYPES
     from writ.graph.schema import METHODOLOGY_NODE_TYPES, NODE_ID_FIELDS
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -431,10 +445,12 @@ async def export_graph_to_markdown(db: Neo4jConnection, output_dir: Path) -> dic
             {"target": edge.get("target_id"), "type": edge.get("type")}
         )
 
-    nodes_exported = 0
+    nodes_exported = await _export_abstractions_artifact(db, all_edges, output_dir)
     plain_rules: list[dict] = []
 
     for label, id_field in NODE_ID_FIELDS.items():
+        if label in ARTIFACT_AUTHORED_NODE_TYPES:
+            continue
         nodes = await db.get_all_nodes_by_type(label)
         for node in nodes:
             # Drop the internal label key surfaced by get_all_nodes.
@@ -450,7 +466,9 @@ async def export_graph_to_markdown(db: Neo4jConnection, output_dir: Path) -> dic
                 target.parent.mkdir(parents=True, exist_ok=True)
                 edges = edges_by_source.get(node_id)
                 target.write_text(
-                    node_to_yaml_frontmatter(node, edges=edges, node_type=label),
+                    node_to_yaml_frontmatter(
+                        node, edges=edges, node_type=label, exclude=RUNTIME_ONLY_FIELDS
+                    ),
                     encoding="utf-8",
                 )
                 nodes_exported += 1
@@ -472,6 +490,27 @@ async def export_graph_to_markdown(db: Neo4jConnection, output_dir: Path) -> dic
     write_export_timestamp(output_dir)
 
     return {"nodes_exported": nodes_exported, "edges_exported": edges_exported}
+
+
+async def _export_abstractions_artifact(
+    db: Neo4jConnection, all_edges: list[dict], output_dir: Path
+) -> int:
+    """Write every Abstraction node, with its ABSTRACTS targets, to abstractions.json."""
+    from writ.compression.abstractions import write_abstractions_artifact
+
+    nodes = await db.get_all_nodes_by_type("Abstraction")
+    if not nodes:
+        return 0
+    rule_ids: dict[str, list[str]] = {}
+    for edge in all_edges:
+        if edge.get("type") == "ABSTRACTS":
+            rule_ids.setdefault(edge["source_id"], []).append(edge["target_id"])
+    write_abstractions_artifact(
+        [{**n, "rule_ids": rule_ids.get(n["abstraction_id"], [])} for n in nodes],
+        project=nodes[0].get("project", "writ"),
+        artifact_path=output_dir / "abstractions.json",
+    )
+    return len(nodes)
 
 
 def write_export_timestamp(output_dir: Path) -> None:

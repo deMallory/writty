@@ -113,9 +113,9 @@ class TestHooksJsonStructure:
         PostToolUse Write|Edit writ-memory-capture (43 -> 44); the fork ported
         agent-hotswap, sdd-review-order, output-rewrite and bash-failure (44 -> 48)."""
         registrations = _collect_all_registrations(hooks_data)
-        assert len(registrations) == 48, (
+        assert len(registrations) == 49, (
             f"hooks.json registration count drifted; found {len(registrations)}, "
-            f"expected 48. Update this and HANDBOOK if the change is intentional."
+            f"expected 49. Update this and HANDBOOK if the change is intentional."
         )
 
     def test_hooks_json_event_mapping(self, hooks_data: dict) -> None:

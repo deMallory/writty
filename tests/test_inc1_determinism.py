@@ -59,7 +59,10 @@ class TestClassifier:
         assert classify_corpus_state(reachable=True, rule_count=283, subagent_count=0) == "empty"
 
     def test_complete_corpus_is_ready(self) -> None:
-        assert classify_corpus_state(reachable=True, rule_count=283, subagent_count=6) == "ready"
+        assert (
+            classify_corpus_state(reachable=True, rule_count=283, subagent_count=EXPECT_SUBAGENT)
+            == "ready"
+        )
 
     def test_empty_never_classifies_as_unreachable(self) -> None:
         # Regression guard against the FIX-5 masking: empty must never look like 'unreachable'.

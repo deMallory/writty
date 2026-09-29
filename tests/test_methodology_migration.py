@@ -285,7 +285,10 @@ DISPATCHING_PLAYBOOKS = {
         "ROL-EXPLORER-001", "ROL-PLANNER-001",
         "ROL-TEST-WRITER-001", "ROL-IMPLEMENTER-001",
     },
-    "PBK-PROC-SDD-001": {"ROL-IMPLEMENTER-001", "ROL-REVIEWER-001"},
+    "PBK-PROC-SDD-001": {
+        "ROL-IMPLEMENTER-001", "ROL-REVIEWER-001",
+        "ROL-SPEC-REVIEWER-001", "ROL-CODE-QUALITY-REVIEWER-001",
+    },
     "PBK-PROC-REVREQ-001": {"ROL-REVIEWER-001"},
     "PBK-PROC-AUDIT-FANOUT-001": {"ROL-EXPLORER-001"},
     "PBK-PROC-DEBUG-001": {"ROL-EXPLORER-001"},
@@ -302,6 +305,7 @@ SINGLE_SESSION_PLAYBOOKS = {
     "PBK-PROC-DIAGNOSE-CRASH-STACKTRACE-001": "a lens PBK-PROC-DEBUG-001 INVOKES; the dispatch decision belongs to the playbook that invokes it",
     "PBK-PROC-DIAGNOSE-FAILING-TEST-001": "a lens PBK-PROC-DEBUG-001 INVOKES; same reason",
     "PBK-PROC-DIAGNOSE-HEISENBUG-001": "a lens PBK-PROC-DEBUG-001 INVOKES; same reason",
+    "PBK-EDIT-ELENCHUS-001": "a pre-design elenchus method for one session; no sub-agents are dispatched",
 }
 
 
@@ -342,14 +346,17 @@ class TestPlaybookDispatchClassification:
 
 
 class TestRoleCountInvariant:
-    def test_exactly_five_subagent_role_files_on_disk(self) -> None:
-        """No sixth SubagentRole node: E1 corrects ROL-EXPLORER-001 in place
-        (it already holds the read-only runtime lens via its tool grant)
-        rather than introducing a new 'debugger' role."""
+    def test_exactly_seven_subagent_role_files_on_disk(self) -> None:
+        """Seven SubagentRole nodes: the original five (explorer, planner,
+        test-writer, implementer, reviewer) plus the two fork reviewer roles
+        (ROL-SPEC-REVIEWER-001 and ROL-CODE-QUALITY-REVIEWER-001) that were
+        retained rather than merged into ROL-REVIEWER-001."""
         roles = sorted(p.stem for p in METHODOLOGY_DIR.glob("ROL-*.md"))
         assert roles == [
-            "ROL-EXPLORER-001", "ROL-IMPLEMENTER-001", "ROL-PLANNER-001",
-            "ROL-REVIEWER-001", "ROL-TEST-WRITER-001",
+            "ROL-CODE-QUALITY-REVIEWER-001", "ROL-EXPLORER-001",
+            "ROL-IMPLEMENTER-001", "ROL-PLANNER-001",
+            "ROL-REVIEWER-001", "ROL-SPEC-REVIEWER-001",
+            "ROL-TEST-WRITER-001",
         ]
 
 
