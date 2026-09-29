@@ -5,20 +5,24 @@ PR 18. Read this first. It continues `docs/handoff/openwiki-port/README.md`: the
 rules and gate mechanics there still hold, and this file lists only what changed or was
 learned since. Claims were checked on that date. "Not verified" marks the rest.
 
+**Updated 2026-09-29.** Task 1 done and verified live. Task 2 diagnosed, not fixed. Task 3
+done in the vault, not committed. Task 4 not started. The sections below say what each
+found; the original task text is kept where it still guides the next step.
+
 ## Resume point
 
 | What | State | Next |
 |---|---|---|
-| Plugin 1.7.3 (PRs 11 to 18) | In the user-scope cache: `~/.claude/plugins/cache/writty/writty/1.7.3/` has `bin/lib/run-bounded.py`, the read gate, and the `gate_denial` write in `bin/lib/credential_read.py` | Restart Claude Code, then the daemon (task 1) |
-| Live check of the credential audit | Not done | Task 1 |
-| 93 failing tests | Pre-existing: the same 93 on `main` and on the PR 18 branch | Task 2, list in `docs/handoff/verify-1.7.3/failing-tests.txt` |
-| Workshop vault (raggidy) | 9 files modified, 1 new, nothing committed | Task 3, after task 1 |
+| Plugin 1.7.3 (PRs 11 to 18) | Live on this machine: Claude Code and the daemon restarted on 1.7.3 | Install on the workshop machine |
+| Live check of the credential audit | Done: 5 refusals tried, 5 listed by `writ audit-session`, one with the daemon stopped | None |
+| Failing tests | Diagnosed: stale `bible/`, a lossy export, stale test pins, gaps in the dump. `bible/` now rebuilt from the dump. The two reviewer roles stay | Fix PR, see code follow-ups for the order |
+| Live graph (port 7687) | Stale against the dump, and cannot be backed up (`writ export-cypher` crashes) | Fix the export first, see task 2 |
+| Workshop vault (raggidy) | Stale lines fixed from the task 1 result; 9 files modified, 1 new, nothing committed | Commit, ask before pushing |
 | Online deck and sources | Not updated: they live on another claude.ai account | The owner, by hand |
 | Stale writty docs | Listed below, not fixed | Task 4 |
 | Wiki step 2 (integrations, testing), steps 3 and 4 | Not started | See the previous handoff |
 
-The workshop is around 2026-10-09. Task 1 decides what the workshop text says about the
-audit, so do it first.
+The workshop is around 2026-10-09.
 
 ## What landed this session
 
@@ -62,6 +66,28 @@ Each now writes a `gate_denial` row with `rule_id`, `file_path` and `gate`.
 
 ## Task 1: make 1.7.3 live and verify the audit
 
+**Result, 2026-09-28, session `cfb6a27b`.** Done. `writ audit-session` printed:
+
+```
+Gate denials: 5
+  2026-09-28T20:44:22Z  denied: SEC-CREDENTIAL-READ
+  2026-09-28T20:44:22Z  denied: SEC-CREDENTIAL-READ
+  2026-09-28T20:44:23Z  denied: SEC-CREDENTIAL-WRITE
+  2026-09-28T20:44:28Z  denied: SEC-CREDENTIAL-WRITE
+  2026-09-28T20:44:44Z  denied: SEC-CREDENTIAL-WRITE
+```
+
+- The first four are step 4's Read, `cat`, `echo X >>` and Write, in that order.
+- The fifth is the Write with the daemon stopped (step 6). The `can-write` fallback refuses
+  it and writes the `gate_denial` row. The demo review's "silently allowed" claim is wrong.
+- A Bash command touching `/tmp/writ-current-session` (ENF-GATE-STATE) was refused in the
+  same session. It shows as a `gate_decision` row in "Top event types", not under "Gate
+  denials". That is the remaining gap for slide 12, see code follow-ups.
+- The text report has no rule-injection section. `writ audit-session --json <id>` has it,
+  field `rule_loads`.
+
+The steps, kept for the workshop machine:
+
 1. Restart Claude Code. Hooks load from the plugin cache at startup.
 2. Restart the daemon: `bash scripts/stop-server.sh; bash scripts/ensure-server.sh`. The
    Write/Edit refusal runs in the daemon (`writ/session/gates.py`). The one running at hand-off
@@ -82,16 +108,59 @@ Each now writes a `gate_denial` row with `rule_id`, `file_path` and `gate`.
 
 ## Task 2: the 93 failing tests
 
-The same 93 fail on `main` and on the PR 18 branch: the list was replayed on both sides
-before the merge. None is in a file PR 18 touched. The full list is in
-`docs/handoff/verify-1.7.3/failing-tests.txt`; compare against it after any fix.
+**Result, 2026-09-29.** A stale `bible/` caused most of the 93. Rebuilt from the dump, 36
+fail. Nothing is fixed in code yet. Full suite, test graph up, each row a fresh run:
+
+| `bible/` | Failed | Passed | Skipped |
+|---|---|---|---|
+| Old, 2026-09-05 (now at `../writty-bible-aside-20260928`) | 94 | 7 887 | 158 |
+| None | 5 | 7 273 | 861 |
+| Rebuilt from `writ-corpus.cypher` | 49 | 7 932 | 158 |
+| Rebuilt, plus the two fork reviewer roles (current) | 36 | 7 945 | 158 |
+
+- The 94th in the first row is the timing test, see gotchas. It passed in the last run.
+- Without `bible/`, 703 tests skip instead of running. The 5 left are the four known-drift
+  tests below, plus the timing test.
+- The current 36 are in `failing-tests-rebuilt.txt`. All but one were already in the 93;
+  the new one is the TEC pin.
+
+**How `bible/` was rebuilt.** `rebuild_bible.py` (this folder) replays the dump into the test
+graph on 7688, then calls `export_graph_to_markdown`. It refuses any other port, since the
+replay wipes its target. Output: 1 993 statements, 538 nodes, 1 454 edges, 232 files. Then
+`ROL-CODE-QUALITY-REVIEWER-001.md` and `ROL-SPEC-REVIEWER-001.md` were copied back from the
+old folder: the dump (`b0ca5d1`, 2026-09-14) has 5 roles, the fork ships 7 agent files.
+Adding them fixed 17 tests and broke 4. Most of the fork's tests, including the
+self-heal completeness check, expect 7 roles.
+
+**The 36 by cause.**
+
+| Cause | Tests | Fix |
+|---|---|---|
+| Lossy export. `GRAPH_ONLY_FIELDS` (`writ/export.py:39-50`) drops hand-authored fields such as `authority`, `confidence`, `last_validated`. The 62 Abstraction nodes export as `ABS-*.md` files that fail validation, so `import-markdown bible/` fails | 19: `test_import_markdown_unified` (11), `test_methodology_migration` front matter (4), `test_compress_on_ingest` (2), `test_multi_node_ingest`, `test_fix6_corpus_integrity` | Make the full export lossless and skip Abstraction |
+| Two fork roles with no playbook that dispatches them; tests disagree on 5 or 7 roles | 4: `test_fix5_role_coverage` `test_role_is_dispatched_by_a_playbook` (2), `test_methodology_migration` `test_exactly_five_subagent_role_files_on_disk`, `test_graph_integrity_all_types` (orphaned SubagentRole: 2) | Decided 2026-09-29: keep both reviewers, drop nothing. Add a playbook edge that dispatches each, move the 5-pin to 7 |
+| Stale pins | 4: hooks 48 against 49 (`tests/plugin/test_hooks_routing.py`, `test_pol5b4_context_tracker_removed`); TEC files 18 against 21 (`test_inc12_verify_parallel`); PBK-EDIT-ELENCHUS-001 unclassified (`test_methodology_migration`) | Update the pins |
+| Gaps in the dump | 4: `SKL-PROC-PLAN-001 PRECEDES SKL-PROC-EXEC-001` missing (`test_phase1_corrections`); COUNTERS edges to `ANIM-GSAP-*` rules that do not exist (`test_inc2_edge_direction`, 2); `bible/enforcement/reasoning-discipline.md` missing (`test_pol1b_tier_migration`) | Regenerate the dump |
+| Known drift | 2: `test_hook_instrumentation` (read gate), `test_plugin_manifest` (strict warnings) | See single failures below |
+| Cause not read | 3: `test_phase_abstraction_parity` and `test_phase18a_push_by_action` (`run_all_checks` exits 1; both appeared once the two roles were added, so the orphans are the suspect, unproven); `test_phase52a_field_drift` (source-null, graph-non-null not reported as drift) | Read before the fix PR |
+
+**The live graph (7687) is stale too, and cannot be backed up.**
+
+- It lacks ENF-PROC-FIXLOOP-001, TEC-PROC-CONDITION-WAIT-001, TEC-PROC-DEFENSE-DEPTH-001 and
+  TEC-PROC-TEST-POLLUTION-001. It still has the two reviewer roles. Counts on 2026-09-28:
+  Rule 335, Technique 18, SubagentRole 7, Decision 26, Memory 12, Project 2.
+- `writ export-cypher` crashes on it: `TypeError: cypher_literal: unsupported type DateTime`.
+  110 Rule nodes carry a `last_seen` ZONED DATETIME. Upstream has the same code
+  (`writ/graph/dump.py:20`).
+- Do not replay today's dump into it. The replay wipes the graph first, would drop the two
+  roles, and no backup is possible until `cypher_literal` handles DateTime.
 
 **Why the wiki says 4.** `openwiki/operations/project-log.md` counts four red tests. Those runs
 used `--noconftest` on hook and wiki tests only, with the test graph down (inferred from the
 commands used, not proven). The full suite needs the test Neo4j on port 7688:
 `make test-graph-up`. Its container, `writ-test-neo4j`, was still running at hand-off.
 
-**By file.**
+**The original 93, by file** (kept for the record; list in `failing-tests.txt`). They failed
+the same on `main` and on the PR 18 branch.
 
 | Tests | Count | What the failure says |
 |---|---|---|
@@ -121,22 +190,13 @@ missing); `tests/test_phase0_migration_is_not_destructive.py` (CAT-DISC-001 trig
 `tests/test_phase52a_field_drift.py`, `tests/test_pol1b_tier_migration.py` (reasons not
 recorded).
 
-**Two groups.**
+`tests/test_phase51_doc_counts.py:12` also says 48 in its docstring, while its code already
+expects 49 (line 121); it passes.
 
-- Real drift, fix in code or tests: the two 48-pins, the missing `hook_instrument`, the
-  manifest warnings. `tests/test_phase51_doc_counts.py:12` also says 48 in its docstring,
-  while its code already expects 49 (line 121); it passes.
-- Corpus state, most of the rest. Hypothesis, untested: the local corpus sources are stale.
-  `bible/` is gitignored (`.gitignore:58`), its 229 `.md` files date from 2026-09-05, and
-  `writ-corpus.cypher` from 2026-09-14. That explains the tests that read `bible/` files or
-  run `import-markdown bible/`. It does not directly explain the graph ones: on an isolated
-  run, `tests/conftest.py:309-314` warms the test graph from `writ-corpus.cypher`, not
-  `bible/`. And the live graph lacks ENF-PROC-FIXLOOP-001 too (335 rules against 336 in the
-  dump), so an export from the live graph would carry the same gap.
-
-**First step.** Read what `writ export` reads and writes before running it. Back up `bible/`,
-regenerate it, re-run the suite, diff against `failing-tests.txt`. Memory from the 1.7 sync
-says "bible/ untracked, regenerate via writ export".
+**Corrections to the 2026-09-28 notes.** The graph tests did depend on `bible/`: the self-heal
+imports it first when present (see gotchas), so the stale folder also fed the test graph.
+`writ export` cannot regenerate `bible/`: it writes rules only. Memory from the 1.7 sync was
+wrong on that point.
 
 **Not in the 93.** `tests/test_pol5e_hook_noise.py::TestRunPendingTestsBehavior::test_implementation_phase_still_nags`
 is listed as failing in the wiki and in the previous handoff, yet it is absent from the full
@@ -165,23 +225,27 @@ pushing.
   the token.
 - `maj-artefacts-en-ligne.md`: per-slide old and new text for both online artifacts.
 
-**Now stale because 1.7.3 is installed (fix after task 1).**
+**Fixed 2026-09-28 from the task 1 result.**
 
-- `atelier-defi.md:19`: says the read gate is not active on this machine (1.7.2).
-- `atelier-defi.md:53`: says the transcript decides the challenge, not `writ audit-session`,
-  because the hooks log nothing. Wrong even before PR 18: the Write/Edit refusal appeared only
-  as a `write_attempt`, never as a refusal. Rewrite from the task 1 result.
-- `demo-live.md:13`: says the installed copy is 1.7.2 and lacks the fixes.
-- `demo-live.md:28`: the audit step. Check what the timeline really shows.
-- `maj-artefacts-en-ligne.md`, section "À décider avant de republier": it offers two options for
-  slide 12. The first (make Writty log them) is PR 18. Rewrite once task 1 confirms it.
+- `atelier-defi.md`: the summary, line 19 (read gate active on this machine), line 39 (check
+  that the `1.7.3/` cache folder exists), line 53 (`writ audit-session` decides the refusals,
+  five of five listed), line 55 (daemon down is no longer out of scope: Write stays refused).
+- `demo-live.md:13`: set the plugin to 1.7.3 before the rehearsal; lists PRs 11, 12, 15, 18.
+- `demo-live.md:28`, step 5: run the audit in a separate terminal, since Claude is refused on
+  the session file. "Gate denials" lists refusals, "Phase progression" the approvals, and the
+  injected rule is only in `--json`, field `rule_loads`. Approvals were not seen live, only
+  read in the code (`writ/analysis/friction.py:1066-1070`).
+- `demo-live.md:35`: the step 1 refusal reaches the audit, through Write or Bash.
+- `maj-artefacts-en-ligne.md`, "À décider avant de republier": rewritten with the task 1
+  result and a proposal for slide 12.
 
 **Still open.**
 
-- `gardefous.html:24`: "Chaque autorisation et chaque refus est gardé 365 jours." Credential
-  refusals now log. Other Bash-gate refusals (gate state, egress) do not write `gate_denial`,
-  and whether the "plan absent" refusal shown on the same card does is not verified. The 365
-  days were not re-checked this session. Decide: keep "chaque" or soften it.
+- `gardefous.html:24`: "Chaque autorisation et chaque refus est gardé 365 jours." Every
+  refusal seen is kept: credential refusals as `gate_denial`, ENF-GATE-STATE as
+  `gate_decision`. 365 days is `writ/session/log_rotation.py:46`. Only the display lags:
+  `writ audit-session` lists `gate_denial` rows alone. Not verified: that every hook writes a
+  row. Proposal in the vault: keep the text. The owner decides.
 - `fin.html`: the HANDBOOK and `docs/architecture/` columns. No decision yet.
 - Rule-count basis. Slides use the dump: 297 code rules plus 39 editorial (336). The live
   `/health` says 335, with 36 mandatory. `sources-du-deck.md:122` dates the dump figures and
@@ -257,10 +321,13 @@ forwards SIGTERM, SIGHUP, SIGINT. Stdlib only.
 
 ## Code follow-ups
 
-- Log `gate_denial` for the Bash gate's other refusals (gate state, egress), so the audit and
-  slide 12 agree.
+- Log `gate_denial` for the Bash gate's other refusals (gate state, egress), or make
+  `writ audit-session` list denied `gate_decision` rows, so the audit and slide 12 agree.
 - Add `hook_instrument` to `hooks/scripts/writ-read-credential-gate.sh`.
-- Update the 48 pins to 49.
+- The task 2 fix PR, in this order: `cypher_literal` learns DateTime; back up the live graph;
+  give the two reviewer roles a dispatching playbook (they stay, owner's call 2026-09-29);
+  regenerate the dump with them; make the full export lossless; update the stale pins.
+  Details in task 2.
 - The dotfiles repo's project-scope install is pinned at 1.7.0 (`1042412`) and does not follow
   the user-scope one.
 - ruff flags an unused `re` in `tests/test_bash_write_gate.py:21`. Pre-existing on `main`.
@@ -287,6 +354,20 @@ These add to the list in the previous handoff.
 - **ugrep.** A pattern like `.{0,80}` around UTF-8 text hits a complexity limit. Use `grep -F`.
 - **Local `main` lags.** `git fetch origin` before trusting it.
 - **Vault edits.** Read a file before editing it, even an HTML slide.
+- **No `writ export-full`.** A sub-agent claimed it exists; `writ --help` has no such command.
+  `export_graph_to_markdown` (`writ/export.py:407`) exports every node type but has no CLI
+  entry. `writ export` writes rules only.
+- **`import-cypher` wipes its target.** `import_cypher_dump` deletes everything except
+  `RECORD_LABELS` (Memory, Decision, FileChange, Commit, Project;
+  `writ/graph/db/_common.py:47`) before the replay. Never point it at 7687 without a backup.
+- **The test graph self-heals from `bible/` first.** `tests/_corpus.py` `ensure_corpus` does
+  nothing when `is_complete()` is true; otherwise it imports `bible/` if the folder exists,
+  and replays `writ-corpus.cypher` only when it does not. A run on a stale `bible/` leaves a
+  complete but stale test graph, and the next run keeps it. Reset with `rebuild_bible.py`
+  (below) after changing `bible/`.
+- **Moving `bible/` is refused** by the auto-mode classifier as irreversible. Ask the owner.
+- **Timing test.** `tests/test_graph_proximity.py::TestGraphBoostRegression::test_benchmark_suite_still_passes`
+  fails under full-suite load (p95 73 ms against 15 ms) and passes alone.
 
 ## Housekeeping
 
@@ -295,4 +376,8 @@ These add to the list in the previous handoff.
   `fix/session-start-timeout`, `fix/timeout-guard-signal-arg`. Their remote copies too.
 - `plan.md` and `capabilities.md` at the repo root hold the PR 18 plan. Replace them for the
   next task.
-- Stop the test graph when done: `make test-graph-down`.
+- Stop the test graph when done: `make test-graph-down`. Still running on 2026-09-29.
+- The old `bible/` is at `../writty-bible-aside-20260928` (234 files), plus a tarball in the
+  session scratchpad that will not survive. Delete once the fix PR lands, not before.
+- The canary `/tmp/canary/.env` was created with only `FAKE_TOKEN=canary-0000`; every write
+  to it was refused. Delete when done.
