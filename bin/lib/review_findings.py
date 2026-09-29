@@ -8,6 +8,7 @@ ONE module behind three callers, so the parse and the blocking rule cannot drift
   * hooks/scripts/writ-bash-write-gate.sh -- asks before `git commit` while a
     blocking verdict stands.
   * writ/server/routes/session_state.py -- the HTTP surface for both.
+It also owns the review-order flag that writ-sdd-review-order.sh reads, see ORDER_KEY.
 
 WHY A PARSER AND NOT json.loads. agents/writ-reviewer.md ends with "Output JSON
 only. No prose narrative." That is not what the reviewer emits. A real run
@@ -203,10 +204,43 @@ def read_state(session_id: str) -> dict | None:
     return state if isinstance(state, dict) else None
 
 
+# Review ordering (ENF-PROC-SDD-001): writ-sdd-review-order.sh holds the code-quality
+# reviewer until the spec reviewer has finished, and writ-subagent-stop.sh records
+# that it has. Both take the key from review_order_key, so they cannot disagree.
+ORDER_KEY = "review_ordering_state"
+
+
+def review_order_key(cache: dict, task_id: str | None) -> str:
+    """The dispatch's task_id, else the session's active phase, else "default"."""
+    return task_id or cache.get("active_phase") or "default"
+
+
+def spec_review_done(cache: dict, task_id: str | None) -> bool:
+    state = cache.get(ORDER_KEY) or {}
+    entry = state.get(review_order_key(cache, task_id)) or {}
+    return bool(entry.get("spec_reviewer_completed"))
+
+
+def record_spec_review(session_id: str, agent_id: str = "") -> None:
+    """Mark the spec review finished under the session's current key. Same
+    provenance posture as record(): the Bash gate refuses the CLI spelling."""
+    from writ.session.cache import mutate_cache
+
+    with mutate_cache(session_id) as cache:
+        state = cache.get(ORDER_KEY) or {}
+        state[review_order_key(cache, None)] = {
+            "spec_reviewer_completed": True,
+            "agent_id": agent_id,
+            "recorded_at": datetime.now().isoformat(),
+        }
+        cache[ORDER_KEY] = state
+
+
 def _cli() -> int:
     """`review_findings.py record <session_id> [agent_id]` reads the message on
     stdin (hooks pass it that way to keep it off the process table); `check
-    <session_id>` prints the blocking reason and exits 1 when blocking."""
+    <session_id>` prints the blocking reason and exits 1 when blocking; `spec-done
+    <session_id> [agent_id]` marks the spec review finished."""
     args = sys.argv[1:]
     if len(args) >= 2 and args[0] == "record":
         session_id, agent_id = args[1], (args[2] if len(args) > 2 else "")
@@ -220,8 +254,11 @@ def _cli() -> int:
             print(describe(verdict))
             return 1
         return 0
-    print("usage: review_findings.py record <session_id> [agent_id] | check <session_id>",
-          file=sys.stderr)
+    if len(args) >= 2 and args[0] == "spec-done":
+        record_spec_review(args[1], args[2] if len(args) > 2 else "")
+        return 0
+    print("usage: review_findings.py record <session_id> [agent_id] | check <session_id>"
+          " | spec-done <session_id> [agent_id]", file=sys.stderr)
     return 3
 
 

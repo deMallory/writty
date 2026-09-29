@@ -4,6 +4,10 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **The code-quality reviewer can run in Work mode.** `writ-sdd-review-order.sh` refused `writ-code-quality-reviewer` until the session cache said the spec reviewer had finished, and nothing ever wrote that flag, so the refusal was permanent. `writ-subagent-stop.sh` now sets it when `writ-spec-reviewer` stops, through `review_findings.py spec-done`, which also owns the key both hooks use. The Bash gate refuses that subcommand, as it refuses `record`, and the deny message no longer points to a `/review-ordering` route that never existed.
+
 ## [1.7.3] - 2026-09-28
 
 Ships PRs 11 to 17 and the credential audit fix to installed plugins. The plugin cache is keyed by version, and 1.7.2 (`b73c2ed`) predates all of them.

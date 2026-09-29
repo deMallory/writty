@@ -198,7 +198,8 @@ esac
 # DELIBERATELY NARROWER than the state-dir guard above, which refuses any mention of
 # gate state. This file must stay stageable, greppable and committable
 # (`git add bin/lib/review_findings.py` is legitimate and common), so only MUTATING
-# use is refused: the `record` subcommand, or a POST-shaped request to the endpoint.
+# use is refused: the `record` and `spec-done` subcommands, or a POST-shaped request
+# to the endpoint.
 #
 # HONEST LIMIT: this is a command-text check, so it is a confirmation boundary and
 # not containment. An agent that writes an intermediate script and runs that is not
@@ -208,8 +209,8 @@ esac
 case "$CMD" in
     *"review_findings"* | *"review-findings"*)
         if printf '%s' "$CMD" | grep -qE \
-            'review_findings(\.py)?[[:space:]]+record|review-findings.*(POST|--data|-d[[:space:]])'; then
-            RECORD_REASON="[ENF-GATE-STATE] Refusing this Bash command: it writes a reviewer verdict directly. That record is what makes the commit gate fire, so an agent that writes it can clear its own CRITICAL findings, which is exactly the review this gate exists to enforce. Verdicts are recorded by writ-subagent-stop.sh from the reviewer's own output. To clear a block: fix the findings and re-run writ-reviewer. Reading the record is fine (GET, or the Read tool)."
+            'review_findings(\.py)?[[:space:]]+(record|spec-done)|review-findings.*(POST|--data|-d[[:space:]])'; then
+            RECORD_REASON="[ENF-GATE-STATE] Refusing this Bash command: it writes reviewer state directly (a verdict, or the spec-review flag the code-quality reviewer waits for). That record is what makes the commit gate fire, so an agent that writes it can clear its own CRITICAL findings, which is exactly the review this gate exists to enforce. Verdicts are recorded by writ-subagent-stop.sh from the reviewer's own output. To clear a block: fix the findings and re-run writ-reviewer. Reading the record is fine (GET, or the Read tool)."
             log_gate_decision "review-record" "deny" "$RECORD_REASON" ""
             emit_deny "$RECORD_REASON"
             exit 0

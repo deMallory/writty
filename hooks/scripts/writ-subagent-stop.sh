@@ -216,6 +216,17 @@ if [ "${AGENT_TYPE#writ:}" = "writ-reviewer" ] && [ -n "$PARENT_SESSION" ]; then
     fi
 fi
 
+# ENF-PROC-SDD-001: writ-sdd-review-order.sh holds the code-quality reviewer until
+# the spec reviewer has finished. This is the only writer of that flag, against the
+# PARENT session like the verdict above, and just as fire-and-forget.
+if [ "${AGENT_TYPE#writ:}" = "writ-spec-reviewer" ] && [ -n "$PARENT_SESSION" ]; then
+    if ! python3 "$WRIT_DIR/bin/lib/review_findings.py" spec-done \
+            "$PARENT_SESSION" "$AGENT_ID" >/dev/null 2>&1; then
+        log_friction_event "$PARENT_SESSION" "" "review_order_record_failed" \
+            "{\"hook\":\"writ-subagent-stop\",\"agent_id\":\"$AGENT_ID\"}"
+    fi
+fi
+
 # Read the agent's session cache for summary metrics
 CACHE=$(_writ_session read "$AGENT_ID" 2>/dev/null || echo '{}')
 
