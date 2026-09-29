@@ -19,7 +19,7 @@ from tests._writ_cmd import WRIT_CMD_PREFIX
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Complete-corpus expectations; kept in step with the bible/ corpus.
-EXPECTED = {"SubagentRole": 5, "Playbook": 15, "Skill": 13, "Phase": 20}
+EXPECTED = {"SubagentRole": 7, "Playbook": 15, "Skill": 13, "Phase": 20}
 MIN_RULES = 280
 
 _LABELS = [

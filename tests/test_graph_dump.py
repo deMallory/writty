@@ -7,6 +7,7 @@ tests below it are pure functions and need no database.
 from __future__ import annotations
 
 import re
+from datetime import timezone
 
 import pytest
 import pytest_asyncio
@@ -91,6 +92,28 @@ class TestCypherLiteral:
     def test_renders_list_of_strings(self) -> None:
         assert cypher_literal(["a", "b"]) == "['a', 'b']"
 
+    def test_renders_datetime_as_iso_function(self) -> None:
+        """A neo4j.time.DateTime must render as `datetime('<iso>')`.
+
+        RED: cypher_literal raises TypeError on DateTime until the
+        neo4j.time.DateTime branch is added to the implementation.
+        """
+        import neo4j.time  # noqa: PLC0415
+
+        dt = neo4j.time.DateTime(2026, 9, 28, 20, 41, 58, 840000000, tzinfo=timezone.utc)
+        assert cypher_literal(dt) == "datetime('2026-09-28T20:41:58.840000000+00:00')"
+
+    def test_renders_list_containing_datetime(self) -> None:
+        """A list whose element is a neo4j.time.DateTime must render as
+        `[datetime('...')]`: the list path delegates to cypher_literal recursively.
+
+        RED: fails until the DateTime branch exists (the recursive call raises).
+        """
+        import neo4j.time  # noqa: PLC0415
+
+        dt = neo4j.time.DateTime(2026, 9, 28, 20, 41, 58, 840000000, tzinfo=timezone.utc)
+        assert cypher_literal([dt]) == "[datetime('2026-09-28T20:41:58.840000000+00:00')]"
+
 
 class TestRenderCypherDump:
     def _node(self, id_: str, label: str, **props: object) -> dict:
@@ -130,6 +153,20 @@ class TestRenderCypherDump:
         cleanup = "MATCH (n) WHERE n._dump_id IS NOT NULL REMOVE n._dump_id;"
         assert script.count(cleanup) == 1
         assert script.rstrip().endswith(cleanup)
+
+    def test_renders_datetime_prop_in_create_statement(self) -> None:
+        """render_cypher_dump on a node whose props include a neo4j.time.DateTime
+        must emit a CREATE line containing `datetime('...')`.
+
+        RED: render_cypher_dump calls cypher_literal which raises TypeError on
+        DateTime until the DateTime branch is added.
+        """
+        import neo4j.time  # noqa: PLC0415
+
+        dt = neo4j.time.DateTime(2026, 9, 28, 20, 41, 58, 840000000, tzinfo=timezone.utc)
+        nodes = [{"id": "R-DT-1", "label": "Rule", "props": {"rule_id": "R-DT-1", "last_seen": dt}}]
+        script = render_cypher_dump(nodes, [])
+        assert "datetime('2026-09-28T20:41:58.840000000+00:00')" in script
 
     def test_output_is_deterministic_regardless_of_input_order(self) -> None:
         nodes_a = [self._node("R-2", "Rule", rule_id="R-2"), self._node("R-1", "Rule", rule_id="R-1")]

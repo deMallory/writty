@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from writ.graph.ingest import parse_edges_from_file
+
 from tests._bible_guard import requires_bible
 
 pytestmark = requires_bible
@@ -80,13 +82,23 @@ class TestPlanPrecedesExec:
     """1.3a: PLAN precedes EXEC, not the reverse."""
 
     def test_exec_does_not_precede_plan(self) -> None:
-        text = _read("SKL-PROC-EXEC-001")
-        assert "target: SKL-PROC-PLAN-001, type: PRECEDES" not in text, (
+        # Parse edges: the export writes each edge as a two-line YAML block.
+        edges = parse_edges_from_file(BIBLE / "SKL-PROC-EXEC-001.md")
+        reversed_edge = any(
+            e.get("target") == "SKL-PROC-PLAN-001" and e.get("type") == "PRECEDES"
+            for e in edges
+        )
+        assert not reversed_edge, (
             "SKL-PROC-EXEC-001 still declares `PRECEDES SKL-PROC-PLAN-001` (reversed)"
         )
 
     def test_plan_precedes_exec(self) -> None:
-        text = _read("SKL-PROC-PLAN-001")
-        assert "target: SKL-PROC-EXEC-001, type: PRECEDES" in text, (
+        # Parse edges: the export writes each edge as a two-line YAML block.
+        edges = parse_edges_from_file(BIBLE / "SKL-PROC-PLAN-001.md")
+        has_edge = any(
+            e.get("target") == "SKL-PROC-EXEC-001" and e.get("type") == "PRECEDES"
+            for e in edges
+        )
+        assert has_edge, (
             "missing the corrected `SKL-PROC-PLAN-001 PRECEDES SKL-PROC-EXEC-001` edge"
         )
