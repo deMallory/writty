@@ -93,6 +93,19 @@ def defect_caught(task: dict, run_repo: str, transcript_path: str,
             "detail": verdict.get("reason", "")}
 
 
+def _reconciliation_fields(rec: dict) -> dict:
+    """Additive A/B row fields from the card's cost-state reconciliation; all None when
+    cost-state is absent. delta_pct is delta / cc_total_usd * 100, None when cc is absent or
+    zero."""
+    if not rec.get("present"):
+        return {"cc_total_usd": None, "reconciliation_delta_usd": None,
+                "reconciliation_delta_pct": None, "reconciliation_scope": None}
+    cc, delta = rec.get("cc_total_usd"), rec.get("delta_usd")
+    pct = delta / cc * 100 if cc and delta is not None else None
+    return {"cc_total_usd": cc, "reconciliation_delta_usd": delta,
+            "reconciliation_delta_pct": pct, "reconciliation_scope": rec.get("scope")}
+
+
 def score_run(task: dict, run_result: dict, variant_name: str,
               friction_path: str | None, judge_fn=None, model: str = "claude-opus-4-8") -> dict:
     """Score one run: TOTAL cost via the reused scorecard() + defect/clean outcome."""
@@ -101,7 +114,11 @@ def score_run(task: dict, run_result: dict, variant_name: str,
     card = token_audit.scorecard(tpath, friction_path, model)
     out = {"task_id": task["task_id"], "arm": task["arm"], "variant": variant_name,
            "total_cost": card["measured"]["total_cost"], "total_usd": card["measured"]["total_usd"],
-           "result_usd": run_result.get("result_usd"), "transcript": tpath}
+           "result_usd": run_result.get("result_usd"), "transcript": tpath,
+           "session_usd": card["session"]["total_usd"],
+           "session_partial": card["session"]["partial"],
+           "session_dispatch_coverage": card["dispatch_coverage"]["summary"],
+           **_reconciliation_fields(card["reconciliation"])}
     if task["arm"] == "defect":
         out["defect"] = defect_caught(task, run_result.get("run_repo", ""), tpath,
                                       friction_path, judge_fn)

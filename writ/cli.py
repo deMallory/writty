@@ -252,7 +252,8 @@ def audit_session(
 def token_audit(
     transcript: str = typer.Argument(..., help="Path to a Claude Code transcript jsonl."),
     friction: str = typer.Option(None, help="Optional workflow-friction.log for Writ attribution."),
-    model: str = typer.Option("claude-opus-4-8", help="Model id for USD conversion / weights."),
+    model: str = typer.Option(
+        None, help="Fallback model id, used only for responses whose record carries no model"),
     as_json: bool = typer.Option(False, "--json", help="Emit the scorecard as JSON."),
 ) -> None:
     """FOOTPRINT observer (WRIT-TOKEN-BLUEPRINT P0): per-session token COST from a CC transcript.

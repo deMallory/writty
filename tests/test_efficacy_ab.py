@@ -584,3 +584,113 @@ class TestCli:
         empty_suite.mkdir()
         result = CliRunner().invoke(app, ["efficacy-ab", str(empty_suite)])
         assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# TestScoreRunSessionFields -- additive session_* fields (token-audit tree)
+# ---------------------------------------------------------------------------
+
+class TestScoreRunSessionFields:
+    def _score(self, ab, monkeypatch, tpath: Path, tmp_path: Path) -> dict:
+        monkeypatch.setattr(ab, "locate_transcript", lambda sid: str(tpath))
+        task = {"task_id": "tree", "arm": "defect", "catching_rule_id": "R-TREE"}
+        run_result = {"session_id": "fake-uuid-tree", "run_repo": str(tmp_path)}
+        return ab.score_run(task=task, run_result=run_result, variant_name="writ-on",
+                            friction_path=None, judge_fn=None, model="claude-opus-4-8")
+
+    def test_e2e_tree_keeps_main_fields_and_adds_session_fields(self, tmp_path: Path, monkeypatch):
+        from tests.fixtures.token_audit_helpers import write_e2e_tree
+        ab = _ab()
+        tpath = write_e2e_tree(tmp_path)
+        out = self._score(ab, monkeypatch, tpath, tmp_path)
+
+        assert "total_cost" in out
+        assert out["total_usd"] == pytest.approx(0.194)
+        assert out["session_usd"] == pytest.approx(0.283)
+        assert out["session_partial"] is False
+        assert out["session_dispatch_coverage"] == "2/2 dispatches accounted"
+
+    def test_session_fields_are_read_from_the_card(self, tmp_path: Path, monkeypatch):
+        from tests.fixtures.token_audit_helpers import write_e2e_tree
+        ab = _ab()
+        token_audit = importlib.import_module("writ.analysis.token_audit")
+        tpath = write_e2e_tree(tmp_path)
+        out = self._score(ab, monkeypatch, tpath, tmp_path)
+        card = token_audit.scorecard(str(tpath), None, "claude-opus-4-8")
+        assert out["session_usd"] == card["session"]["total_usd"]
+        assert out["session_partial"] == card["session"]["partial"]
+        assert out["session_dispatch_coverage"] == card["dispatch_coverage"]["summary"]
+        assert out["total_cost"] == pytest.approx(card["measured"]["total_cost"])
+
+    def test_missing_subagent_transcript_gives_priced_floor_and_partial(
+            self, tmp_path: Path, monkeypatch):
+        from tests.fixtures.token_audit_helpers import (
+            agent_tool_use, response_records, tool_result_record, usage, write_session_tree,
+        )
+        ab = _ab()
+        main_records = (
+            response_records("msg_m1", "claude-opus-5-5",
+                             usage(inp=1000, out=500, read=0, write=0),
+                             n_records=2,
+                             tool_uses=[agent_tool_use("toolu_A", "writ-explorer"),
+                                        agent_tool_use("toolu_Z", "writ-planner")])
+            + [tool_result_record("toolu_A", "aaa"), tool_result_record("toolu_Z", "zzz")]
+        )
+        subagents = {"aaa": {
+            "records": response_records("msg_a1", "claude-sonnet-5-5",
+                                        usage(inp=1000, out=1000, read=0, write=0)),
+            "meta": {"agentType": "writ-explorer", "toolUseId": "toolu_A", "spawnDepth": 1},
+        }}   # no agent-zzz.jsonl on disk
+        tpath = write_session_tree(tmp_path, "sess-partial", main_records, subagents)
+        out = self._score(ab, monkeypatch, tpath, tmp_path)
+
+        main_usd = (1000 * 4 + 500 * 20) / 1e6            # 0.014
+        aaa_usd = (1000 * 2 + 1000 * 10) / 1e6            # 0.012
+        assert out["total_usd"] == pytest.approx(main_usd)
+        assert out["session_usd"] == pytest.approx(main_usd + aaa_usd)
+        assert out["session_partial"] is True
+        assert out["session_dispatch_coverage"] == "1/2 dispatches accounted"
+
+    def test_transcript_without_subagents_session_equals_main(self, tmp_path: Path, monkeypatch):
+        ab = _ab()
+        tpath = _write_transcript(tmp_path / "t.jsonl", [_usage(inp=200, out=20, read=0, write=0)],
+                                  model="claude-opus-4-8")
+        out = self._score(ab, monkeypatch, tpath, tmp_path)
+        assert out["session_usd"] == pytest.approx(out["total_usd"])
+        assert out["session_partial"] is False
+
+    # --- reconciliation fields (additive) ----------------------------------
+
+    def _e2e_with_state(self, tmp_path: Path, total_usd: float) -> Path:
+        from tests.fixtures.token_audit_helpers import cost_state_record, write_e2e_tree
+        tpath = write_e2e_tree(tmp_path)
+        # per-model tokens equal the e2e main thread, so the derived scope is main_only
+        state = cost_state_record(total_usd, {"claude-opus-5-5": {
+            "usd": total_usd, "input": 1500, "output": 3000, "cache_read": 300000,
+            "cache_write": 10000}})
+        with open(tpath, "a") as f:
+            f.write(json.dumps(state) + "\n")
+        return tpath
+
+    def test_reconciliation_fields_when_cost_state_present(self, tmp_path: Path, monkeypatch):
+        ab = _ab()
+        out = self._score(ab, monkeypatch, self._e2e_with_state(tmp_path, 0.3), tmp_path)
+        assert out["cc_total_usd"] == pytest.approx(0.3)
+        assert out["reconciliation_delta_usd"] == pytest.approx(0.283 - 0.3)
+        assert out["reconciliation_delta_pct"] == pytest.approx((0.283 - 0.3) / 0.3 * 100)
+        assert out["reconciliation_scope"] == "main_only"
+        assert out["session_usd"] == pytest.approx(0.283)
+
+    def test_reconciliation_pct_none_when_cc_total_is_zero(self, tmp_path: Path, monkeypatch):
+        ab = _ab()
+        out = self._score(ab, monkeypatch, self._e2e_with_state(tmp_path, 0.0), tmp_path)
+        assert out["cc_total_usd"] == 0.0
+        assert out["reconciliation_delta_pct"] is None
+
+    def test_reconciliation_fields_none_when_cost_state_absent(self, tmp_path: Path, monkeypatch):
+        from tests.fixtures.token_audit_helpers import write_e2e_tree
+        ab = _ab()
+        out = self._score(ab, monkeypatch, write_e2e_tree(tmp_path), tmp_path)
+        for key in ("cc_total_usd", "reconciliation_delta_usd", "reconciliation_delta_pct",
+                    "reconciliation_scope"):
+            assert key in out and out[key] is None, key
