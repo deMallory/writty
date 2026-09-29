@@ -89,7 +89,7 @@ Writty runs Neo4j 5 in Docker (`docker-compose.yml`). The database is the canoni
 
 Neo4j is the store. Startup copies the edges the librarian needs into the neighbor table in `writ/retrieval/traversal.py`, and a prompt reads that table. Authoring, validation, and the graph explorer talk to Neo4j directly: those paths are rare, and they need the live graph.
 
-What the nodes and edges are: [Rule graph](rule-graph.md). The field-by-field contract: `docs/reference/graph-schema.md`.
+What the nodes and edges are: [Rule graph](rule-graph.md). The field-by-field contract: `docs/reference/graph-schema.md`. The library, taught with a query you can reuse: [Neo4j](neo4j.md).
 
 ## Tantivy and BM25
 
@@ -97,7 +97,7 @@ BM25 is the formula search engines have used for decades to score a document aga
 
 Tantivy is a full-text engine written in Rust, used here through its Python package (`tantivy` in `pyproject.toml`). `writ/retrieval/keyword.py` builds an in-memory index at every service start. The trigger, the condition that should fire the rule, counts double. The body, which is long, counts half, so an explanation does not drown the trigger. A query the parser rejects yields zero keyword hits, and the vector stage still runs.
 
-This stage is how a prompt that names a technology finds the rule that names it too.
+This stage is how a prompt that names a technology finds the rule that names it too. The library, taught with a three-sentence index: [Tantivy and BM25](tantivy.md).
 
 ## ONNX
 
@@ -105,7 +105,7 @@ Comparing meaning needs a sentence turned into a vector: here, 384 numbers. Two 
 
 The model is `all-MiniLM-L6-v2`, a small public sentence model. Writty runs a frozen copy of it with ONNX Runtime (`onnxruntime` in `pyproject.toml`). ONNX is the file format. ONNX Runtime is the program that executes a file in that format, without the training framework. `scripts/export_onnx.py` produces the file; the service loads it from the user cache through `writ/retrieval/embeddings.py`.
 
-Rules are encoded when the index is built. The prompt is encoded when it arrives, and repeated prompts hit a small cache. That encoding is the only model work on the hot path.
+Rules are encoded when the index is built. The prompt is encoded when it arrives, and repeated prompts hit a small cache. That encoding is the only model work on the hot path. The model, taught with a cosine you can reproduce: [ONNX embeddings](onnx.md).
 
 ## hnswlib
 
@@ -113,7 +113,7 @@ With a few hundred vectors, comparing the prompt to every rule is cheap. The sta
 
 The index is saved under the user cache, with a hash of the rule text beside it. Unchanged text means the next start skips the encode. A hash or checksum mismatch forces a rebuild, so a torn file is never served as if it were the corpus.
 
-The walk is approximate: it can miss a true neighbor. The keyword stage still catches an exact term the walk skipped. The two stages exist so each covers a failure of the other.
+The walk is approximate: it can miss a true neighbor. The keyword stage still catches an exact term the walk skipped. The two stages exist so each covers a failure of the other. The index, taught with a four-vector example: [hnswlib](hnswlib.md).
 
 ## The six cross-language passes
 
@@ -164,6 +164,7 @@ Those counts move. The dump you have checked out states its own totals in the he
 
 ## Where to go next
 
+- [Neo4j](neo4j.md), [Tantivy and BM25](tantivy.md), [ONNX embeddings](onnx.md), [hnswlib](hnswlib.md): one lesson each, with an example you can lift into another project.
 - [Quickstart](../quickstart.md): install, and a first gated task.
 - [Retrieval](retrieval.md): the ranked pipeline, abstention, and the mandatory floor.
 - [Work gates and approvals](../workflows/work-gates.md): the two approvals and the token.
