@@ -50,7 +50,7 @@ EXPECTED_FILE_COUNTS = {
     "PBK": 16,  # Playbooks (+3 debug-mode Increment 3: PBK-PROC-DIAGNOSE-*; +1 INV-3: PBK-PROC-RESEARCH-001; +1 INV-6a: PBK-PROC-AUDIT-FANOUT-001)
     "SKL": 16,  # Skills (+1 INC-5: SKL-PROC-INVESTIGATE-001; +1 INC-7: SKL-PROC-TDD-DESIGN-FEEDBACK-001; +1 INC-11: SKL-PROC-METHODOLOGY-CHECK-001; +1 Phase3: SKL-PROC-DISPATCH-001; +1 Phase0: SKL-PROC-DEBUG-001; +1 2026-08-05: SKL-PROC-WRIT-DIAGNOSIS-001, the first ai-provisional node) -- INC-9 enriched existing SKL-PROC-REVRECV-001, no new node
     "ANT": 22,  # AntiPatterns (+1 INC-2: ANT-PROC-FINISH-001; +1 INC-7: ANT-PROC-TDD-006; +1 INC-10: ANT-PROC-WORKTREE-001; +1 2026-08-08: ANT-PROC-TDD-007, the absence claim whose search never reached the code)
-    "ROL": 7,   # SubagentRoles (explorer, planner, test-writer, implementer, reviewer) -- spec-reviewer + code-quality-reviewer merged into ROL-REVIEWER-001
+    "ROL": 7,   # SubagentRoles (explorer, planner, test-writer, implementer, reviewer, spec-reviewer, code-quality-reviewer)
     "FRB": 2,   # ForbiddenResponses
     "PHA": 25,  # Phases (+11 INC-4: PHA-WORK/ORCH/FANOUT)
     "RAT": 4,   # Rationalizations (+1 INC-11: RAT-PROC-SKILLCHECK-001)
