@@ -1,8 +1,8 @@
 # ADR: Session and project isolation, and a tripwire for the external cause
 
 Status: accepted in part (session and project isolation cycle, 2026-08-11). Parts 1
-through 4b are landed; Part 5 (Memory audit) and Part 6 (automatic mode routing) are
-PENDING and are named as such at the end of this record.
+through 5 are landed (Part 5, the Memory audit, is Decision 10); Part 6 (automatic mode
+routing) is PENDING and is named as such at the end of this record.
 
 ## Context
 Two symptoms opened this cycle. First, one Claude Code session read another's state:
@@ -450,8 +450,8 @@ detector exists so the condition is visible before it costs a body.
 
 ## Pending
 ONE part of this cycle has NOT been implemented, and nothing above should be read as covering
-it. (Part 5 is now implemented and its result is recorded in Decision 10; the repair of the one
-orphan it found is deliberately NOT done and remains a separate data cycle.)
+it. (Part 5 is now implemented and its result is recorded in Decision 10; the audit repairs
+nothing, and the one orphan it found was later cleared by hand, see the UPDATE in Decision 10.)
 
 - Part 6, automatic mode routing, is not written. It will decide which of six discriminable
   mechanisms explains the other project's manual mode setting, and therefore whether the fix

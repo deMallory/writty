@@ -15,10 +15,10 @@ subject`, one line that says why. This overrides the French rule in
 
 | What | State | Next |
 |---|---|---|
-| `main` | `13c6e36`: PRs 21 and 22 merged, their branches deleted here and on GitHub | None |
+| `main` | `0717265`: PRs 21 to 23 merged | None |
 | Installed plugin | 1.7.3. `main` still says 1.7.3, so PRs 21 and 22 are not live | Task C |
-| Live graph (port 7687) | Stale against the dump: `/health` says 335 rules, the dump has 336 | Task A, the owner's call |
-| Stale writty docs | Not fixed | Task B |
+| Live graph (port 7687) | Done 2026-09-29: replayed, matches the dump in content | None |
+| Stale writty docs | Done 2026-09-29 on `docs/stale-docs` | Merge its PR, then task C |
 | Workshop vault (raggidy) | 9 files modified, 1 new, uncommitted; last commit `14fbc8c` | Task D |
 | Test graph (port 7688) | `writ-test-neo4j` running | `make test-graph-down` when done |
 
@@ -39,6 +39,17 @@ under load (see gotchas).
 
 ## Task A: replay the dump into 7687
 
+**Done 2026-09-29.** Backup before: `../writty-live-backup-20260929-pre-replay.cypher` (536
+nodes, 1,435 edges). A content diff, blind to property order, found nothing only in 7687: the 84
+live values that differed each matched an older committed dump. The owner ran steps 3 and 4.
+Export after: `../writty-live-post-replay-20260929.cypher`, 0 node, property or edge
+differences against `writ-corpus.cypher`, compared blind to property order (the order differs
+on 468 lines). `/health`: 336 rules, 36 mandatory. It counts from
+Neo4j on each request (`writ/server/routes/query.py:524`), so it shows the replay even before
+the restart. Its route census lost `ride_along` 1 and `scoped` 4, and `pull` went from 3 to 4:
+expected, since `a0dcb35` changed those Category routes in the dump. Counters reset:
+`last_seen` and `times_seen_positive` on 119 nodes each.
+
 **Why.** The live graph lacks 4 nodes the dump has: ENF-PROC-FIXLOOP-001,
 TEC-PROC-CONDITION-WAIT-001, TEC-PROC-DEFENSE-DEPTH-001, TEC-PROC-TEST-POLLUTION-001.
 
@@ -49,7 +60,7 @@ TEC-PROC-CONDITION-WAIT-001, TEC-PROC-DEFENSE-DEPTH-001, TEC-PROC-TEST-POLLUTION
 **Warning.** `writ import-cypher` takes no target option. It connects to `WRIT_NEO4J_URI`, else
 `writ.toml`, else `bolt://localhost:7687` (`writ/config.py:171`). With nothing set, it hits the
 live graph. The wipe guard does not stop it: that guard fires only when nothing is preserved
-(`writ/graph/db/maintenance_store.py:37`), and the replay preserves records.
+(`writ/graph/db/maintenance_store.py:38`), and the replay preserves records.
 
 **Steps.** Claude never writes to 7687; the owner runs steps 3 and 4.
 
@@ -75,13 +86,19 @@ live graph. The wipe guard does not stop it: that guard fires only when nothing 
 
 ## Task B: stale docs
 
+**Done 2026-09-29** on `docs/stale-docs`. One correction to the older handoff: a failed
+validation does spend the token (`writ/server/routes/gate.py:173`), so `HANDBOOK.md` was right
+and the handoff was wrong. The hook-code items from that list moved to the open threads of
+`openwiki/operations/project-log.md`.
+
 The list is task 4 of `docs/handoff/verify-1.7.3/README.md`. Two additions from today:
 
 - `openwiki/operations/project-log.md` must now cover PRs 21 and 22, and the suite state above.
 - In that older handoff, the "Code follow-ups" entry on `writ-sdd-review-order.sh` is done
   (PR 22), and its resume table is superseded by this file.
 
-One doc-only PR. Every `*.md` file passes the write gate in any phase.
+One doc-only PR. Once a mode is set, every `*.md` file passes the write gate in any phase. With
+no mode set, the gate refuses every write, `*.md` included (`ENF-GATE-MODE`).
 
 ## Task C: release 1.7.4
 
@@ -105,11 +122,13 @@ older handoff. The workshop machine needs the plugin update too.
 ## Code follow-ups still open
 
 - Sort property keys in `_render_props`: an export from 7687 reorders most lines of the dump.
-- The RULE-START import resets rule `confidence`, `authority`, `evidence` and
-  `last_validated` (`writ/graph/ingest.py:168-175`).
-- `ROL-REVIEWER-001` still says it "replaces the separate reviewers".
+- The RULE-START import overwrites the runtime and provenance fields of a rule; the full list
+  is in the project log's open threads.
+- `ROL-REVIEWER-001` and `agents/writ-reviewer.md` still say "Replaces the separate
+  spec/code-quality reviewers."
 - `test_plugin_manifest`: the exec form of the hook commands, its own PR.
-- `gate_denial` rows for the Bash gate's other refusals, so `writ audit-session` lists them.
+- `gate_denial` rows for the Bash gate's state-dir, review-record, state-file and strict-mode
+  refusals, so `writ audit-session` lists them.
 - The review-order flag is never cleared. By design: one spec review unlocks the phase, and a
   new phase gets a new key.
 - The dotfiles project-scope install is pinned at 1.7.0.

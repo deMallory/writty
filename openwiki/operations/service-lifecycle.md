@@ -66,11 +66,9 @@ With the unit installed, stay on `systemctl`. `scripts/stop-server.sh` stops the
 
 ## Logs
 
-- **Daemon output.** The first that applies: `$WRIT_LOG`, `$WRIT_LOG_ROOT/server.log`, `$CLAUDE_PLUGIN_DATA/server.log` when a plugin hook started it, then `~/.cache/writ/logs/server.log` (`writ_default_server_log` in `scripts/lib/writ-server-lib.sh`). Under the systemd unit it goes to the journal.
+- **Daemon output.** The first that applies: `$WRIT_LOG`, `$WRIT_LOG_ROOT/server.log`, `${CLAUDE_PLUGIN_DATA:-~/.cache/writ}/server.log` when a plugin hook started it, then `~/.cache/writ/logs/server.log` (`writ_default_server_log` in `scripts/lib/writ-server-lib.sh`). Under the systemd unit it goes to the journal.
 - **Typed streams.** Audit, friction, metrics and errors, one file each under `~/.cache/writ/logs/<project>/` (`stream_path` in `writ/shared/logging.py`). `WRIT_LOG_ROOT` moves the root. Read them with `writ logs tail`, `writ logs stats` and `writ logs list`. What each stream holds: `docs/reference/logging.md`.
 - **Rotation.** A stream rotates at 50 MB when written. The daily sweep (gzip, prune by retention) runs from the systemd timer on Linux; on macOS run `writ logs rotate` yourself.
-
-`HANDBOOK.md` section 18 still places the streams under `<install>/var/logs/`. Since 1.7.2 the code writes them under `~/.cache/writ/logs`.
 
 ## Neo4j
 
