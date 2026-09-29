@@ -19,6 +19,7 @@ Ships PRs 21 and 22 to installed plugins, with the wiki and doc updates of PRs 1
 - **A `bible/` rebuilt from the dump imports again.** The full export (`export_graph_to_markdown`) dropped authored fields (`authority`, `confidence`, `last_validated`, `evidence`, `staleness_window`) and wrote the 62 Abstraction nodes as `ABS-*.md` files that the importer rejects. It now drops only the runtime fields (`times_seen_*`, `last_seen`, `source_origin`) and writes Abstractions to `abstractions.json`. `node_to_yaml_frontmatter` keeps its default, so promotion output is unchanged.
 - **The read gate records a `hook_execution` row under the caller's session.** `bin/lib/credential_read.py` prints the caller's identity on its first line, so the gate needs no second Python start.
 - **The code-quality reviewer can run in Work mode.** `writ-sdd-review-order.sh` refused `writ-code-quality-reviewer` until the session cache said the spec reviewer had finished, and nothing ever wrote that flag, so the refusal was permanent. `writ-subagent-stop.sh` now sets it when `writ-spec-reviewer` stops, through `review_findings.py spec-done`, which also owns the key both hooks use. The Bash gate refuses that subcommand, as it refuses `record`, and the deny message no longer points to a `/review-ordering` route that never existed.
+- **`writ.__version__` reports the release again.** It still said 1.7.1 in 1.7.2 and 1.7.3, because no test read it. `tests/test_version_consistency.py` now checks it with the manifests.
 
 ## [1.7.3] - 2026-09-28
 
