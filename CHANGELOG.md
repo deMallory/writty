@@ -4,6 +4,10 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-09-29
+
+Ships PRs 21 and 22 to installed plugins, with the wiki and doc updates of PRs 19, 20, 23 and 24. The plugin cache is keyed by version, and 1.7.3 was cut at `4540ba7`, before all of them.
+
 ### Changed
 
 - **`PBK-PROC-SDD-001` dispatches the two split reviewer roles.** `ROL-SPEC-REVIEWER-001` and `ROL-CODE-QUALITY-REVIEWER-001` ship as fork agents and sit in the live graph, but no playbook dispatched them and `writ-corpus.cypher` lacked them. The dump now carries both, each with a DISPATCHES edge from the playbook and a BELONGS_TO edge to `CAT-PROC-DISPATCH-001`. The playbook names them as the split alternative to `writ-reviewer`, spec pass first.
