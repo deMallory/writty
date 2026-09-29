@@ -21,7 +21,7 @@ stateDiagram-v2
 | Phase | Gate to leave it | What the gate checks |
 |---|---|---|
 | `planning` | `phase-a` | `plan.md` has Files, Analysis, Rules Applied and Capabilities sections, and every rule id it cites was really loaded this session |
-| `testing` | `test-skeletons` | a test file with real assertions exists |
+| `testing` | `test-skeletons` | a test file with a test method exists (`_validate_test_skeletons` in `writ/session/approval_workflow.py`). Assertions are checked later, on a source write, by `hooks/scripts/validate-test-file.sh` |
 | `implementation` | none | source writes flow; `plan.md` is locked |
 
 Some files stay writable in every phase: tests, migrations, Markdown and the other patterns under `exclusions` in `bin/lib/gate-categories.json`. Secret files (`.env`, keys) are refused in every mode, whatever the phase.

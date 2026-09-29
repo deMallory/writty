@@ -86,4 +86,4 @@ Another library (faiss, a vector database, a SQL extension) is the same algorith
 
 - [The core stack](core-stack.md): how the walk joins the keyword stage and the neighbor table.
 - [ONNX embeddings](onnx.md): where the vectors come from.
-- [Retrieval](retrieval.md): how a neighbor becomes a rule in the prompt.
+- [Retrieval](retrieval.md): how a neighbor reorders a rule the searches already found.

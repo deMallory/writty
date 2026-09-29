@@ -23,13 +23,13 @@ Read this page to learn the stack. The exact contracts live in the pages it link
 | hnswlib | Finds the rules whose numbers are closest to the prompt |
 | Regex passes | Scan a file for patterns a rule forbids, in any language |
 
-When the service starts it reads Neo4j once and builds three in-memory structures: a Tantivy index, a vector index, and a table of each rule's neighbors. A prompt reads those. After that, picking rules is arithmetic.
+When the service starts it reads Neo4j once and prepares three structures the prompt then uses in-process: a Tantivy index, an hnswlib index, and a table of each rule's neighbors. The two indexes are reopened from disk when a hash of the corpus still matches, and rebuilt when it does not. The neighbor table is rebuilt in memory on every start. A prompt reads those. After that, picking rules is arithmetic.
 
 ## Why the stack looks like this
 
 An instruction in the prompt is still an instruction. A long session can compact it away, dilute it, or ignore it, and nothing about the wording makes the violation impossible. Writty keeps the checks it cares about in code that runs at tool time. That is the process keeper.
 
-The other pressure is the size of the rulebook. Pasting every rule into every turn spends the model's attention on rules that do not apply. The librarian's job is the smallest set that does. Keyword search, vector search, and a walk across the rule graph each catch a miss the others make, which is why the retrieval is hybrid. The measured cost of that search, on a warm service, sits well under a millisecond at the 95th percentile. The budget it is held to is 10 ms, in `benchmarks/bench_targets.py`. Where the dated readings live is at the end of this page.
+The other pressure is the size of the rulebook. Pasting every rule into every turn spends the model's attention on rules that do not apply. The librarian's job is the smallest set that does. Keyword search catches the exact token. Vector search catches the paraphrase. The rule graph then reranks those hits when two of them are neighbors. It does not go and fetch a third rule that neither search returned. The measured cost of that search, on a warm service, sits well under a millisecond at the 95th percentile. The budget it is held to is 10 ms, in `benchmarks/bench_targets.py`. Where the dated readings live is at the end of this page.
 
 ## Claude Code, the harness
 
@@ -51,7 +51,7 @@ In Work mode the session moves through three phases, defined in `writ/session/mo
 
 You approve by typing an approval as the whole message. That keystroke mints a one-time token, and opening the gate spends it. The token comes from your typed message, so the approval is yours.
 
-The gate checks shape: the plan has the required sections, the test file contains assertions. Whether the plan is a good one is your reading. The cycle, the accepted words, and what still blocks after both gates open: [Work gates and approvals](../workflows/work-gates.md).
+The approval checks shape. The plan needs its sections. The test file needs a test method (`def test_`, `it(`, `@Test`, and the other signatures in `_validate_test_skeletons` in `writ/session/approval_workflow.py`). Assertions are a later check: `hooks/scripts/validate-test-file.sh` looks for them when source code is written. Whether the plan is a good one is your reading. The cycle, the accepted words, and what still blocks after both gates open: [Work gates and approvals](../workflows/work-gates.md).
 
 The other four modes (conversation, debug, investigate, review) do not use this two-gate cycle. Secret files are refused in every mode, including when the service is down.
 
@@ -61,15 +61,15 @@ Hundreds of rules cannot ride along on every prompt. Each prompt asks a small se
 
 The scored path is five stages in `writ/retrieval/pipeline.py`. Three of them are the hybrid search:
 
-| Stage | Catches | Misses |
+| Stage | What it changes | What it leaves alone |
 |---|---|---|
-| BM25, Tantivy | The exact word. "SQL" finds the SQL rule | A paraphrase such as "database queries" |
-| Vectors, hnswlib over ONNX | The paraphrase, because the sentences point the same way | A rule that shares no meaning with the prompt, but is the neighbor of a rule that matched |
-| Graph neighbors | That neighbor, from a table built at startup | Anything the first two stages never touched |
+| BM25, Tantivy | The candidate list, by exact token. "SQL" finds the SQL rule | A paraphrase such as "database queries", and a different word form (`parameterized` against `Parameterize`) |
+| Vectors, hnswlib over ONNX | The candidate list, by direction. A paraphrase can outrank a shared word | A rule whose text points another way, including the neighbor of a rule that did match |
+| Graph neighbors | The order of candidates already found, plus a `RELATED` line of neighbor ids when the render is in full mode | Any rule the first two stages did not return. That rule is not added |
 
-A ranker in `writ/retrieval/ranking.py` mixes the three scores with how severe the rule is and how confident the corpus is in it. When even the closest vector is a weak match, the pipeline returns no scored rules. Injecting a wrong rule is treated as worse than injecting nothing. That exit is called abstention.
+A ranker in `writ/retrieval/ranking.py` mixes the keyword score, the vector score, severity, confidence, and a graph bonus. The graph bonus weighs `0.01` (`DEFAULT_W_GRAPH`), so it reorders close candidates. When even the closest vector is a weak match, the pipeline returns no scored rules. Injecting a wrong rule is treated as worse than injecting nothing. That exit is called abstention.
 
-Rules marked mandatory stay out of this search. They travel on a separate path, so a change to the ranking weights, the embedding model, or the graph walk leaves them in place. Both paths are rendered into one block by `writ/retrieval/prompt_bundle.py` and handed to Claude as `--- WRIT RULES ---`.
+Rules marked mandatory stay out of this search. They travel on a separate path, so a change to the ranking weights, the embedding model, or the graph bonus leaves them in place. The hook prints that path first, under `=== ALWAYS-ACTIVE RULES ===`, then prints the scored rules under `--- WRIT RULES ---`. The two strings are rendered separately in `writ/retrieval/prompt_bundle.py` and emitted in that order by `hooks/scripts/writ-rag-inject.sh`.
 
 The full walk, including the methodology companion that does not use embeddings: [Retrieval](retrieval.md). Weights and thresholds: `docs/reference/retrieval.md`.
 
@@ -77,7 +77,7 @@ The full walk, including the methodology companion that does not use embeddings:
 
 Hooks are bash. They must stay short, because Claude Code runs them on the tool-call path. Loading a search engine and a neural net inside each hook would pay a cold start on every prompt.
 
-So one process does the heavy work. `writ serve` (`writ/cli.py`) runs a FastAPI app from `writ/server/__init__.py` on `localhost:8765`. Its startup reads Neo4j, builds the Tantivy index, loads the ONNX model, opens the hnswlib index, and fills the neighbor table. A hook then pays for one HTTP call against a process that is already warm. If that process is down, hooks allow the action through, except secret-file access: an outage must not lock you out of the repository.
+So one process does the heavy work. `writ serve` (`writ/cli.py`) runs a FastAPI app from `writ/server/__init__.py` on `localhost:8765`. Its startup reads Neo4j, opens or rebuilds the Tantivy index, loads the ONNX model, opens or rebuilds the hnswlib index, and fills the neighbor table. A hook then pays for one HTTP call against a process that is already warm. If that process is down, hooks allow the action through, except secret-file access: an outage must not lock you out of the repository.
 
 Startup order, routes, and health: [Local service](local-service.md).
 
@@ -95,7 +95,7 @@ What the nodes and edges are: [Rule graph](rule-graph.md). The field-by-field co
 
 BM25 is the formula search engines have used for decades to score a document against a query. A word that appears in few rules counts more than a word that appears in almost all of them. "parameterized" is evidence. "the" is not.
 
-Tantivy is a full-text engine written in Rust, used here through its Python package (`tantivy` in `pyproject.toml`). `writ/retrieval/keyword.py` builds an in-memory index at every service start. The trigger, the condition that should fire the rule, counts double. The body, which is long, counts half, so an explanation does not drown the trigger. A query the parser rejects yields zero keyword hits, and the vector stage still runs.
+Tantivy is a full-text engine written in Rust, used here through its Python package (`tantivy` in `pyproject.toml`). `writ/retrieval/keyword.py` knows how to build the index. `_load_or_build_keyword_index` in `writ/retrieval/pipeline.py` reopens the one on disk when a hash of the indexed fields still matches, and rebuilds it when the hash does not. An in-memory index is the fallback when that directory cannot be written. The trigger, the condition that should fire the rule, counts double. The body, which is long, counts half, so an explanation does not drown the trigger. A query the parser rejects yields zero keyword hits, and the vector stage still runs.
 
 This stage is how a prompt that names a technology finds the rule that names it too. The library, taught with a three-sentence index: [Tantivy and BM25](tantivy.md).
 
@@ -152,7 +152,7 @@ sequenceDiagram
   D-->>H: allow, or refuse until you approve
 ```
 
-Startup, once per service life: Neo4j, then the three in-memory structures, then requests. A re-seed of the database is invisible until the service restarts, because the indexes are a snapshot.
+Startup, once per service life: Neo4j, then the three structures, then requests. A re-seed of the database is invisible until the service restarts, because those structures are a snapshot of the graph at startup.
 
 ## The numbers people quote
 
@@ -161,6 +161,16 @@ A 95th percentile of 0.59 ms means: sort 100 searches by duration, and 95 of the
 `CHANGELOG.md` records the first production reading of this stack: 0.590 ms end to end at the 95th percentile, on a corpus of 276 rules, 30 of them mandatory, grouped at the time into 12 public subjects (security, clean code, DRY, SOLID, architecture, testing, error handling, performance and caching, scaling, API design, process and lifecycle, documentation). `HANDBOOK.md` section 20 records the later reading, taken 2026-08-01: 0.6 ms at the 95th percentile on that day's 287-rule corpus. `SCALE_BENCHMARK_RESULTS.md` is the synthetic curve that asks whether the same search stays cheap at 10,000 rules.
 
 Those counts move. The dump you have checked out states its own totals in the header of `docs/reference/rulebook.md`, domain by domain, including which rules are mandatory. The running service reports what it loaded on `GET /health`. Read the count from those two places.
+
+## A first session with a colleague
+
+Twenty-five minutes, in this order. Each stop has something to run, so the session is a demonstration and not a tour of nouns.
+
+1. This page, up to the prompt diagram. The split to land: the model writes, the hook can refuse, the search only adds rules.
+2. [Tantivy and BM25](tantivy.md). Run the three-sentence index. Then search `Parameterize` instead of `parameterized` and watch the hit change. That is the whole case for a second stage.
+3. [ONNX embeddings](onnx.md). The same model scores the paraphrase at 0.528 and the cafeteria sentence at 0.018. One number is above the abstention cut, the other is below it.
+4. [hnswlib](hnswlib.md). Four vectors, then the habit worth keeping: a hash of the source texts sits beside the index, and a pair you cannot verify is rebuilt.
+5. [Neo4j](neo4j.md). One hop query in the browser. Then the reason the prompt does not send that query: the neighborhood was copied at startup.
 
 ## Where to go next
 

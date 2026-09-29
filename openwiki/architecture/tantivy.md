@@ -1,7 +1,7 @@
 ---
 type: Guide
 title: "Tantivy and BM25"
-description: How keyword search scores a document, how Writty builds an in-memory Tantivy index, and a small index you can run yourself.
+description: How keyword search scores a document, how Writty caches a Tantivy index across restarts, and a small index you can run yourself.
 ---
 
 # Tantivy and BM25
@@ -70,9 +70,13 @@ for score, address in searcher.search(query, 5).hits:
 
 `stored=True` keeps the original text so a hit can return the id. The query names the fields it may match. `reload` is required after `commit`, or the searcher still sees the empty index.
 
+Run it twice. The second time, query `Parameterize` instead of `parameterized SQL`. The hit moves from `param` to `inject`. Same idea, different token, empty overlap. That is the miss the next stage exists to cover.
+
 ## How Writty uses it
 
-`KeywordIndex.build` in `writ/retrieval/keyword.py` runs at service startup, over the rules that are allowed into the ranked pool. Mandatory rules are skipped here on purpose, and delivered by another path. See [Retrieval](retrieval.md).
+`KeywordIndex.build` in `writ/retrieval/keyword.py` fills an index from the rules that are allowed into the ranked pool. Mandatory rules are skipped here on purpose, and delivered by another path. See [Retrieval](retrieval.md).
+
+The service does not rebuild that index on every start. `_load_or_build_keyword_index` in `writ/retrieval/pipeline.py` hashes the fields the index actually contains (rule id, trigger, statement, tags, body, and the mandatory flag). A matching sidecar reopens the directory on disk. A mismatch deletes the directory and builds a fresh one, because Tantivy appends and a second build into a populated index would duplicate every rule. If the directory cannot be written, the same builder runs in memory and the outcome is logged as `nocache`. The source of truth stays Neo4j. The index is a cache of it.
 
 Three details are worth stealing only if you know why they exist:
 
@@ -88,9 +92,9 @@ The searched fields are `trigger`, `statement`, `tags`, and `body`. `rule_id` is
 
 Use Tantivy when the texts fit in one process and you want search without operating a cluster. A help center, a rulebook, a local code index, and a mailbox search on one machine all fit.
 
-A `LIKE` prefix on one column answers a narrower question and needs no index library. A separate search cluster earns its keep when many services share a corpus larger than one machine, or when the index must survive the process that built it. Writty rebuilds the Tantivy index on every service start. That is acceptable because the corpus is small and the source of truth is Neo4j, not the index.
+A `LIKE` prefix on one column answers a narrower question and needs no index library. A separate search cluster earns its keep when many services share a corpus larger than one machine.
 
-If you persist a Tantivy index, rebuild it when the source texts change, and treat a failed `parse_query` as zero hits rather than a crashed request. Users type quotes, slashes, and the words `AND` and `OR`. Writty strips the special characters and lowercases those reserved words before parsing (`_TANTIVY_SPECIAL` and `_TANTIVY_RESERVED` in `writ/retrieval/keyword.py`).
+If you persist a Tantivy index, key it on the text you indexed, not on a nearby hash. Writty's vector cache hashes trigger and statement, because that is all the embedding sees. Reusing that key for BM25 would serve a stale keyword index after a tags or body edit, which is why `_compute_bm25_hash` is its own function. Rebuild by writing a new directory. Tantivy appends into an existing one. And treat a failed `parse_query` as zero hits rather than a crashed request. Users type quotes, slashes, and the words `AND` and `OR`. Writty strips the special characters and lowercases those reserved words before parsing (`_TANTIVY_SPECIAL` and `_TANTIVY_RESERVED` in `writ/retrieval/keyword.py`).
 
 ## Where to go next
 
