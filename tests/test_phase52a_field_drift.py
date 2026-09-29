@@ -171,13 +171,22 @@ class TestMethodologyFieldDrift:
         )
 
     @pytest.mark.asyncio
-    async def test_flags_source_null_graph_nonnull(self, db_corpus: Neo4jConnection) -> None:
+    async def test_flags_source_null_graph_nonnull(
+        self, db_corpus: Neo4jConnection, tmp_path: Path
+    ) -> None:
         """Source declares a managed field as null (the writer drops null props, so a
         clean ingest leaves it ABSENT in the graph). A manual graph edit that SETS a
         non-null value on that field IS value drift -- the source-null/graph-non-null
-        quadrant the None-skip must not mask (blueprint: field-by-field equality)."""
-        # Precondition: SKL-PROC-BRAIN-001 declares `source_commit: null`, so after a
-        # clean ingest the graph node has no source_commit property.
+        quadrant the None-skip must not mask (blueprint: field-by-field equality).
+
+        Precondition: after a clean ingest, SKL-PROC-BRAIN-001 has no source_commit
+        property in the graph (Neo4j stores no nulls, so an export never writes
+        `source_commit: null`). The test prepares a tmp copy of bible/ with that
+        null declaration inserted, so detect_methodology_field_drift sees it.
+        """
+        import shutil  # noqa: PLC0415
+
+        # Precondition: the graph has no source_commit on this node after clean ingest.
         async with db_corpus._driver.session(database=db_corpus._database) as s:
             res = await s.run(
                 "MATCH (n) WHERE n.skill_id = $sid RETURN n.source_commit AS sc",
@@ -186,9 +195,21 @@ class TestMethodologyFieldDrift:
             row = await res.single()
         assert row is not None, f"{REAL_METH_ID} not found after ingest"
         assert row["sc"] is None, (
-            "precondition: a null-declared field must be absent in the graph after "
-            f"clean ingest; got {row['sc']!r}"
+            "precondition: Neo4j stores no null props; after a clean ingest "
+            f"source_commit must be absent from the graph node; got {row['sc']!r}"
         )
+
+        # Build a tmp copy of bible/ with source_commit: null declared in the source.
+        # An export never writes null-valued fields, so we insert the declaration here
+        # to simulate the authored source that motivated the field-drift check.
+        shutil.copytree(str(BIBLE), str(tmp_path / "bible"))
+        brain_md = tmp_path / "bible" / "methodology" / f"{REAL_METH_ID}.md"
+        text = brain_md.read_text(encoding="utf-8")
+        if "source_commit:" not in text:
+            # Insert `source_commit: null` into the YAML front-matter block.
+            fm_end = text.index("---", 3)  # closing ---
+            new_text = text[:fm_end] + "source_commit: null\n" + text[fm_end:]
+            brain_md.write_text(new_text, encoding="utf-8")
 
         # The attack vector: a graph edit not reflected in source.
         async with db_corpus._driver.session(database=db_corpus._database) as s:
@@ -198,7 +219,7 @@ class TestMethodologyFieldDrift:
             )
 
         checker = IntegrityChecker(db_corpus._driver, db_corpus._database)
-        result = await checker.detect_methodology_field_drift(BIBLE)
+        result = await checker.detect_methodology_field_drift(tmp_path / "bible")
 
         assert result is not None and REAL_METH_ID in result, (
             "source-null/graph-non-null must be reported as value drift, not skipped; "
