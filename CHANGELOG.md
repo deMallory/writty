@@ -4,6 +4,16 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-09-30
+
+On a plugin install, Writ now dispatches the agent types Claude Code actually registers (`writ:writ-<role>`), and records reviewer verdicts again. Before this, every generic dispatch the hook rerouted failed with "Agent type 'writ-explorer' not found", and the review commit gate was silently off.
+
+### Fixed
+
+- **Dispatch names match the install.** The dispatch-discipline hook rewrote generic dispatches to bare `writ-<role>`, which exists only when `bootstrap.sh` links the roles into `~/.claude/agents`. It now emits the bare name when that file exists and `writ:writ-<role>` otherwise; the rewrite context, the deny reason and the auto-route announcements name the same type.
+- **Reviewer verdicts are recorded on plugin installs.** `resolve_role` passed `writ:writ-reviewer` through unchanged, so the SubagentStop hook never recognised the reviewer. It now strips one leading `writ:` from the envelope, sidecar and cached type, so the stop hook, gates, cache and role lookup see the bare role. `get_subagent_role` strips it too.
+- **Hook tests are hermetic under Claude Code.** A suite run from a session inherited the installed plugin's `CLAUDE_PLUGIN_ROOT`, so the working-tree hooks sourced the installed copy's libraries. `conftest.py` now clears it.
+
 ## [1.11.0] - 2026-09-30
 
 `writ token-audit` now bills each API response once at its own model's rates and includes subagent spend, and the sub-agent roles carry an explicit model, effort and status contract that the orchestrator routes on. The old audit counted most responses about twice and priced every model at one rate; subagent transcripts were not counted at all. Writ no longer runs headless Claude Code anywhere.
