@@ -409,6 +409,49 @@ class TestReviewFindingsEndpoint:
         assert got["verdict"] is None
 
 
+class TestStatusSpelling:
+    """The status is canonicalized at parse time: case and padding never change the gate."""
+
+    @pytest.mark.parametrize(
+        "status", ["INSUFFICIENT_CONTEXT", "Conflicting_Evidence", " insufficient_context "]
+    )
+    def test_incomplete_status_blocks_in_any_spelling(self, status: str) -> None:
+        from review_findings import is_blocking, parse_verdict
+
+        assert is_blocking(parse_verdict(_status_message(status))) is True
+
+    @pytest.mark.parametrize("status", ["APPROVED", "approved"])
+    def test_approved_in_any_case_does_not_block(self, status: str) -> None:
+        from review_findings import is_blocking, parse_verdict
+
+        assert is_blocking(parse_verdict(_status_message(status))) is False
+
+    def test_describe_names_lowercase_status(self) -> None:
+        from review_findings import describe, parse_verdict
+
+        text = describe(parse_verdict(_status_message("INSUFFICIENT_CONTEXT")))
+        assert "could not complete the review (status insufficient_context)" in text
+
+    def test_uppercase_incomplete_after_blocking_logs_no_lift(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import review_findings
+
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
+        events: list[tuple] = []
+        import writ.session.friction as friction
+
+        monkeypatch.setattr(
+            friction, "_log_friction_event",
+            lambda sid, mode, event, **kw: events.append((event, kw)),
+        )
+        sid = _sid()
+        review_findings.record(sid, BLOCKING_MESSAGE, "agent-1")
+        review_findings.record(sid, _status_message("CONFLICTING_EVIDENCE"), "agent-2")
+        assert not events, "an uppercase incomplete status must not lift the block"
+        assert review_findings.is_blocking(review_findings.read_state(sid)["verdict"]) is True
+
+
 # --------------------------------------------------------------------------- #
 # 4. Recording: the SubagentStop hook (infrastructure, not the author)
 # --------------------------------------------------------------------------- #

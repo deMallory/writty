@@ -59,7 +59,7 @@ def _normalize(obj: dict) -> dict:
     verdict = {
         "parsed": True,
         "spec_compliance": str(obj.get("spec_compliance") or ""),
-        "status": str(obj.get("status") or ""),
+        "status": str(obj.get("status") or "").strip().lower(),
     }
     for key in _EMPTY_LISTS:
         value = obj.get(key)
