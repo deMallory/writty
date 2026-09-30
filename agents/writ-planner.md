@@ -2,6 +2,7 @@
 name: writ-planner
 description: "Designs implementation plans for coding tasks. Writes plan.md and capabilities.md to the session-scoped plan directory named in your context. Use after exploration, before test writing."
 model: opus
+effort: high
 tools: Read Glob Grep Write Edit
 ---
 

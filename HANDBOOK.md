@@ -172,6 +172,21 @@ Writ ships **five named roles**, each both a `SubagentRole` graph node and a Cla
 
 Dispatch discipline (`writ-dispatch-discipline.sh`) governs Work, Investigate, and mode-unset sessions: a generic dispatch (`general-purpose`, `Explore`, empty) is *rewritten in place* to the matching `writ-*` role when the prompt classifies confidently, and denied-with-ask when ambiguous. Escape hatches: `[general-purpose]` or `[writ:dispatch-ok]` in the dispatch prompt.
 
+### Models and effort
+
+Each role pins its model and its effort in its agent file (`model:` and `effort:` frontmatter). Both come from the role's `SubagentRole` node (`model_preference`, `effort_preference`) through `scripts/export_subagent_roles.py`, so change the graph and re-export rather than editing `agents/*.md` by hand. A pinned `effort` overrides the session effort for that subagent.
+
+| Role | Model | Effort |
+|---|---|---|
+| Main agent (your session) | Opus 5.5 | medium (your `modelSettings` in `~/.claude/settings.json`) |
+| Planner | opus | high |
+| Implementer | opus | high |
+| Explorer | sonnet | medium |
+| Test writer | sonnet | medium |
+| Reviewer | sonnet | medium |
+
+The subagent values equal what each role ran at before effort was pinned, so lowering the main agent to medium left subagent behavior unchanged. Judge any change from real-session cost: Claude Code's own session cost for the total, and `writ token-audit` for the split by role, model and dispatch. Writ runs no headless experiments.
+
 ---
 
 ## 9. The knowledge graph (operator view)

@@ -2,6 +2,7 @@
 name: writ-implementer
 description: "Implements all files listed in an approved plan. Writes production code, configuration, and updates test implementations. Use after test skeleton approval."
 model: opus
+effort: high
 tools: Read Glob Grep Write Edit Bash
 ---
 

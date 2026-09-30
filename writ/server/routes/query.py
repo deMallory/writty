@@ -844,6 +844,7 @@ async def subagent_role_get(name: str) -> dict[str, Any]:
         "name": rec["name"],
         "prompt_template": rec["prompt_template"],
         "model_preference": rec["model_preference"],
+        "effort_preference": rec["effort_preference"],
         "dispatched_by": rec["dispatched_by"] or [],
         # NOT `or []` like dispatched_by above: absence and emptiness are different
         # answers here. None means the role declares no write scope, which the write gate

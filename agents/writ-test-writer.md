@@ -2,6 +2,7 @@
 name: writ-test-writer
 description: "Writes test skeleton files with method signatures and assertions based on an approved plan. Use after plan approval, before implementation."
 model: sonnet
+effort: medium
 tools: Read Glob Grep Write Edit Bash
 ---
 

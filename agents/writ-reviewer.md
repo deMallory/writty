@@ -2,6 +2,7 @@
 name: writ-reviewer
 description: "Reviews an implementation diff in two passes (spec-compliance first, then code quality). Read-only. Returns structured findings. Replaces the separate spec/code-quality reviewers."
 model: sonnet
+effort: medium
 tools: Read Glob Grep Bash
 ---
 

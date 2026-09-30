@@ -29,6 +29,7 @@ class NodeStoreMixin:
             RETURN r.role_id AS role_id, r.name AS name,
                    r.prompt_template AS prompt_template,
                    r.model_preference AS model_preference,
+                   r.effort_preference AS effort_preference,
                    r.dispatched_by AS dispatched_by,
                    r.write_scope AS write_scope
             LIMIT 1
@@ -41,6 +42,7 @@ class NodeStoreMixin:
             "name": rec["name"],
             "prompt_template": rec["prompt_template"],
             "model_preference": rec["model_preference"],
+            "effort_preference": rec["effort_preference"],
             "dispatched_by": rec["dispatched_by"],
             # NOT coalesced to []: a role that declares no write_scope must read back as
             # None so the write gate can tell "no declared scope" (keep today's allow)

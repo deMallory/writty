@@ -1156,7 +1156,8 @@ def role_prompt(
         if rec is None:
             typer.echo(f"SubagentRole '{role}' not found in graph.", err=True)
             raise typer.Exit(code=1)
-        typer.echo(f"# {rec['role_id']}  (name={rec['name']}, model={rec['model_preference']})")
+        typer.echo(f"# {rec['role_id']}  (name={rec['name']}, model={rec['model_preference']}, "
+                   f"effort={rec.get('effort_preference')})")
         typer.echo("")
         typer.echo(rec["prompt_template"])
     asyncio.run(_fetch())

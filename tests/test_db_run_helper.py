@@ -113,6 +113,7 @@ _GET_SUBAGENT_ROLE_QUERY = (
     "            RETURN r.role_id AS role_id, r.name AS name,\n"
     "                   r.prompt_template AS prompt_template,\n"
     "                   r.model_preference AS model_preference,\n"
+    "                   r.effort_preference AS effort_preference,\n"
     "                   r.dispatched_by AS dispatched_by,\n"
     "                   r.write_scope AS write_scope\n"
     "            LIMIT 1\n        "
@@ -574,6 +575,7 @@ class TestGetSubagentRole:
             "name": "writ-explorer",
             "prompt_template": "explore the codebase",
             "model_preference": "sonnet",
+            "effort_preference": "medium",
             "dispatched_by": "orchestrator",
             # Cycle M: the role's declared write scope, projected by the same clause.
             # A list here, not None, so the projection assertion below distinguishes a
@@ -597,6 +599,7 @@ class TestGetSubagentRole:
             "name": "writ-explorer",
             "prompt_template": "explore the codebase",
             "model_preference": "sonnet",
+            "effort_preference": "medium",
             "dispatched_by": "orchestrator",
             "write_scope": ["plan.md", "capabilities.md"],
         }

@@ -2,6 +2,7 @@
 name: writ-explorer
 description: "Read-only investigation engine: codebase exploration, auditing, research, and runtime evidence gathering for a failure. Cannot modify files. Use before planning, to answer a question that requires grounding findings in evidence (file:line, config value, schema fact), or to reproduce a failure and capture its runtime evidence before anyone reads the source."
 model: sonnet
+effort: medium
 tools: Read Glob Grep Bash
 ---
 

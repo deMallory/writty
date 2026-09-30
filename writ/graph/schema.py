@@ -50,6 +50,10 @@ PARITY_EXEMPT_PROVENANCE = GRAPH_FIRST_PROVENANCE | {"record"}
 # wrote the words -- a human-edited graduated node STAYS graduated (lineage preserved).
 VALID_GRADUATED_VIA = ("human-approve-asis", "human-edit")
 
+# SubagentRole.effort_preference: the Claude Code subagent frontmatter `effort` values.
+# Exact and case-sensitive, because Claude Code reads the frontmatter literally.
+VALID_EFFORT_PREFERENCES = ("low", "medium", "high", "xhigh", "max")
+
 # Phase 3.5: the closed domain vocabulary -- the 16 top-level bible/ rule dirs
 # plus `routing` (the methodology Category tree's domain). A node carrying a
 # domain outside this set is a taxonomy drift (e.g. the pre-normalization
@@ -278,6 +282,14 @@ def _validate_graduated_via_value(cls, v: str | None) -> str | None:
     if v is not None and v not in VALID_GRADUATED_VIA:
         raise ValueError(
             f"graduated_via '{v}' must be one of: {', '.join(VALID_GRADUATED_VIA)} (or unset)"
+        )
+    return v
+
+
+def _validate_effort_preference_value(cls, v: str | None) -> str | None:
+    if v is not None and v not in VALID_EFFORT_PREFERENCES:
+        raise ValueError(
+            f"effort_preference '{v}' must be one of: {', '.join(VALID_EFFORT_PREFERENCES)} (or unset)"
         )
     return v
 
@@ -608,6 +620,8 @@ class SubagentRole(_NonRetrievableBase):
     prompt_template: str
     dispatched_by: list[str] = Field(default_factory=list)
     model_preference: str | None = None
+    # None means emit no `effort:` line; the subagent inherits the session effort.
+    effort_preference: str | None = None
     tools: str | None = None
     description: str | None = None
     # The paths this role may write, enforced by the write gate
@@ -624,6 +638,9 @@ class SubagentRole(_NonRetrievableBase):
     write_scope: list[str] | None = None
 
     _validate_role_id = field_validator("role_id")(_validate_node_id("role_id", "ROL-"))
+    _validate_effort_preference = field_validator("effort_preference")(
+        _validate_effort_preference_value
+    )
 
 
 # --- Category node (Phase 0: data-driven routing) ---

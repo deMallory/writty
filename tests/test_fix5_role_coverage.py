@@ -44,14 +44,14 @@ AGENTS_DIR = WRIT_ROOT / "agents"
 EXPORT_SCRIPT = WRIT_ROOT / "scripts" / "export_subagent_roles.py"
 WRIT_PY = WRIT_ROOT / ".venv" / "bin" / "python"
 
-# Canonical name -> (role node file, role_id, model). The five real worker agents.
+# Canonical name -> (role node file, role_id, model, effort). The five real worker agents.
 # The spec-reviewer + code-quality-reviewer were merged into one two-pass writ-reviewer.
 ROLE_SPECS = {
-    "writ-explorer": ("ROL-EXPLORER-001.md", "ROL-EXPLORER-001", "sonnet"),
-    "writ-planner": ("ROL-PLANNER-001.md", "ROL-PLANNER-001", "opus"),
-    "writ-test-writer": ("ROL-TEST-WRITER-001.md", "ROL-TEST-WRITER-001", "sonnet"),
-    "writ-implementer": ("ROL-IMPLEMENTER-001.md", "ROL-IMPLEMENTER-001", "opus"),
-    "writ-reviewer": ("ROL-REVIEWER-001.md", "ROL-REVIEWER-001", "sonnet"),
+    "writ-explorer": ("ROL-EXPLORER-001.md", "ROL-EXPLORER-001", "sonnet", "medium"),
+    "writ-planner": ("ROL-PLANNER-001.md", "ROL-PLANNER-001", "opus", "high"),
+    "writ-test-writer": ("ROL-TEST-WRITER-001.md", "ROL-TEST-WRITER-001", "sonnet", "medium"),
+    "writ-implementer": ("ROL-IMPLEMENTER-001.md", "ROL-IMPLEMENTER-001", "opus", "high"),
+    "writ-reviewer": ("ROL-REVIEWER-001.md", "ROL-REVIEWER-001", "sonnet", "medium"),
 }
 
 # The retired identifiers that must not survive the rename anywhere.
@@ -97,12 +97,13 @@ class TestNodesValid:
     @pytest.mark.parametrize("name", sorted(ROLE_SPECS))
     def test_node_parses_as_subagent_role(self, name: str) -> None:
         node = _parse_role(name)
-        _, role_id, model = ROLE_SPECS[name]
+        _, role_id, model, effort = ROLE_SPECS[name]
         assert node["node_type"] == "SubagentRole"
         assert node["role_id"] == role_id
         assert node["name"] == name
         assert node.get("prompt_template", "").strip(), f"{name}: empty prompt_template"
         assert node.get("model_preference") == model
+        assert node.get("effort_preference") == effort
         assert node.get("tools", "").strip(), f"{name}: missing tools (render needs it)"
         assert node.get("description", "").strip(), f"{name}: missing description"
 

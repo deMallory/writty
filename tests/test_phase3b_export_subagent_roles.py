@@ -68,6 +68,29 @@ class TestRenderAgentMd:
         assert "tools:" not in out
         assert 'description: "Bare agent."' in out
 
+    def test_effort_emitted_after_model_when_set(self) -> None:
+        row = {
+            "name": "writ-example",
+            "description": "An example agent.",
+            "model_preference": "opus",
+            "effort_preference": "high",
+            "tools": "Read Glob",
+            "prompt_template": "You are an example.",
+        }
+        out = self.render(row)
+        assert "\nmodel: opus\neffort: high\ntools: Read Glob\n" in out
+
+    def test_effort_omitted_when_none(self) -> None:
+        row = {
+            "name": "writ-example",
+            "description": "An example agent.",
+            "model_preference": "opus",
+            "effort_preference": None,
+            "tools": "Read Glob",
+            "prompt_template": "You are an example.",
+        }
+        assert "effort:" not in self.render(row)
+
     def test_statement_fallback_when_description_missing(self) -> None:
         """Older nodes might only have statement; description falls back to it."""
         row = {
