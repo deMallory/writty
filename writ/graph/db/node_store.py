@@ -34,6 +34,8 @@ class NodeStoreMixin:
                    r.write_scope AS write_scope
             LIMIT 1
         """
+        if name.startswith("writ:"):
+            name = name[len("writ:"):]
         rec = await self._run_single(query, name=name)
         if rec is None:
             return None

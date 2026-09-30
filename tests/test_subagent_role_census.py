@@ -287,8 +287,95 @@ class TestResolver:
         assert (role, source) == (mod.UNKNOWN_ROLE, mod.SOURCE_UNRESOLVED)
 
 
+class TestResolverPluginPrefix:
+    """Claude Code registers plugin agents as "writ:writ-<role>". The resolver strips
+    exactly one leading "writ:" so every downstream consumer sees the bare role."""
+
+    def test_prefixed_envelope_resolves_to_the_bare_role(self, projects) -> None:
+        mod = _role_module()
+        role, source = mod.resolve_role(
+            "p1", envelope_agent_type="writ:writ-reviewer", projects_dir=projects)
+        assert (role, source) == ("writ-reviewer", mod.SOURCE_ENVELOPE)
+
+    def test_prefixed_sidecar_resolves_to_the_bare_role(self, projects) -> None:
+        mod = _role_module()
+        _sidecar(projects, "parent-1", "p2", {"agentType": "writ:writ-planner"})
+        role, source = mod.resolve_role("p2", envelope_agent_type="", projects_dir=projects)
+        assert (role, source) == ("writ-planner", mod.SOURCE_SIDECAR)
+
+    def test_prefixed_cache_value_resolves_to_the_bare_role_with_recorded_source(
+        self, projects
+    ) -> None:
+        mod = _role_module()
+        role, source = mod.resolve_role(
+            "p3", projects_dir=projects,
+            cache={"agent_type": "writ:writ-reviewer", "role_source": "envelope"})
+        assert (role, source) == ("writ-reviewer", "envelope")
+
+    def test_prefixed_cache_value_without_recorded_source_reports_cache(
+        self, projects
+    ) -> None:
+        mod = _role_module()
+        role, source = mod.resolve_role(
+            "p3b", projects_dir=projects, cache={"agent_type": "writ:writ-reviewer"})
+        assert (role, source) == ("writ-reviewer", mod.SOURCE_CACHE)
+
+    def test_a_bare_value_is_unchanged(self, projects) -> None:
+        mod = _role_module()
+        role, source = mod.resolve_role(
+            "p4", envelope_agent_type="writ-explorer", projects_dir=projects)
+        assert (role, source) == ("writ-explorer", mod.SOURCE_ENVELOPE)
+
+    def test_only_one_prefix_is_stripped(self, projects) -> None:
+        mod = _role_module()
+        role, _source = mod.resolve_role(
+            "p5", envelope_agent_type="writ:writ:writ-reviewer", projects_dir=projects)
+        assert role == "writ:writ-reviewer"
+
+    def test_another_namespace_is_not_stripped(self, projects) -> None:
+        mod = _role_module()
+        role, source = mod.resolve_role(
+            "p6", envelope_agent_type="other:writ-reviewer", projects_dir=projects)
+        assert (role, source) == ("other:writ-reviewer", mod.SOURCE_ENVELOPE)
+
+    def test_a_bare_prefix_envelope_falls_through_to_the_sidecar(self, projects) -> None:
+        mod = _role_module()
+        _sidecar(projects, "parent-1", "p7", {"agentType": "writ-planner"})
+        role, source = mod.resolve_role(
+            "p7", envelope_agent_type="writ:", projects_dir=projects,
+            cache={"agent_type": "writ-reviewer"})
+        assert (role, source) == ("writ-planner", mod.SOURCE_SIDECAR)
+
+    def test_a_bare_prefix_envelope_falls_through_to_the_cache(self, projects) -> None:
+        mod = _role_module()
+        role, source = mod.resolve_role(
+            "p8", envelope_agent_type="writ:", projects_dir=projects,
+            cache={"agent_type": "writ-reviewer", "role_source": "envelope"})
+        assert (role, source) == ("writ-reviewer", "envelope")
+
+    def test_a_bare_prefix_envelope_with_nothing_else_is_unresolved(self, projects) -> None:
+        mod = _role_module()
+        role, source = mod.resolve_role(
+            "p9", envelope_agent_type="writ:", projects_dir=projects)
+        assert (role, source) == (mod.UNKNOWN_ROLE, mod.SOURCE_UNRESOLVED)
+
+    def test_a_bare_prefix_sidecar_falls_through_to_the_cache(self, projects) -> None:
+        mod = _role_module()
+        _sidecar(projects, "parent-1", "p10", {"agentType": "writ:"})
+        role, source = mod.resolve_role(
+            "p10", projects_dir=projects, cache={"agent_type": "writ-reviewer"})
+        assert (role, source) == ("writ-reviewer", mod.SOURCE_CACHE)
+
+
 class TestSidecarCensus:
     """The census artifact: what the resolver can see, reported rather than assumed."""
+
+    def test_census_reports_the_literal_prefixed_agent_type(self, projects) -> None:
+        """The census reports what was observed, so it must NOT normalize."""
+        mod = _role_module()
+        _sidecar(projects, "p1", "b9", {"agentType": "writ:writ-reviewer"})
+        out = mod.sidecar_census(projects_dir=projects)
+        assert out["by_type"] == {"writ:writ-reviewer": 1}
 
     def test_census_counts_sidecars_and_groups_by_type(self, projects) -> None:
         mod = _role_module()

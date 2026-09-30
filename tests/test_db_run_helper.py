@@ -591,6 +591,23 @@ class TestGetSubagentRole:
             {"query": _GET_SUBAGENT_ROLE_QUERY, "params": {"name": "writ-explorer"}}
         ]
 
+    def test_plugin_prefixed_name_is_stripped_before_the_query(self) -> None:
+        conn, calls = _make_conn(_FakeResult(single=self._row()))
+        asyncio.run(conn.get_subagent_role("writ:writ-explorer"))
+        assert calls == [
+            {"query": _GET_SUBAGENT_ROLE_QUERY, "params": {"name": "writ-explorer"}}
+        ]
+
+    def test_only_one_plugin_prefix_is_stripped(self) -> None:
+        conn, calls = _make_conn(_FakeResult(single=None))
+        asyncio.run(conn.get_subagent_role("writ:writ:writ-explorer"))
+        assert calls[0]["params"] == {"name": "writ:writ-explorer"}
+
+    def test_another_namespace_is_not_stripped(self) -> None:
+        conn, calls = _make_conn(_FakeResult(single=None))
+        asyncio.run(conn.get_subagent_role("other:writ-explorer"))
+        assert calls[0]["params"] == {"name": "other:writ-explorer"}
+
     def test_returns_the_projection_dict(self) -> None:
         conn, _calls = _make_conn(_FakeResult(single=self._row()))
         result = asyncio.run(conn.get_subagent_role("writ-explorer"))

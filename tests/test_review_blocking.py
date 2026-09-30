@@ -484,6 +484,54 @@ class TestSubagentStopRecording:
         assert state is not None
         assert len(state["verdict"]["critical"]) == 1
 
+    def test_records_verdict_for_plugin_prefixed_envelope(self, tmp_path: Path) -> None:
+        """Plugin installs register the reviewer as "writ:writ-reviewer"."""
+        sid = _sid()
+        self._run_stop_hook({
+            "hook_event_name": "SubagentStop",
+            "session_id": sid,
+            "agent_id": "agent-rev-p1",
+            "agent_type": "writ:writ-reviewer",
+            "last_assistant_message": BLOCKING_MESSAGE,
+        }, tmp_path)
+        state = self._recorded(sid, tmp_path)
+        assert state is not None, "a writ:writ-reviewer stop recorded no verdict"
+        assert len(state["verdict"]["critical"]) == 1
+
+    def test_records_verdict_for_plugin_prefixed_sidecar(self, tmp_path: Path) -> None:
+        """Empty envelope agent_type, sidecar agentType "writ:writ-reviewer"."""
+        sid = _sid()
+        projects = tmp_path / "projects"
+        sidecar_dir = projects / "-some-project" / sid / "subagents"
+        sidecar_dir.mkdir(parents=True)
+        (sidecar_dir / "agent-revp2.meta.json").write_text(
+            json.dumps({"agentType": "writ:writ-reviewer", "spawnDepth": 1}))
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        env = dict(os.environ, WRIT_CACHE_DIR=str(cache_dir),
+                   WRIT_PROJECTS_DIR=str(projects))
+        subprocess.run(["bash", STOP_HOOK], input=json.dumps({
+            "hook_event_name": "SubagentStop",
+            "session_id": sid,
+            "agent_id": "revp2",
+            "agent_type": "",
+            "last_assistant_message": BLOCKING_MESSAGE,
+        }), capture_output=True, text=True, env=env, cwd=SKILL_ROOT)
+        state = self._recorded(sid, cache_dir)
+        assert state is not None, "a sidecar-resolved writ:writ-reviewer recorded no verdict"
+        assert len(state["verdict"]["critical"]) == 1
+
+    def test_records_nothing_for_plugin_prefixed_implementer(self, tmp_path: Path) -> None:
+        sid = _sid()
+        self._run_stop_hook({
+            "hook_event_name": "SubagentStop",
+            "session_id": sid,
+            "agent_id": "agent-impl-p3",
+            "agent_type": "writ:writ-implementer",
+            "last_assistant_message": BLOCKING_MESSAGE,
+        }, tmp_path)
+        assert self._recorded(sid, tmp_path) is None
+
     def test_records_nothing_for_other_agent_types(self, tmp_path: Path) -> None:
         """An implementer's stop must not be mistaken for a review verdict."""
         sid = _sid()

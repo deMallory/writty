@@ -50,6 +50,7 @@ SOURCE_UNRESOLVED = "unresolved"
 
 _AGENT_PREFIX = "agent-"
 _SIDECAR_SUFFIX = ".meta.json"
+_PLUGIN_PREFIX = "writ:"
 
 # `agent_id` is interpolated into a filesystem path and comes off an untrusted envelope.
 # An ALLOWLIST, not a blocklist (ABS-SECURITY-024): the real ids are hex-ish
@@ -85,6 +86,13 @@ def _normalized_agent_id(agent_id: object) -> str:
     if not _VALID_AGENT_ID.match(candidate):
         return ""
     return candidate
+
+
+def _strip_plugin_prefix(role: str) -> str:
+    """The bare role: one leading "writ:" removed, since Claude Code namespaces plugin agents."""
+    if role.startswith(_PLUGIN_PREFIX):
+        return role[len(_PLUGIN_PREFIX):]
+    return role
 
 
 def _sidecar_patterns(root: str, filename: str) -> tuple[str, ...]:
@@ -153,16 +161,16 @@ def resolve_role(agent_id: object, envelope_agent_type: object = "",
     one, so replaying a stored value does not launder an observation into a weaker claim
     or a default into a stronger one.
     """
-    from_envelope = str(envelope_agent_type or "").strip()
+    from_envelope = _strip_plugin_prefix(str(envelope_agent_type or "").strip())
     if from_envelope:
         return from_envelope, SOURCE_ENVELOPE
 
-    from_sidecar = role_from_sidecar(agent_id, projects_dir)
+    from_sidecar = _strip_plugin_prefix(role_from_sidecar(agent_id, projects_dir) or "")
     if from_sidecar:
         return from_sidecar, SOURCE_SIDECAR
 
     if cache:
-        stored = str(cache.get("agent_type") or "").strip()
+        stored = _strip_plugin_prefix(str(cache.get("agent_type") or "").strip())
         if stored and stored != UNKNOWN_ROLE:
             origin = str(cache.get("role_source") or "").strip()
             return stored, origin or SOURCE_CACHE
