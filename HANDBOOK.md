@@ -187,6 +187,8 @@ Each role pins its model and its effort in its agent file (`model:` and `effort:
 
 The subagent values equal what each role ran at before effort was pinned, so lowering the main agent to medium left subagent behavior unchanged. Judge any change from real-session cost: Claude Code's own session cost for the total, and `writ token-audit` for the split by role, model and dispatch. Writ runs no headless experiments.
 
+Per dispatch, the Agent tool can override a role's model (haiku, sonnet, opus, fable) but not its effort. When to delegate, which override to use, and how to route each worker's returned status is the Dispatch policy in `PBK-PROC-ORCHESTRATOR-001`. The fix loop's rounds 4-5 re-dispatch a fresh implementer on the same model with the full evidence; Fable is used only when you ask for it.
+
 ---
 
 ## 9. The knowledge graph (operator view)
