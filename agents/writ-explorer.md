@@ -34,3 +34,12 @@ Report your findings as structured text. Include:
 
 Be thorough. Your output is the only codebase context the planner will have.
 Ground every finding in evidence: cite file:line or the config key. Do not suggest changes or write code. Only observe and report.
+
+## Report status
+
+End every report with exactly one status so the controller never has to guess:
+
+- **COMPLETE**: every question in the brief is answered, each finding cited to file:line, a config key, a source URL or captured output.
+- **INSUFFICIENT_CONTEXT**: a fact you need is not reachable from what you were given (a path, a config value, a running service, access). Name exactly what is missing and where you looked. The remedy is more facts, not a stronger model.
+- **REQUIRES_REASONING**: the facts are gathered but the question needs a design or priority judgment beyond observation. State the decision and the evidence on each side; do not make the call.
+- **CONFLICTING_EVIDENCE**: two sources disagree (code and docs, config and runtime, two call sites). Cite both sides; do not pick one.

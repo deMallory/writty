@@ -83,6 +83,14 @@ BLOCKING_MESSAGE = """Review complete.
 ```
 """
 
+def _status_message(status: str, critical: list | None = None) -> str:
+    """A reviewer message carrying an arbitrary verdict status."""
+    return "Review notes.\n\n```json\n" + json.dumps({
+        "spec_compliance": "unknown", "status": status,
+        "critical": critical or [], "important": [], "minor": [],
+    }) + "\n```\n"
+
+
 CLEAN_MESSAGE = """```json
 {"spec_compliance": "pass", "status": "approved", "critical": [], "important": [], "minor": []}
 ```"""
@@ -200,6 +208,92 @@ class TestIsBlocking:
 
         assert is_blocking(None) is False
 
+    @pytest.mark.parametrize("status", ["insufficient_context", "conflicting_evidence"])
+    def test_incomplete_status_blocks_with_empty_critical(self, status: str) -> None:
+        """A reviewer that could not finish has not approved anything."""
+        from review_findings import is_blocking, parse_verdict
+
+        verdict = parse_verdict(_status_message(status))
+        assert verdict["parsed"] is True
+        assert verdict["critical"] == []
+        assert is_blocking(verdict) is True
+
+    @pytest.mark.parametrize("status", ["insufficient_context", "conflicting_evidence"])
+    def test_incomplete_status_blocks_with_critical_present(self, status: str) -> None:
+        from review_findings import is_blocking, parse_verdict
+
+        critical = [{"file": "a.py", "line": 1, "finding": "x", "rule_id": None}]
+        assert is_blocking(parse_verdict(_status_message(status, critical))) is True
+
+    def test_incomplete_status_blocks_on_hand_built_verdict(self) -> None:
+        from review_findings import is_blocking
+
+        for status in ("insufficient_context", "conflicting_evidence"):
+            assert is_blocking({"parsed": True, "status": status, "critical": []}) is True
+
+    def test_approved_empty_critical_regression(self) -> None:
+        from review_findings import is_blocking
+
+        assert is_blocking({"parsed": True, "status": "approved", "critical": []}) is False
+
+    def test_changes_requested_empty_critical_regression(self) -> None:
+        from review_findings import is_blocking
+
+        verdict = {"parsed": True, "status": "changes_requested", "critical": []}
+        assert is_blocking(verdict) is False
+
+    def test_unparseable_dict_regression(self) -> None:
+        from review_findings import is_blocking
+
+        assert is_blocking({"parsed": False, "status": "", "critical": []}) is True
+
+    def test_none_regression(self) -> None:
+        from review_findings import is_blocking
+
+        assert is_blocking(None) is False
+
+
+class TestDescribeIncompleteStatus:
+    @pytest.mark.parametrize("status", ["insufficient_context", "conflicting_evidence"])
+    def test_names_incomplete_status_when_critical_empty(self, status: str) -> None:
+        from review_findings import describe, parse_verdict
+
+        text = describe(parse_verdict(_status_message(status)))
+        assert f"could not complete the review (status {status})" in text
+
+    def test_insufficient_context_exact_phrase(self) -> None:
+        from review_findings import describe, parse_verdict
+
+        text = describe(parse_verdict(_status_message("insufficient_context")))
+        assert "could not complete the review (status insufficient_context)" in text
+
+    def test_first_critical_still_named_alongside_incomplete_status(self) -> None:
+        from review_findings import describe, parse_verdict
+
+        critical = [{"file": "writ/gate.py", "line": 12, "finding": "auth check removed",
+                     "rule_id": None}]
+        text = describe(parse_verdict(_status_message("insufficient_context", critical)))
+        assert "writ/gate.py:12" in text
+        assert "auth check removed" in text
+
+    def test_critical_only_description_unchanged(self) -> None:
+        from review_findings import describe, parse_verdict
+
+        text = describe(parse_verdict(BLOCKING_MESSAGE))
+        assert "1 unresolved CRITICAL review finding" in text
+        assert "writ/gate.py:12" in text
+        assert "could not complete" not in text
+
+    def test_unparseable_description_unchanged(self) -> None:
+        from review_findings import describe, parse_verdict
+
+        assert "could not be parsed" in describe(parse_verdict("no json"))
+
+    def test_none_description_empty(self) -> None:
+        from review_findings import describe
+
+        assert describe(None) == ""
+
 
 # --------------------------------------------------------------------------- #
 # 3. Recording: the endpoint
@@ -262,6 +356,45 @@ class TestReviewFindingsEndpoint:
         review_findings.record(sid, CLEAN_MESSAGE, "agent-2")
         assert [e for e, _ in events] == ["review_block_lifted"]
         assert events[0][1]["clearing_agent_id"] == "agent-2"
+
+    def test_insufficient_context_after_blocking_logs_no_lift(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """An incomplete review is not a clearing verdict: no review_block_lifted."""
+        import review_findings
+
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
+        events: list[tuple] = []
+        import writ.session.friction as friction
+
+        monkeypatch.setattr(
+            friction, "_log_friction_event",
+            lambda sid, mode, event, **kw: events.append((event, kw)),
+        )
+        sid = _sid()
+        review_findings.record(sid, BLOCKING_MESSAGE, "agent-1")
+        review_findings.record(sid, _status_message("insufficient_context"), "agent-2")
+        assert not events, "insufficient_context must not lift the block"
+        assert review_findings.is_blocking(review_findings.read_state(sid)["verdict"]) is True
+
+    def test_get_reports_blocking_for_insufficient_context(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from fastapi.testclient import TestClient
+
+        monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
+        from writ.server import app
+
+        client = TestClient(app)
+        sid = _sid()
+        client.post(f"/session/{sid}/review-findings",
+                    json={"message": BLOCKING_MESSAGE, "agent_id": "a1"})
+        resp = client.post(f"/session/{sid}/review-findings",
+                           json={"message": _status_message("insufficient_context"),
+                                 "agent_id": "a2"})
+        assert resp.json().get("blocking") is True
+        got = client.get(f"/session/{sid}/review-findings").json()
+        assert got["blocking"] is True
 
     def test_get_with_nothing_recorded_is_not_blocking(
         self, tmp_path: Path, monkeypatch

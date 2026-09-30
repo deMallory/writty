@@ -49,6 +49,10 @@ _FENCE_RE = re.compile(r"```(?:[A-Za-z0-9_+-]*)\n(.*?)```", re.DOTALL)
 
 _EMPTY_LISTS = ("critical", "important", "minor")
 
+# A reviewer that could not finish has not approved anything, so these block even
+# with an empty `critical` list.
+_INCOMPLETE_STATUSES = ("insufficient_context", "conflicting_evidence")
+
 
 def _normalize(obj: dict) -> dict:
     """Shape a parsed object into the verdict record the callers rely on."""
@@ -114,11 +118,14 @@ def parse_verdict(message: str) -> dict:
 def is_blocking(verdict: dict | None) -> bool:
     """True when a recorded verdict must stop the commit.
 
-    None (no reviewer has run) is NOT blocking. An unparseable verdict IS.
+    None (no reviewer has run) is NOT blocking. An unparseable verdict IS, and so
+    is one whose status says the review could not be completed.
     """
     if verdict is None:
         return False
     if not verdict.get("parsed", False):
+        return True
+    if verdict.get("status") in _INCOMPLETE_STATUSES:
         return True
     return bool(verdict.get("critical"))
 
@@ -134,6 +141,12 @@ def describe(verdict: dict | None) -> str:
             "findings are unknown"
         )
     critical = verdict.get("critical") or []
+    status = verdict.get("status")
+    if status in _INCOMPLETE_STATUSES and not critical:
+        return (
+            f"the reviewer could not complete the review (status {status}), so its "
+            "findings are unknown"
+        )
     first = critical[0] if critical and isinstance(critical[0], dict) else {}
     where = str(first.get("file") or "?")
     line = first.get("line")

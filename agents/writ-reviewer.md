@@ -29,7 +29,7 @@ Emit exactly this JSON to stdout:
 ```json
 {
   "spec_compliance": "pass" | "fail",
-  "status": "approved" | "changes_requested",
+  "status": "approved" | "changes_requested" | "insufficient_context" | "conflicting_evidence",
   "critical": [
     {"file": "<path>", "line": <n>, "finding": "<one sentence>", "rule_id": "<if rule-backed>"}
   ],
@@ -42,8 +42,10 @@ Emit exactly this JSON to stdout:
 }
 ```
 
-- If `spec_compliance` is `fail`, set `status` to `changes_requested` and put the missing/incorrect requirements in `critical`; leave the quality lists empty (Pass 2 was skipped).
-- Severity: **Critical** blocks merge (safety, correctness, rule violation, spec miss). **Important** should be fixed (maintainability). **Minor** is a nit.
+- If `spec_compliance` is `fail` because the diff misses the spec, set `status` to `changes_requested` and put the missing/incorrect requirements in `critical`; leave the quality lists empty (Pass 2 was skipped).
+- `insufficient_context`: you could not finish a pass because something it needs was not provided (the spec, a file outside the diff, a SHA that does not resolve). Set `spec_compliance` to `fail`, since compliance was not established, and put each missing fact in `critical` as its own entry (the `file` it concerns or `spec`, `line` may be null, and what is missing). The controller retrieves the facts and re-dispatches.
+- `conflicting_evidence`: the spec contradicts itself or the code it references, so compliance cannot be judged. Set `spec_compliance` to `fail` and put each conflict in `critical`, citing both sides. The controller rules or asks the user.
+- Severity: **Critical** blocks merge (safety, correctness, rule violation, spec miss, a review that could not be completed). **Important** should be fixed (maintainability). **Minor** is a nit.
 - If `status` is `approved`, `critical` and `important` must be empty.
 
 ## Constraints
