@@ -172,7 +172,7 @@ Writ distinguishes three kinds of claim, and so should you when reading anything
 
 - **Mechanisms that are implemented and testable.** The gates, the approval binding, the credential classifier, the handoff. You can read these in the source and trigger them yourself.
 - **Measured outcomes.** Retrieval quality, retrieval cost, and how rule text per turn behaves as the rulebook grows. Method, figures, and corrections live in [`SCALE_BENCHMARK_RESULTS.md`](SCALE_BENCHMARK_RESULTS.md), which owns those numbers so this page does not go stale carrying copies.
-- **Claims not yet demonstrated.** That an agent handed the right rule complies more often than one handed nothing. The harness exists and reports its own result as insufficient. See [`docs/reference/efficacy-ab.md`](docs/reference/efficacy-ab.md).
+- **Claims not yet demonstrated.** That an agent handed the right rule complies more often than one handed nothing. This is not demonstrated, and Writ runs no headless experiments to demonstrate it.
 
 Two things are independently checkable before you install anything. [`docs/pressure-runs/`](docs/pressure-runs/) holds adversarial runs against real Claude Code sessions, each with the prompt, the full transcript, every enforcement decision as raw log lines, and a graded analysis of which rules held and which were bypassed, with the failures written up as failures. [`docs/monthly-reviews/`](docs/monthly-reviews/) holds operational reviews built from the system's own audit log.
 

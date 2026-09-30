@@ -15,7 +15,6 @@ Every `writ` command, generated from the Typer app. Run `writ <command> --help` 
 | `writ corpus-footprint` | No-API corpus footprint: rank per-rule bloat (WASTE) cut-candidates. Proposes, never applies |
 | `writ doctor` | Run the operability self-diagnostic; exit non-zero if any check fails |
 | `writ edit` | Edit an existing rule in the graph |
-| `writ efficacy-ab` | NUMERATOR harness: run a matched-task A/B and score cost + defect-caught |
 | `writ export` | Regenerate Markdown from graph. Overwrites output directory |
 | `writ export-cypher` | Dump the whole graph as a portable Cypher replay script |
 | `writ feedback` | Record positive or negative feedback for a rule (hook integration) |

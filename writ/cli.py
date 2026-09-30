@@ -261,8 +261,9 @@ def token_audit(
 ) -> None:
     """FOOTPRINT observer (WRIT-TOKEN-BLUEPRINT P0): per-session token COST from a CC transcript.
 
-    Denominator only -- silent on trajectory/efficacy (that is the P0.5 A/B harness). Fails loud
-    (exit 2) if the transcript usage schema is unrecognized, rather than emit a wrong number."""
+    Denominator only -- silent on trajectory/efficacy; judge those from real-session evidence.
+    Fails loud (exit 2) if the transcript usage schema is unrecognized, rather than emit a wrong
+    number."""
     import os
     from pathlib import Path
 
@@ -399,51 +400,6 @@ def blackbox_census(
         f"{len(census['records'])} record classes, "
         f"{len(census['events_never_observed'])} events never observed -> {out_path}"
     )
-
-
-@app.command(name="efficacy-ab")
-def efficacy_ab(
-    suite_dir: str = typer.Argument(..., help="Task-suite dir (e.g. tests/efficacy_suite)."),
-    variant_a: str = typer.Option("writ-on", help="Variant A profile name."),
-    variant_b: str = typer.Option("writ-off", help="Variant B profile name."),
-    reps: int = typer.Option(1, help="Reps per (task,variant). reps=1 is a single draw, no verdict."),
-    model: str = typer.Option("claude-opus-4-8", help="Model id for cost weighting."),
-    judge: bool = typer.Option(False, "--judge", help="Enable the LLM-judge fallback (spends)."),
-    live: bool = typer.Option(False, "--live", help="Actually spawn real claude runs (SPENDS API budget)."),
-    as_json: bool = typer.Option(False, "--json", help="Emit the report as JSON."),
-) -> None:
-    """NUMERATOR harness: run a matched-task A/B and score cost + defect-caught.
-    Default is a DRY RUN (no spawn, prints the plan + an estimate). --live opts into real spend."""
-    import tempfile
-
-    from writ.analysis import efficacy_ab as ab
-    from writ.analysis import variants as V
-    from writ.analysis.token_audit import TokenAuditSchemaError, render_json
-    try:
-        tasks = ab.load_suite(suite_dir)
-        plan = [(t, vn) for t in tasks for vn in (variant_a, variant_b) for _ in range(reps)]
-        if not live:
-            typer.echo(f"DRY RUN: {len(plan)} runs ({len(tasks)} tasks x 2 variants x {reps} reps). "
-                       f"Est ~${0.30 * len(plan):.2f}+ (trivial-run floor). Re-run with --live to spend.")
-            raise typer.Exit(0)
-        judge_fn = ab.make_judge(model) if judge else None
-        scored = []
-        for t, vn in plan:
-            prof = V.materialize_variant(vn, tempfile.mkdtemp(prefix="writ-ab-"))
-            with tempfile.TemporaryDirectory(prefix="writ-ab-run-") as wd:
-                res = ab.run_task(t, prof, wd)
-                scored.append(ab.score_run(t, res, vn, prof["friction_log"], judge_fn, model))
-        report = ab.compare_arms(scored, reps_floor=5)
-        typer.echo(render_json(report) if as_json else ab.render_text(report))
-    except TokenAuditSchemaError as e:
-        typer.echo(f"SCHEMA CANARY FAILED: {e}", err=True)
-        raise typer.Exit(2)
-    except OSError as e:
-        typer.echo(f"efficacy-ab: {e}", err=True)
-        raise typer.Exit(1)
-    except ab.EfficacyError as e:
-        typer.echo(f"efficacy-ab harness error: {e}", err=True)
-        raise typer.Exit(3)
 
 
 @app.command()

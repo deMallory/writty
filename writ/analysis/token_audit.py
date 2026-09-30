@@ -2,7 +2,7 @@
 
 Measures Writ's token FOOTPRINT per session, in COST units, from a Claude Code transcript jsonl.
 This is the DENOMINATOR instrument: passive, exact on cost. It is SILENT on trajectory/efficacy
-(the numerator) -- that is the separate P0.5 A/B harness. Do not ask it to rank an
+(the numerator); judge those from real-session evidence. Do not ask it to rank an
 efficacy-affecting change.
 
 The MEASURED denominator needs no tokenizer: the transcript's per-turn usage fields are real token

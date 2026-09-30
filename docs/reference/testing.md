@@ -180,4 +180,4 @@ Published numbers are machine-relative: the recorded runs come from a single mid
 
 ## Ground-truth fixtures
 
-`tests/fixtures/ground_truth_queries.json` (193 queries: MRR on the 47 ambiguous, hit rate on all), `ground_truth_negatives.json` (20 negatives behind the abstention gate; its header records the measured finding that only *raw* cosine separates them), `ground_truth_proc.json` (signed-off 40-query methodology set with curation provenance). `*.candidates.json` files are drafts, explicitly not metrics of record. `tests/efficacy_suite/` holds the paired A/B tasks (a planted IDOR true-positive arm and a clean false-positive arm).
+`tests/fixtures/ground_truth_queries.json` (193 queries: MRR on the 47 ambiguous, hit rate on all), `ground_truth_negatives.json` (20 negatives behind the abstention gate; its header records the measured finding that only *raw* cosine separates them), `ground_truth_proc.json` (signed-off 40-query methodology set with curation provenance). `*.candidates.json` files are drafts, explicitly not metrics of record.

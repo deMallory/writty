@@ -194,27 +194,15 @@ than a pricing error, and the `render_text` RECONCILIATION line ends with
 `(Writ figure is a floor)`. It never raises and never changes the exit code; absent, it is
 `{present: false}`.
 
-### Experiment contract (efficacy_ab)
+### Experiment harness (removed)
 
-`score_run` rows keep `total_cost` and `total_usd` with their legacy main-thread meaning,
-and `compare_arms` still compares on `total_cost`. Rows additively gain `session_usd`,
-`session_partial`, `session_orphan_usd_excluded` (the card's
-`session.orphan_usd_excluded`), `session_dispatch_coverage`, and, from the reconciliation
-block, `cc_total_usd`, `reconciliation_delta_usd`, `reconciliation_delta_pct`,
-`reconciliation_scope` and `reconciliation_writ_partial` (all None when cost-state is
-absent), read straight from the card.
-
-Model and effort routing experiments must use `session_usd`, not the legacy
-`total_cost`/`total_usd` fields, because routing moves spend between the main thread and
-subagents. A row is an incomplete observation when `session_partial` is true (for example
-a missing subagent transcript) OR `session_orphan_usd_excluded > 0` (subagent spend exists
-on disk that no dispatch of the session links to, so `session_usd` may omit it). An
-incomplete observation must never be read as a cheaper completed task.
-`session.partial` deliberately stays false for an excluded orphan: partial means a known
-dispatch could not be priced, while an orphan is spend the tree cannot attribute, and the
-approved end-to-end fixture (one orphan, `session_partial` false) pins that split. The
-experiment contract therefore reads both fields. A `--cost-scope main|session` flag for
-efficacy_ab is deferred; it would change A/B behavior before a baseline exists.
+The efficacy_ab harness was removed on 2026-09-29 because it spawned headless `claude -p`
+sessions, and Writ workflows never run headless Claude Code. Model and effort choices are
+made from guidance and judged from real-session cost: Claude Code's own session cost, with
+`writ token-audit` for attribution. Read `session.total_usd`, and treat a session as an
+incomplete observation when `session.partial` is true or `session.orphan_usd_excluded > 0`;
+an incomplete observation must never be read as a cheaper completed task. The references to
+efficacy_ab elsewhere in this ADR are the record of the change as it was made.
 
 ## Consequences
 

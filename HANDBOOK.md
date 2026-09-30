@@ -375,7 +375,7 @@ hook audit, and it is the operator's call rather than a defect.
 - **Authoring:** `add`, `edit`, `propose`, `review` (`--promote --reject --downweight --stats`), `feedback`, `role-prompt`.
 - **Decision memory:** `git-hooks install|uninstall|bootstrap`, `harvest` (backfill from git + transcripts), `recall`, `pr sync`.
 - **Operations:** `doctor` (`--fix`, `--net`), `logs tail|stats|list|rotate|backup`.
-- **Analytics:** `analyze-friction` (six mutually-exclusive lenses: rule effectiveness, skill usage, playbook compliance, graduation candidates, trim candidates, quality-judge false positives), `audit-session`, `token-audit` (transcript cost scorecard), `corpus-footprint` (per-rule token cost), `efficacy-ab` (live A/B harness; dry-run by default, real `claude` spawns behind `--live`).
+- **Analytics:** `analyze-friction` (six mutually-exclusive lenses: rule effectiveness, skill usage, playbook compliance, graduation candidates, trim candidates, quality-judge false positives), `audit-session`, `token-audit` (transcript cost scorecard), `corpus-footprint` (per-rule token cost).
 
 The hook-facing session CLI is separate: `bin/lib/writ-session.py <subcommand>` drives mode, gates, coverage, citations, and cache state; hooks call it when the daemon is unreachable.
 

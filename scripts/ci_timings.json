@@ -136,7 +136,6 @@
   "tests/test_doctor_registration_default.py": 0.4,
   "tests/test_dump_replay_atomicity.py": 0.2,
   "tests/test_edge_export_roundtrip.py": 0.1,
-  "tests/test_efficacy_ab.py": 0.6,
   "tests/test_effort_hop_removed.py": 0.4,
   "tests/test_embedded_python_compiles.py": 2.7,
   "tests/test_embeddings.py": 0.9,
