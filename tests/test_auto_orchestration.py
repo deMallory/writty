@@ -15,10 +15,26 @@ HELPER = REPO / "bin" / "lib" / "writ-session.py"
 BUILD = "implement the export endpoint from the approved plan"
 AUDIT = "audit the codebase for security issues"
 WORKERS = ("writ-planner", "writ-test-writer", "writ-implementer", "writ-reviewer")
+AGENT_FILES = ("writ-explorer",) + WORKERS
+
+
+def _home(tmp_path: Path) -> Path:
+    """Hermetic HOME: empty unless _install_agents ran, so a bootstrap.sh install on the
+    developer machine cannot flip the announced names to the bare form."""
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    return home
+
+
+def _install_agents(tmp_path: Path, roles=AGENT_FILES) -> None:
+    agents = _home(tmp_path).joinpath(".claude", "agents")
+    agents.mkdir(parents=True, exist_ok=True)
+    for role in roles:
+        (agents / f"{role}.md").write_text(f"---\nname: {role}\n---\n")
 
 
 def _env(tmp_path: Path) -> dict:
-    return {**os.environ, "WRIT_CACHE_DIR": str(tmp_path / "cache"), "WRIT_PORT": "59995",
+    return {**os.environ, "HOME": str(_home(tmp_path)), "WRIT_CACHE_DIR": str(tmp_path / "cache"), "WRIT_PORT": "59995",
             "WRIT_HOST": "localhost", "WRIT_FRICTION_LOG": str(tmp_path / "friction.log"),
             "WRIT_LOG_ROOT": str(tmp_path / "logs"), "WRIT_NO_AUTOSTART": "1"}
 
@@ -89,6 +105,46 @@ class TestTheHookOrchestratesWork:
         assert "writ-test-writer" in out and "writ-implementer" in out and "writ-reviewer" in out
         assert "present them for approval" not in out
         assert "writ mode set conversation ao-restore" in out
+
+
+def _restore_announcement(tmp_path, sid) -> str:
+    sandbox = _sandbox(tmp_path)
+    (sandbox / "plan.md").write_text("# Plan: unchanged across the detour\n")
+    _helper(tmp_path, "mode", "set", "work", sid)
+    path = tmp_path / "cache" / f"writ-session-{sid}.json"
+    data = json.loads(path.read_text())
+    data["gates_approved"] = ["phase-a"]
+    path.write_text(json.dumps(data))
+    _hook(tmp_path, sid, AUDIT)
+    return _hook(tmp_path, sid, BUILD).stdout
+
+
+class TestAnnouncementsNameTheDispatchableRoles:
+    def test_investigate_names_the_prefixed_explorer_under_an_empty_home(self, tmp_path):
+        out = _hook(tmp_path, "an-inv", AUDIT).stdout
+        assert "writ:writ-explorer" in out
+
+    def test_work_names_the_prefixed_workers_in_order_under_an_empty_home(self, tmp_path):
+        out = _hook(tmp_path, "an-work", BUILD).stdout
+        names = [f"writ:{w}" for w in WORKERS]
+        assert all(n in out for n in names), out
+        positions = [out.index(n) for n in names]
+        assert positions == sorted(positions), positions
+
+    def test_restore_names_the_prefixed_next_workers_under_an_empty_home(self, tmp_path):
+        out = _restore_announcement(tmp_path, "an-restore")
+        assert "paused work mode restored automatically" in out
+        for w in ("writ-test-writer", "writ-implementer", "writ-reviewer"):
+            assert f"writ:{w}" in out, (w, out)
+
+    def test_installed_agents_yield_bare_names_everywhere(self, tmp_path):
+        _install_agents(tmp_path)
+        inv = _hook(tmp_path, "an-bare-inv", AUDIT).stdout
+        work = _hook(tmp_path, "an-bare-work", BUILD).stdout
+        restore = _restore_announcement(tmp_path, "an-bare-restore")
+        assert "writ-explorer" in inv and "writ:writ-" not in inv
+        assert all(w in work for w in WORKERS) and "writ:writ-" not in work
+        assert "writ-reviewer" in restore and "writ:writ-" not in restore
 
 
 class TestTheModeEngineHonoursTheFlag:

@@ -359,12 +359,18 @@ if [ -z "$AGENT_ID" ] && [ -n "$MODE_HINT" ]; then
   fi
   # Announce ONLY a change we actually made.
   if [ "$AUTOROUTED" = "yes" ]; then
+    # Name the roles as this install dispatches them ("writ:<role>" on a plugin install).
+    WRIT_EXPLORER_AGENT=$(writ_agent_dispatch_name writ-explorer)
+    WRIT_PLANNER_AGENT=$(writ_agent_dispatch_name writ-planner)
+    WRIT_TEST_WRITER_AGENT=$(writ_agent_dispatch_name writ-test-writer)
+    WRIT_IMPLEMENTER_AGENT=$(writ_agent_dispatch_name writ-implementer)
+    WRIT_REVIEWER_AGENT=$(writ_agent_dispatch_name writ-reviewer)
     if [ "$MODE_HINT" = "investigate" ]; then
       cat << AUTOROUTE
 
 [Writ: audit/explore request -> investigate mode set automatically]
 This reads as an audit / exploration / research task, so the mode is now 'investigate'
-(the evidence-grounded audit/explore/research engine). Dispatch writ-explorer (read-only)
+(the evidence-grounded audit/explore/research engine). Dispatch $WRIT_EXPLORER_AGENT (read-only)
 for the actual exploration; it inherits this mode and runs governed. To override:
   writ mode set <conversation|debug|review|work|investigate> $SESSION_ID
 AUTOROUTE
@@ -378,8 +384,8 @@ AUTOROUTE
 This reads as a build/implementation task, so the mode is back to 'work'. The plan did not
 change during the detour, so the paused phase and $RESTORED_GATES already-approved gate(s)
 were restored with it. Continue that cycle as its orchestrator: dispatch the worker the
-restored phase is waiting on (writ-test-writer while the test skeletons are unapproved,
-writ-implementer once they are approved), then writ-reviewer on the result. Do not rewrite
+restored phase is waiting on ($WRIT_TEST_WRITER_AGENT while the test skeletons are unapproved,
+$WRIT_IMPLEMENTER_AGENT once they are approved), then $WRIT_REVIEWER_AGENT on the result. Do not rewrite
 plan.md and do not re-request an approval you already hold. If this is a trivial edit that
 needs no workflow, override with:
   writ mode set conversation $SESSION_ID
@@ -390,16 +396,16 @@ WORKRESTORE
 [Writ: implementation request -> work mode set automatically]
 This reads as a build/implementation task, so the mode is now 'work' (the full gated
 workflow) and this session is its orchestrator: dispatch the workers below in order rather
-than writing source yourself, the way an audit dispatches writ-explorer.
-  1. writ-planner writes plan.md and capabilities.md to .claude/plans/$SESSION_ID/, each by
+than writing source yourself, the way an audit dispatches $WRIT_EXPLORER_AGENT.
+  1. $WRIT_PLANNER_AGENT writes plan.md and capabilities.md to .claude/plans/$SESSION_ID/, each by
      filling in templates/plan-template.md and templates/capabilities-template.md from the
      Writ skill directory (they encode the gate's exact format, including the ## Files line
      grammar). The directory is session-scoped, so a second session working this same project
      cannot revoke your approvals by saving its own plan. Then present them for approval.
-  2. writ-test-writer writes the test skeletons once the plan is approved; present those for
+  2. $WRIT_TEST_WRITER_AGENT writes the test skeletons once the plan is approved; present those for
      approval too.
-  3. writ-implementer makes those tests pass once they are approved.
-  4. writ-reviewer reviews the result before you report the work done.
+  3. $WRIT_IMPLEMENTER_AGENT makes those tests pass once they are approved.
+  4. $WRIT_REVIEWER_AGENT reviews the result before you report the work done.
 Source writes are BLOCKED by the gate until the plan and test-skeleton gates are approved. If
 this is a trivial edit that needs no workflow, override with:
   writ mode set conversation $SESSION_ID

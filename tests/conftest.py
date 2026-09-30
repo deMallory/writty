@@ -123,6 +123,10 @@ def _isolate_friction_log(request, tmp_path, monkeypatch):
     # real events into the operator's home log store. Separate concern from the
     # WRIT_FRICTION_LOG isolation below.
     monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path / "logs"))
+    # A suite run from inside a Claude Code session (the Stop hook) inherits the INSTALLED
+    # plugin's CLAUDE_PLUGIN_ROOT; hooks prefer it over their own location, so the
+    # working-tree hook would source the installed copy's libraries. Tests that need it set it.
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
     if request.node.get_closest_marker("no_friction_isolation"):
         # These tests assert on marker-walk / unwritable-path resolution, so force
         # the env var OFF (a stray session-level value would defeat that).

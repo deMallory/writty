@@ -79,6 +79,18 @@ except Exception:
 " "$p" 2>/dev/null | tr -d '[:space:]'
 }
 
+# The agent type Claude Code will actually dispatch for a Writ role. A plugin install
+# registers agents as "writ:<name>"; the bare "<name>" exists only when bootstrap.sh has
+# linked agents/*.md into ~/.claude/agents. -f follows symlinks, so a dangling link reads
+# as not registered.
+writ_agent_dispatch_name() {
+    if [ -f "${HOME:-}/.claude/agents/$1.md" ]; then
+        printf '%s' "$1"
+    else
+        printf 'writ:%s' "$1"
+    fi
+}
+
 # The runtime-lens read gate's skip predicate.
 # writ_runtime_lens_check_required <session_id>
 #   exit 0  the expensive `writ-session.py can-read-code` check is REQUIRED

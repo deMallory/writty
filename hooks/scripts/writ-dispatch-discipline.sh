@@ -47,13 +47,22 @@ case "$DISPATCH_MODE" in
     *) exit 0 ;;
 esac
 
+# The agent type each role is dispatchable as on this install ("writ:<role>" on a plugin
+# install, bare when bootstrap.sh linked ~/.claude/agents), one "<role> <name>" per line.
+# Built after the mode case so ungoverned modes pay nothing.
+DISPATCH_NAMES=""
+for _role in writ-explorer writ-test-writer writ-reviewer writ-planner writ-implementer; do
+    DISPATCH_NAMES+="$_role $(writ_agent_dispatch_name "$_role")"$'\n'
+done
+
 # Pass the normalized envelope via env var rather than heredoc substitution: raw JSON
 # substituted into a heredoc body preserves embedded control chars that json.loads
 # rejects (same bug class fixed in writ-sdd-review-order.sh). Quoted '<<PY' delimiter =
 # no shell substitution inside; pure stdlib, no module import needed.
-DECISION=$(WRIT_PARSED_ENVELOPE="$HOOK_ENVELOPE" python3 <<'PY'
+DECISION=$(WRIT_PARSED_ENVELOPE="$HOOK_ENVELOPE" WRIT_DISPATCH_NAMES="$DISPATCH_NAMES" python3 <<'PY'
 import json, os, sys
 raw = os.environ.get("WRIT_PARSED_ENVELOPE", "")
+names = dict(line.split(" ", 1) for line in os.environ.get("WRIT_DISPATCH_NAMES", "").splitlines() if line)
 try:
     parsed = json.loads(raw)
 except (json.JSONDecodeError, ValueError) as _e:
@@ -109,7 +118,8 @@ if r:
     # the swap visible so the agent can re-issue with '[general-purpose]' if generic was
     # genuinely intended.
     new_ti = dict(ti)
-    new_ti["subagent_type"] = r
+    target = names.get(r, r)
+    new_ti["subagent_type"] = target
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -117,7 +127,7 @@ if r:
             "updatedInput": new_ti,
             "additionalContext": (
                 f"[Writ dispatch discipline | SKL-PROC-DISPATCH-001] Routed the generic "
-                f"'{shown}' dispatch to the governed Writ role '{r}' (carries the role prompt + "
+                f"'{shown}' dispatch to the governed Writ role '{target}' (carries the role prompt + "
                 f"runs inside the Writ session: mode/gates/RAG). To force generic, re-issue the "
                 f"Task with '[general-purpose]' in the prompt."
             ),
@@ -132,8 +142,8 @@ else:
             "permissionDecisionReason": (
                 f"[Writ dispatch discipline | SKL-PROC-DISPATCH-001] You dispatched the generic "
                 f"'{shown}' agent and the task did not map to a specific Writ role. Re-dispatch "
-                f"with writ-explorer (read-only) or writ-implementer, or add '[general-purpose]' "
-                f"to the prompt to override."
+                f"with {names['writ-explorer']} (read-only) or {names['writ-implementer']}, or add "
+                f"'[general-purpose]' to the prompt to override."
             ),
         }
     }))
