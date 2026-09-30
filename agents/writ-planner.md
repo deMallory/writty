@@ -53,3 +53,14 @@ After calling Write for both files, verify each one exists on disk:
 Do NOT declare success until you have confirmed both files are on disk. This
 prevents silent write-path failures from propagating to the orchestrator as
 apparent success.
+
+## Report status
+
+End every dispatch with exactly one status so the controller never has to guess:
+
+- **COMPLETE**: plan.md and capabilities.md are written and confirmed on disk, and every capability maps to a file in the plan.
+- **INSUFFICIENT_CONTEXT**: a fact the plan needs is missing from the exploration (a path, an interface, a convention). Name exactly what, and where you looked. The remedy is more facts, not a stronger model.
+- **REQUIRES_DESIGN_DECISION**: more than one approach is valid and the choice changes the plan (a data model, an API shape, a scope boundary). State the options and their trade-offs; do not choose for the user.
+- **CONFLICTING_EVIDENCE**: the exploration contradicts the task or the code it names. Cite both sides.
+
+A write failure still returns the VERIFICATION FAILED message above instead of a status.

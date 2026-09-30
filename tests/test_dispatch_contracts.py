@@ -435,7 +435,7 @@ class TestDispatchPolicy:
 
     def test_routes_judgment_statuses_to_controller_or_user(self, orch):
         p = self._policy(orch)
-        assert "REQUIRES_REASONING, REQUIRES_REQUIREMENT_DECISION, CONFLICTING_EVIDENCE, or a reviewer `conflicting_evidence`: the controller decides or asks the user." in p
+        assert "REQUIRES_REASONING, REQUIRES_REQUIREMENT_DECISION, REQUIRES_DESIGN_DECISION, CONFLICTING_EVIDENCE, or a reviewer `conflicting_evidence`: the controller decides or asks the user." in p
         assert "A stronger model (opus) may be used for that one judgment; the worker is then re-dispatched with the ruling on its own model." in p
 
     def test_routes_complete_and_remaining_statuses(self, orch):
@@ -489,3 +489,37 @@ class TestDispatchPolicy:
 
     def test_dispatch_policy_section_is_style_clean(self, orch):
         assert_style_clean(section_from(orch["body"], "## Dispatch policy"))
+
+
+_PLANNER_STATUSES = ("COMPLETE", "INSUFFICIENT_CONTEXT", "REQUIRES_DESIGN_DECISION", "CONFLICTING_EVIDENCE")
+
+
+class TestPlannerStatusContract:
+    def test_planner_report_status_section(self):
+        tpl = role_template("ROL-PLANNER-001")
+        assert "## Report status" in tpl
+        sec = section_from(tpl, "## Report status")
+        for st in _PLANNER_STATUSES:
+            assert f"- **{st}**:" in sec
+        n = norm(sec)
+        assert "End every dispatch with exactly one status so the controller never has to guess" in n
+        assert "The remedy is more facts, not a stronger model." in n
+        assert "do not choose for the user" in n
+        assert "Cite both sides." in n
+        assert "A write failure still returns the VERIFICATION FAILED message above instead of a status." in n
+
+    def test_planner_section_follows_post_write_verification(self):
+        tpl = role_template("ROL-PLANNER-001")
+        assert tpl.index("apparent success.") < tpl.index("## Report status")
+
+    def test_planner_keeps_verification_failed_message(self):
+        tpl = role_template("ROL-PLANNER-001")
+        assert "VERIFICATION FAILED: <filename> did not land on disk after 2 write attempts. Escalate to orchestrator." in tpl
+
+    def test_planner_section_is_style_clean(self):
+        assert_style_clean(section_from(role_template("ROL-PLANNER-001"), "## Report status"))
+
+    def test_planner_agent_carries_section(self):
+        body = agent_body("writ-planner.md")
+        for st in _PLANNER_STATUSES:
+            assert f"- **{st}**:" in body
