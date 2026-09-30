@@ -4,6 +4,26 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-09-30
+
+`writ token-audit` now bills each API response once at its own model's rates and includes subagent spend, and the sub-agent roles carry an explicit model, effort and status contract that the orchestrator routes on. The old audit counted most responses about twice and priced every model at one rate; subagent transcripts were not counted at all. Writ no longer runs headless Claude Code anywhere.
+
+### Changed
+
+- **token-audit bills per API response.** Claude Code writes one transcript record per content block, so the audit summed each response about twice. Records sharing a `message.id` now count once; streaming snapshots (only `output_tokens` grows) collapse silently, the last record wins, and any other difference raises a `duplicate_id_conflict` warning.
+- **Real per-model prices.** A `RATE_CARD` holds input, output, cache read and 5-minute and 1-hour cache write rates for each model, including Opus 5.5's 0.05x cache read. Model ids match exactly (a trailing date suffix is stripped); an unknown model is reported as unpriced and the dollar figure is labelled partial. `--model` is a fallback for records that carry no model and defaults to none.
+- **Subagent spend is included.** The audit links each Agent dispatch to its transcript and reports cost by model, role and dispatch, dispatch coverage, missing and orphan transcripts, and a reconciliation against Claude Code's own `cost-state` total. Treat the audit as a floor: transcripts omit some billed calls Claude Code makes.
+- **Subagent usage survives a deleted transcript.** The SubagentStop hook appends a token-only `subagent_usage` row to the metrics stream; the audit prices a dispatch from it when the transcript is gone. `writ token-audit` gains `--project`.
+- **Per-role effort.** `SubagentRole.effort_preference` is exported as `effort:` frontmatter: planner and implementer high; explorer, test writer and reviewer medium, matching what each ran at before. HANDBOOK section 8 documents the role table.
+- **Status contracts for every worker.** The explorer, test writer and planner end with one status (COMPLETE, INSUFFICIENT_CONTEXT, a REQUIRES_* decision, or CONFLICTING_EVIDENCE); the reviewer's JSON `status` gains `insufficient_context` and `conflicting_evidence`, and those two block a commit even with an empty critical list, in any letter case.
+- **Dispatch policy.** `PBK-PROC-ORCHESTRATOR-001` says when to work directly instead of delegating, to retrieve missing facts before reaching for a stronger model, when to override a dispatch's model (haiku for bounded lookups only; fable only on the user's request), and how to route each returned status.
+- **The fix loop escalates by evidence.** Rounds 4-5 dispatch a fresh implementer on the same model with the plan, failing test output, every open finding and prior fix reports, instead of an unspecified "more capable model".
+- **`writ/analysis` loads pydantic lazily**, so the stop hook imports the token audit without it.
+
+### Removed
+
+- **The `efficacy-ab` harness** (`writ/analysis/efficacy_ab.py`, `variants.py`, the command, its task suite and runbook). It was Writ's only headless `claude -p` use; `tests/test_no_headless_claude.py` now fails on any new one.
+
 ## [1.10.1] - 2026-09-25
 
 `writ doctor --fix` no longer crashes on an install without `bible/`, and one failing repair no longer skips the rest.
