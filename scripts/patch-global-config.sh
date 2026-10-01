@@ -13,8 +13,10 @@
 #      the delivery path. Policy: add when absent, refresh when it already points
 #      at a writ-statusline.sh (survives plugin-upgrade path changes), and leave a
 #      foreign statusLine untouched (never clobber the user's choice).
-#   3. Renders templates/CLAUDE.md into ~/.claude/CLAUDE.md (backup-if-exists,
-#      skip-if-identical). A missing settings.json is CREATED, not an error.
+#   3. Writes templates/CLAUDE.md into a marked Writ block in ~/.claude/CLAUDE.md.
+#      Text outside the block is never changed; a block the user edited is replaced
+#      only under a boxed warning that names the backup. A missing settings.json is
+#      CREATED, not an error.
 #
 # Why this exists. The plugin manifest schema has no permissions field,
 # hooks/hooks.json only registers hook events, and the plugin lifecycle does not
@@ -41,7 +43,8 @@
 #
 # Exit codes:
 #   0  patched, already up to date, or dry-run success
-#   1  missing template, or the plugin-install refusal (--hooks)
+#   1  missing template, the plugin-install refusal (--hooks), or CLAUDE.md markers
+#      that do not pair up
 #   2  write failure
 
 set -euo pipefail

@@ -38,7 +38,7 @@ pytestmark = requires_bible
 # per-type counts are pinned by tests/test_phase6efg_corpus_promotion.py). Asserted with >=
 # so adding methodology nodes never false-fails this determinism test; a count DROPPING below
 # the floor still fails (signals a wiped/partial graph, the masking condition this guards).
-EXPECT_SUBAGENT = 5
+EXPECT_SUBAGENT = 7
 EXPECT_PLAYBOOK = 15
 EXPECT_SKILL = 13
 EXPECT_PHASE = 20
@@ -59,7 +59,10 @@ class TestClassifier:
         assert classify_corpus_state(reachable=True, rule_count=283, subagent_count=0) == "empty"
 
     def test_complete_corpus_is_ready(self) -> None:
-        assert classify_corpus_state(reachable=True, rule_count=283, subagent_count=6) == "ready"
+        assert (
+            classify_corpus_state(reachable=True, rule_count=283, subagent_count=EXPECT_SUBAGENT)
+            == "ready"
+        )
 
     def test_empty_never_classifies_as_unreachable(self) -> None:
         # Regression guard against the FIX-5 masking: empty must never look like 'unreachable'.

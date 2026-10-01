@@ -47,6 +47,8 @@ def test_grok_tool_matchers_are_registered():
         "run_terminal_command",
         "spawn_subagent",
         "exit_plan_mode",
+        "read_file",
+        "grep",
     ):
         assert token in joined, f"matcher token {token!r} missing from hooks/hooks.json"
 
@@ -59,6 +61,16 @@ def test_session_start_bootstrap_accepts_grok_plugin_root():
         / "session-start-bootstrap.sh"
     ).read_text()
     assert "GROK_PLUGIN_ROOT" in text
+
+
+def test_approval_hook_copies_the_grok_plan_before_current_phase():
+    text = (
+        Path(__file__).resolve().parent.parent
+        / "hooks"
+        / "scripts"
+        / "auto-approve-gate.sh"
+    ).read_text()
+    assert text.index("materialize_plan") < text.index('current-phase "$SESSION_ID"')
 
 
 def test_bootstrap_grok_does_not_write_claude_settings():

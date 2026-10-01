@@ -12,9 +12,9 @@ Writ's daemon, graph, and gates stay the source of truth. This adapter translate
 | Stop block | stderr + non-zero | `{"decision":"block"}` + exit 2 | dual-emit + exit 2 |
 | Rule injection | stdout on `UserPromptSubmit` | observe-only (stdout discarded) | sidecar `$GROK_PLUGIN_DATA/current-rules.md` |
 | Plan file | `<repo>/plan.md` | `~/.grok/sessions/<encoded-cwd>/<sid>/plan.md` | `writ grok materialize-plan` |
-| Plan approval | type `approved` | TUI `a` then `/writ-approve` | `/writ-approve` mints the token |
+| Plan approval | type `approved` | TUI `a` then `/writ-approve` | the approval hook copies the plan, then advances |
 
-Grok skips unknown events (`CwdChanged`). Matcher aliases map `Bash` to `run_terminal_command`; hooks.json also names Grok natives (`write`, `search_replace`, `spawn_subagent`, `exit_plan_mode`).
+Grok skips unknown events (`CwdChanged`). Matcher aliases map Claude tool names onto Grok's: `Bash` to `run_terminal_command`, `Read` to `read_file`, `Grep` to `grep`, `Write` to `write`, plus `search_replace`, `spawn_subagent` and `exit_plan_mode`.
 
 ## Install
 
@@ -38,7 +38,7 @@ Grok plan mode is the planning UX. Writ still owns the gate.
 
 1. Agent writes the Grok session plan with Writ's four sections (`## Files`, `## Analysis`, `## Rules Applied`, `## Capabilities`).
 2. Agent calls `exit_plan_mode`. You review and press `a`. That exits Grok plan mode. It does **not** open the Writ gate.
-3. You type `/writ-approve`. That prompt mints the token, copies the session plan to `<repo>/plan.md`, and POSTs `/advance-phase`.
+3. You type `/writ-approve`. That prompt is an exact approval. The approval hook copies the session plan to `<repo>/plan.md`, fingerprints that copy, and advances the gate. The command does not copy the plan again.
 4. A second `/writ-approve` after real test files opens implementation.
 
 Do not mint a token from `exit_plan_mode`. The agent calls that tool before you press `a`.
@@ -49,7 +49,7 @@ Record the outcome of each step in this file when you run it.
 
 1. `mode set work` (or let auto-route send a build prompt).
 2. Ask Grok to `write` a dummy line in `writ/cli.py` before any approval. Expect a deny whose reason names `[ENF-GATE-PLAN]`.
-3. After `a` on a Writ-shaped plan, type `/writ-approve`. Expect `writ grok materialize-plan` to copy the session plan and phase to become `testing`.
+3. After `a` on a Writ-shaped plan, type `/writ-approve`. Expect the approval hook to copy the session plan and the phase to become `testing`.
 4. Confirm `/hooks` shows the Work scripts trusted.
 
 Probe results (fill in after a live run):

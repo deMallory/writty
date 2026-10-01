@@ -13,8 +13,8 @@ PATH. Two named defects are the reason this file exists and are pinned directly:
 
 All daemon interactions here hit a throwaway stdlib http.server on an ephemeral port,
 never the real Writ daemon and never WRIT_PORT=8799 (the suite's own test daemon).
-WRIT_CACHE_DIR is always pointed at a tmp_path subdirectory -- var/session is never
-touched.
+WRIT_CACHE_DIR is always pointed at a tmp_path subdirectory -- the real session store
+is never touched.
 """
 from __future__ import annotations
 
@@ -30,6 +30,9 @@ import threading
 from pathlib import Path
 
 import pytest
+
+# autouse: pins cwd to a sandbox so `mode set` cannot delete THIS repo's gate artifacts.
+from tests.fixtures.session_state import sandbox_cwd  # noqa: F401
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 COMMON_SH = SKILL_ROOT / "bin" / "lib" / "common.sh"

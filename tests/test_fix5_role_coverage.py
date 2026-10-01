@@ -44,14 +44,15 @@ AGENTS_DIR = WRIT_ROOT / "agents"
 EXPORT_SCRIPT = WRIT_ROOT / "scripts" / "export_subagent_roles.py"
 WRIT_PY = WRIT_ROOT / ".venv" / "bin" / "python"
 
-# Canonical name -> (role node file, role_id, model). The five real worker agents.
-# The spec-reviewer + code-quality-reviewer were merged into one two-pass writ-reviewer.
+# Canonical name -> (role node file, role_id, model). The seven real worker agents.
 ROLE_SPECS = {
     "writ-explorer": ("ROL-EXPLORER-001.md", "ROL-EXPLORER-001", "sonnet"),
     "writ-planner": ("ROL-PLANNER-001.md", "ROL-PLANNER-001", "opus"),
     "writ-test-writer": ("ROL-TEST-WRITER-001.md", "ROL-TEST-WRITER-001", "sonnet"),
     "writ-implementer": ("ROL-IMPLEMENTER-001.md", "ROL-IMPLEMENTER-001", "opus"),
     "writ-reviewer": ("ROL-REVIEWER-001.md", "ROL-REVIEWER-001", "sonnet"),
+    "writ-code-quality-reviewer": ("ROL-CODE-QUALITY-REVIEWER-001.md", "ROL-CODE-QUALITY-REVIEWER-001", "sonnet"),
+    "writ-spec-reviewer": ("ROL-SPEC-REVIEWER-001.md", "ROL-SPEC-REVIEWER-001", "haiku"),
 }
 
 # The retired identifiers that must not survive the rename anywhere.
@@ -132,7 +133,7 @@ class TestNodesValid:
 class TestParity:
     def test_exactly_five_role_files(self) -> None:
         files = sorted(BIBLE_METHODOLOGY.glob("ROL-*.md"))
-        assert len(files) == 5, f"Expected 5 ROL-*.md files, found {len(files)}: {[f.name for f in files]}"
+        assert len(files) == 7, f"Expected 7 ROL-*.md files, found {len(files)}: {[f.name for f in files]}"
 
     def test_agent_files_and_node_names_are_the_same_set(self) -> None:
         agent_stems = {p.stem for p in AGENTS_DIR.glob("*.md")}
@@ -246,11 +247,8 @@ class TestRolePromptLive:
         )
         if _role_prompt_unavailable(proc.stderr, proc.stdout):
             pytest.skip("Neo4j not reachable for role-prompt")
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # The fork keeps the code-reviewer role (split reviewer agents restored),
-        # so the "old" name is expected to resolve.
-        assert proc.returncode == 0, (
-            f"'{OLD_NAME}' is a live fork role; role-prompt should resolve it\n{proc.stderr}"
+        assert proc.returncode != 0, (
+            f"'{OLD_NAME}' should no longer resolve after the split-reviewer migration"
         )
 
 

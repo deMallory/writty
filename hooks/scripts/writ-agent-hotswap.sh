@@ -9,11 +9,16 @@
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 source "$WRIT_DIR/bin/lib/common.sh"
-hook_instrument "writ-agent-hotswap"
 
 command -v jq >/dev/null 2>&1 || exit 0
 
 INPUT=$(cat)
+
+# hook_instrument files its rows under SESSION_ID; without this every row
+# landed under "unknown". agent_id first so a sub-agent's spawns are not
+# filed under its parent. Read from INPUT: stdin is already consumed.
+SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.agent_id // .session_id // empty' 2>/dev/null || true)
+hook_instrument "writ-agent-hotswap"
 
 # Blackbox capture (see OVERVIEW.md): this hook parses stdin directly, so it
 # records its own envelope when the capture flag is on.
@@ -26,10 +31,15 @@ SUBAGENT=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // empty')
 
 [ -z "$SUBAGENT" ] && exit 0
 
+# The plugin loader registers the roles under the plugin's name (plugin.json "name"), so a
+# bare writ-* name only resolves where scripts/bootstrap.sh linked it into ~/.claude/agents/.
+ROLE_PREFIX=""
+[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && ROLE_PREFIX="writ:"
+
 # Generic -> writ-* routing map
 case "$SUBAGENT" in
-  Explore|explore)      NEW_TYPE="writ-explorer" ;;
-  Plan|plan)            NEW_TYPE="writ-planner" ;;
+  Explore|explore)      NEW_TYPE="${ROLE_PREFIX}writ-explorer" ;;
+  Plan|plan)            NEW_TYPE="${ROLE_PREFIX}writ-planner" ;;
   *)                    NEW_TYPE="$SUBAGENT" ;;
 esac
 
@@ -37,7 +47,7 @@ esac
 # Only stamp when the caller did not set a model explicitly.
 MODEL=$(echo "$INPUT" | jq -r '.tool_input.model // empty')
 if [ -z "$MODEL" ]; then
-  case "$NEW_TYPE" in
+  case "${NEW_TYPE#writ:}" in
     writ-explorer|writ-planner|writ-spec-reviewer|writ-code-quality-reviewer)
       NEW_MODEL="opus" ;;
     writ-implementer|writ-test-writer|general-purpose|claude)

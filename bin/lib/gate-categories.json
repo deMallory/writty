@@ -31,6 +31,10 @@
     "*/alembic/*",
     "*/.claude/settings.json",
     "*/.claude/settings.local.json",
-    "*/.claude/*.md"
+    "*/.claude/*.md",
+    "*.md",
+    "*.txt",
+    "/tmp/claude/*",
+    "/private/tmp/claude/*"
   ]
 }

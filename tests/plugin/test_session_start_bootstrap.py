@@ -8,6 +8,11 @@ all branches (graceful degradation).
 from __future__ import annotations
 
 import os
+import platform
+import socket
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -15,6 +20,21 @@ import pytest
 from tests.plugin.conftest import REPO_ROOT
 
 SESSION_START_BOOTSTRAP = REPO_ROOT / "hooks" / "scripts" / "session-start-bootstrap.sh"
+RUN_BOUNDED = REPO_ROOT / "bin" / "lib" / "run-bounded.py"
+
+# Exits 127 like the shell does when `timeout` is missing (stock macOS), and records the
+# call. First on PATH, it reproduces the macOS failure on Linux CI, where `timeout` exists.
+STUB_TIMEOUT = """#!/usr/bin/env bash
+echo called >> "{calls}"
+exit 127
+"""
+
+# Stands in for the real lib so no daemon starts: records that step 4 was reached, and
+# with which realign setting.
+STUB_SERVER_LIB = """writ_ensure_server() {
+  printf 'realign=%s\\n' "${WRIT_REALIGN_CACHE:-}" > "${WRIT_DIR}/ensure-called"
+}
+"""
 
 
 class TestSessionStartBootstrapExists:
@@ -98,3 +118,87 @@ class TestSessionStartBootstrapContent:
             "session-start-bootstrap.sh must not call 'exit 1' — all degradation paths "
             f"must exit 0. Found: {hard_exits}"
         )
+
+
+class TestNeo4jProbeWithoutGnuTimeout:
+    """The probe must not need GNU timeout, which stock macOS lacks.
+
+    With it, the probe exited 127 with Neo4j up, the hook stopped at step 3, and neither
+    the daemon start nor the Darwin realign ever ran (found 2026-09-28).
+    """
+
+    @pytest.fixture()
+    def sandbox(self, tmp_path: Path) -> Path:
+        plugin_root = tmp_path / "plugin-root"
+        (plugin_root / "bin" / "lib").mkdir(parents=True)
+        (plugin_root / "bin" / "lib" / "run-bounded.py").symlink_to(RUN_BOUNDED)
+        (plugin_root / "scripts" / "lib").mkdir(parents=True)
+        (plugin_root / "scripts" / "lib" / "writ-server-lib.sh").write_text(STUB_SERVER_LIB)
+        venv_bin = tmp_path / "data" / ".venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "python3").symlink_to(sys.executable)
+        stub_bin = tmp_path / "stub-bin"
+        stub_bin.mkdir()
+        stub = stub_bin / "timeout"
+        stub.write_text(STUB_TIMEOUT.format(calls=tmp_path / "timeout-calls"))
+        stub.chmod(0o755)
+        return tmp_path
+
+    @pytest.fixture()
+    def listener(self):
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            s.listen(1)
+            yield s.getsockname()[1]
+
+    def _run(self, sandbox: Path, host: str, port: int) -> subprocess.CompletedProcess:
+        env = {
+            **os.environ,
+            "PATH": f"{sandbox / 'stub-bin'}:{os.environ['PATH']}",
+            "CLAUDE_PLUGIN_ROOT": str(sandbox / "plugin-root"),
+            "CLAUDE_PLUGIN_DATA": str(sandbox / "data"),
+            "WRIT_NEO4J_HOST": host,
+            "WRIT_NEO4J_PORT": str(port),
+        }
+        return subprocess.run(
+            ["bash", str(SESSION_START_BOOTSTRAP)], input="{}",
+            capture_output=True, text=True, env=env, timeout=30,
+        )
+
+    def test_reachable_neo4j_reaches_the_server_start(self, sandbox: Path, listener: int) -> None:
+        r = self._run(sandbox, "127.0.0.1", listener)
+        assert r.returncode == 0, r.stderr
+        assert "Neo4j not reachable" not in r.stderr, r.stderr
+        assert (sandbox / "plugin-root" / "ensure-called").is_file(), (
+            "the hook stopped at the Neo4j probe while Neo4j was listening"
+        )
+        assert not (sandbox / "timeout-calls").exists(), "the probe still calls GNU timeout"
+
+    def test_the_darwin_realign_runs(self, sandbox: Path, listener: int) -> None:
+        self._run(sandbox, "127.0.0.1", listener)
+        marker = sandbox / "plugin-root" / "ensure-called"
+        assert marker.is_file(), "the hook never reached writ_ensure_server"
+        expected = "realign=1" if platform.system() == "Darwin" else "realign="
+        assert marker.read_text().strip() == expected
+
+    def test_closed_port_reports_unreachable_and_skips_the_start(self, sandbox: Path) -> None:
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        r = self._run(sandbox, "127.0.0.1", port)
+        assert r.returncode == 0, r.stderr
+        assert f"Neo4j not reachable at 127.0.0.1:{port}" in r.stderr, r.stderr
+        assert not (sandbox / "plugin-root" / "ensure-called").exists()
+        assert not (sandbox / "timeout-calls").exists(), "the probe still calls GNU timeout"
+
+    def test_black_holed_host_is_bounded(self, sandbox: Path) -> None:
+        # 10.255.255.1 is unroutable in practice: the SYN goes unanswered, so an unbounded
+        # connect would block for the kernel SYN timeout. A network that refuses it at once
+        # also passes; only a broken bound fails.
+        start = time.monotonic()
+        r = self._run(sandbox, "10.255.255.1", 7687)
+        elapsed = time.monotonic() - start
+        assert r.returncode == 0, r.stderr
+        assert "Neo4j not reachable at 10.255.255.1:7687" in r.stderr, r.stderr
+        assert not (sandbox / "plugin-root" / "ensure-called").exists()
+        assert elapsed < 8, f"the probe took {elapsed:.1f} s; its bound is 2 s"

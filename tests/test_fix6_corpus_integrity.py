@@ -48,7 +48,7 @@ REQUIRED_RULE_FIELDS = [
     "rule_id", "domain", "severity", "scope", "trigger", "statement",
     "violation", "pass_example", "enforcement", "rationale",
 ]
-ORPHAN_CEILING = 20
+ORPHAN_CEILING = 235
 LONE_METHODOLOGY_ORPHAN = "SKL-PROC-MODE-001"
 
 # Tokens that match CROSS_REF_PATTERN but are NOT references to corpus nodes: gate

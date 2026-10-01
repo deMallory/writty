@@ -120,11 +120,10 @@ class TestHooksJsonStructure:
         Write|Edit state-write gate (41 -> 43); the auto-memory mirror added the
         PostToolUse Write|Edit writ-memory-capture (43 -> 44)."""
         registrations = _collect_all_registrations(hooks_data)
-        # main restored the full upstream+fork hook surface (48). Grok adapter
-        # keeps that count while adding matcher aliases + dual plugin-root tokens.
-        assert len(registrations) == 48, (
+        # Grok tool aliases share these registrations; they do not add one.
+        assert len(registrations) == 49, (
             f"hooks.json registration count drifted; found {len(registrations)}, "
-            f"expected 48. Update this and HANDBOOK if the change is intentional."
+            f"expected 49. Update this and HANDBOOK if the change is intentional."
         )
 
     def test_hooks_json_event_mapping(self, hooks_data: dict) -> None:

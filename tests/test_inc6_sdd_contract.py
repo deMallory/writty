@@ -131,7 +131,7 @@ class TestCensusUnchanged:
 
     def test_role_count(self) -> None:
         n = len(list(METH.glob("ROL-*.md")))
-        assert n == 5, f"expected 5 ROL-*.md, found {n}"
+        assert n == 7, f"expected 7 ROL-*.md, found {n}"
 
     def test_sdd_playbook_count(self) -> None:
         n = len(list(METH.glob("PBK-PROC-SDD-*.md")))

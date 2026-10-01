@@ -60,6 +60,8 @@ FORBIDDEN_INVERSIONS = {
 _RULE_PREFIXES = {
     "API", "ARCH", "CLEAN", "DRY", "DOC", "ERR", "PERF", "PROC", "PY", "PHP",
     "FW", "SEC", "SOLID", "SCALE", "TEST", "DB", "RESEARCH", "ENF", "RUL",
+    "ANIM",   # animation rules live in bible/frameworks/
+    "EDIT",   # editorial rules live in bible/communication/
 }
 
 

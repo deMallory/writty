@@ -149,7 +149,7 @@ _readonly_inspection() {
     return 0
 }
 
-STATE_DIR_GUARD="${WRIT_CACHE_DIR:-$WRIT_DIR/var/session}"
+STATE_DIR_GUARD="$(writ_session_cache_dir)"
 case "$CMD" in
     *"$STATE_DIR_GUARD"* | *"/tmp/writ-current-session"* | *"writ-session-"* \
     | *"writ-manual-test-grant"* | *"manual_test_grant"* | *"writ-grant-"*)
@@ -198,7 +198,8 @@ esac
 # DELIBERATELY NARROWER than the state-dir guard above, which refuses any mention of
 # gate state. This file must stay stageable, greppable and committable
 # (`git add bin/lib/review_findings.py` is legitimate and common), so only MUTATING
-# use is refused: the `record` subcommand, or a POST-shaped request to the endpoint.
+# use is refused: the `record` and `spec-done` subcommands, or a POST-shaped request
+# to the endpoint.
 #
 # HONEST LIMIT: this is a command-text check, so it is a confirmation boundary and
 # not containment. An agent that writes an intermediate script and runs that is not
@@ -208,8 +209,8 @@ esac
 case "$CMD" in
     *"review_findings"* | *"review-findings"*)
         if printf '%s' "$CMD" | grep -qE \
-            'review_findings(\.py)?[[:space:]]+record|review-findings.*(POST|--data|-d[[:space:]])'; then
-            RECORD_REASON="[ENF-GATE-STATE] Refusing this Bash command: it writes a reviewer verdict directly. That record is what makes the commit gate fire, so an agent that writes it can clear its own CRITICAL findings, which is exactly the review this gate exists to enforce. Verdicts are recorded by writ-subagent-stop.sh from the reviewer's own output. To clear a block: fix the findings and re-run writ-reviewer. Reading the record is fine (GET, or the Read tool)."
+            'review_findings(\.py)?[[:space:]]+(record|spec-done)|review-findings.*(POST|--data|-d[[:space:]])'; then
+            RECORD_REASON="[ENF-GATE-STATE] Refusing this Bash command: it writes reviewer state directly (a verdict, or the spec-review flag the code-quality reviewer waits for). That record is what makes the commit gate fire, so an agent that writes it can clear its own CRITICAL findings, which is exactly the review this gate exists to enforce. Verdicts are recorded by writ-subagent-stop.sh from the reviewer's own output. To clear a block: fix the findings and re-run writ-reviewer. Reading the record is fine (GET, or the Read tool)."
             log_gate_decision "review-record" "deny" "$RECORD_REASON" ""
             emit_deny "$RECORD_REASON"
             exit 0
@@ -327,6 +328,7 @@ cwd = os.environ.get("WRIT_CWD", "") or os.getcwd()
 sys.path.insert(0, os.environ.get("WRIT_DIR", ""))
 try:
     from writ.session.gates import _is_credential_path as is_cred
+    from writ.session.gates import _CREDENTIAL_DIR_SEGMENTS as _DIRS
 except Exception:
     # Minimal fallback (only if the package import fails -- the server gate would be
     # down too). Covers the headline secrets so the org boundary still holds.
@@ -354,14 +356,18 @@ except Exception:
             return True
         return any(fnmatch.fnmatch(b, g) for g in _GLOBS)
 
+# `secret`, `.ssh`, ... alone: is_cred reads them as the directory itself, right for a
+# redirect target, wrong for a word inside interpreter source (see looks_like_path).
+SECRET_DIR_NAMES = frozenset(s.strip("/") for s in _DIRS)
+
 
 # Writ gate state: mode, approved gates and the manual-testing grant. The agent
 # editing these would be approving its own gates, so they are denied in any mode.
 # Defined outside the try/except above so it exists on BOTH the package-import and
 # fallback paths. Mirrors writ-state-write-gate.sh, which covers Write/Edit.
-_WRIT_HOME = os.environ.get("WRIT_DIR", "")
-_STATE_DIR = os.environ.get("WRIT_CACHE_DIR") or (
-    os.path.join(_WRIT_HOME, "var", "session") if _WRIT_HOME else ""
+# Same default as writ/session/cache.py: one user-level store, never install-relative.
+_STATE_DIR = os.environ.get("WRIT_CACHE_DIR") or os.path.join(
+    os.path.expanduser("~"), ".cache", "writ", "session"
 )
 _POINTER = "/tmp/writ-current-session"
 
@@ -964,6 +970,10 @@ def looks_like_path(c):
     # set below) would be candidates that never became targets -- the credential deny
     # would have applied to `echo k > deploy.pem` and not to `python3 -c
     # "open('deploy.pem','w')"`, which is the exact asymmetry this vector exists to end.
+    # A bare secret-directory name is a word here (`d['secret']`, a regex), not a file:
+    # open() cannot write a directory, and `secrets/k` still matches below.
+    if "/" not in c and c.lower() in SECRET_DIR_NAMES:
+        return False
     if is_cred(c):
         return True
     if os.path.splitext(os.path.basename(c))[1].lower() in INLINE_FILE_EXTS:
@@ -1114,6 +1124,16 @@ for seg, _piped_in in segments:
 # or from `python3 -c`. Runs on the RAW segment tokens: shlex(posix=False) keeps the
 # quote characters, and PATH_CAND excludes them, so quotes act as delimiters.
 stdin_interpreter = False
+# Interpreter-scanned hits are tracked separately because ONE rule applies to
+# them alone: an EXISTING DIRECTORY named in interpreter arguments is never a
+# file-write target (no language here can open() a directory for writing), so
+# gating it is pure false positive -- observed live when a read-only
+# `python -c "validate('<project root>')"` probe was denied as a write to the
+# repo root via the `ap == cwd` branch below. The skip must NOT apply to the
+# shell vectors that share raw_targets: `cp/mv -t DIR` writes INTO a directory
+# and stays gated. A NONEXISTENT path stays gated on this vector too -- it
+# could be a file about to be created.
+interp_hits = set()
 for seg, piped_in in segments:
     if not seg:
         continue
@@ -1128,7 +1148,9 @@ for seg, piped_in in segments:
         # command at all. The pipe IS the marker.
         form = "stdin"
     if form == "flag":
-        raw_targets += scan_tokens(args)
+        hits = scan_tokens(args)
+        raw_targets += hits
+        interp_hits.update(hits)
     elif form == "stdin":
         stdin_interpreter = True
 if stdin_interpreter:
@@ -1138,7 +1160,9 @@ if stdin_interpreter:
     # is gated on notes.md. Coarser than the flag form, deliberately: a stdin-fed
     # interpreter is itself the strong signal, and the answer to "the code is somewhere
     # in here" must not be silence.
-    raw_targets += scan_tokens(tokens)
+    hits = scan_tokens(tokens)
+    raw_targets += hits
+    interp_hits.update(hits)
 
 seen = set()
 for t in raw_targets:
@@ -1152,6 +1176,14 @@ for t in raw_targets:
         print(f"state\t{t}")
         continue
     ap = t if os.path.isabs(t) else os.path.normpath(os.path.join(cwd, t))
+    # A basename with no letter (`=`, `34,`, `--`) is an operator or a number the
+    # scanner mistook for a file; it was denied as "Bash write to =" and then
+    # escalated as repeated denials of a file that does not exist.
+    if not any(ch.isalpha() for ch in os.path.basename(ap)):
+        continue
+    # Interpreter-only exemption; see the interp_hits comment above.
+    if t in interp_hits and os.path.isdir(ap):
+        continue
     # Work-gate only project-local targets. Scratch writes outside the repo are not plan-gated.
     if ap == cwd or ap.startswith(cwd + os.sep):
         print(f"local\t{ap}")
@@ -1202,6 +1234,19 @@ PY
 # 1. Credential targets: deny in any mode, no server needed (org boundary).
 CRED_HIT=$(printf '%s\n' "$TARGETS" | awk -F'\t' '$1=="cred"{print $2; exit}')
 if [ -n "$CRED_HIT" ]; then
+    # gate_denial is the only row `writ audit-session` lists as a refusal. jq takes the
+    # path with --arg, so a quote in it cannot forge a field (SEC-INJ-LOG-001). No python
+    # fallback arm: the inline-snippet ratchet (tests/test_json_transform_equivalence.py)
+    # holds this hook at one. Without jq the row keeps its rule and loses the path.
+    _writ_row_mode
+    CRED_EXTRA=""
+    if [ -z "${WRIT_NO_JQ:-}" ] && command -v jq >/dev/null 2>&1; then
+        CRED_EXTRA=$(jq -n -c --arg fp "$CRED_HIT" \
+            '{rule_id: "SEC-CREDENTIAL-WRITE", file_path: $fp, gate: "credential_path"}' \
+            2>/dev/null) || CRED_EXTRA=""
+    fi
+    [ -n "$CRED_EXTRA" ] || CRED_EXTRA='{"rule_id": "SEC-CREDENTIAL-WRITE", "gate": "credential_path"}'
+    log_friction_event "$SESSION_ID" "$_WRIT_ROW_MODE" "gate_denial" "$CRED_EXTRA"
     emit_deny "[SEC-CREDENTIAL-WRITE] Refusing this Bash command: it writes to a credential/secret path ('$CRED_HIT'). Secret material must not be written or overwritten by the agent. Name non-secret templates .env.example / .env.sample / *.pub."
     exit 0
 fi

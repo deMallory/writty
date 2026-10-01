@@ -27,6 +27,31 @@ WRIT_DIR="${CLAUDE_PLUGIN_ROOT:-$GROK_PLUGIN_ROOT}"
 # hook, see the header). Guarded so bootstrap never breaks on a missing common.sh.
 source "$WRIT_DIR/bin/lib/common.sh" 2>/dev/null || true
 type hook_instrument >/dev/null 2>&1 && hook_instrument "session-start-bootstrap"
+
+# THIS HOOK'S OWN TELEMETRY IS KEYED HERE, from the payload captured in step 0. It is
+# keyed at the TOP and not down in step 5, because the exit trap armed above reads
+# SESSION_ID when the script EXITS and steps 2 and 3 both `exit 0` long before step 5
+# runs -- so the venv-missing and Neo4j-unreachable rows, exactly the ones a broken
+# install produces, would be the unattributed ones. The trap files under
+# `${SESSION_ID:-${HOOK_SESSION_ID:-}}` and this hook set neither, so its rows landed
+# under the literal session id "unknown" (measured 2026-08-11: 17 rows). load_hook_env
+# is not usable here -- it reads stdin, which step 0 has already consumed -- and neither
+# is the venv python, which step 2 has not yet proven exists.
+#
+# The id is the payload's and only the payload's (agent_id first, so a sub-agent's rows
+# are not filed under its parent). It is never synthesized: an id the payload did not
+# carry stays EMPTY, leaving a visible gap rather than a silently wrong record. Step 5
+# keeps its own parse because it needs cwd and source as well. Grok sends the same
+# fields in camelCase (agentId, sessionId).
+SESSION_ID="$(printf '%s' "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(''); sys.exit(0)
+print((d.get('agent_id') or d.get('agentId') or d.get('session_id') or d.get('sessionId') or '').strip())
+" 2>/dev/null || echo "")"
+
 WRIT_DATA="${GROK_PLUGIN_DATA:-${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}}"
 # Venv lives at ${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv so it
 # survives plugin upgrades that rewrite ${CLAUDE_PLUGIN_ROOT}.
@@ -55,9 +80,10 @@ MSG
 fi
 
 # 3. Probe Neo4j bolt port 7687. If unreachable, instruct user and exit 0.
-# timeout-wrapped: a bare /dev/tcp connect to a black-holed host blocks for the
-# kernel SYN timeout (minutes) and would stall every SessionStart with it.
-if ! timeout 2 bash -c "exec 3<>/dev/tcp/${NEO4J_HOST}/${NEO4J_PORT}" 2>/dev/null; then
+# Bounded: a bare /dev/tcp connect to a black-holed host blocks for the kernel SYN
+# timeout (minutes) and would stall every SessionStart with it. run-bounded.py, not GNU
+# timeout: stock macOS lacks it, and the shell's exit 127 read as "Neo4j down" with Neo4j up.
+if ! python3 "${WRIT_DIR}/bin/lib/run-bounded.py" 2 bash -c "exec 3<>/dev/tcp/${NEO4J_HOST}/${NEO4J_PORT}" 2>/dev/null; then
   cat >&2 <<MSG
 [Writ] Neo4j not reachable at ${NEO4J_HOST}:${NEO4J_PORT}.
 [Writ] Start it with:
@@ -80,7 +106,15 @@ WRIT_PORT="8765"
 # ${CLAUDE_PLUGIN_DATA}/server.log -- the same path this line used to hardcode.
 # shellcheck source=scripts/lib/writ-server-lib.sh
 source "${WRIT_DIR}/scripts/lib/writ-server-lib.sh"
-writ_ensure_server
+# Realign is opt-in because on Linux a systemd unit owns the daemon and a restart
+# here would fight it. On Darwin nothing else owns it, so a daemon born on another
+# session store (the split behind "my approval token was lost") would persist for
+# the life of the machine unless SessionStart heals it once.
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+  WRIT_REALIGN_CACHE=1 writ_ensure_server
+else
+  writ_ensure_server
+fi
 
 # 5. Session-id rotation carry-forward. If the harness rotated the session id, the fresh
 #    cache has mode=None and every write is denied [ENF-GATE-MODE]. Parse the payload
@@ -94,7 +128,7 @@ if [ -n "${STDIN_JSON}" ] && [ -f "${SESSION_HELPER}" ]; then
 import sys, json
 try:
     d = json.load(sys.stdin)
-    sid = str(d.get('session_id', '') or '').strip()
+    sid = str(d.get('session_id') or d.get('sessionId') or '').strip()
     cwd = str(d.get('cwd', '') or '').strip()
     source = str(d.get('source', '') or '').strip()
     print(sid)

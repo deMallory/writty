@@ -26,6 +26,12 @@ from pathlib import Path
 
 import pytest
 
+# autouse: pins cwd to a sandbox so `mode set` cannot delete THIS repo's gate artifacts.
+# The two `mode set work` calls below sit behind a daemon-liveness skip, which is why the
+# sentinel probe that found the other 26 modules reported this one clean: with no daemon
+# listening the tests skipped and never reached the deletion.
+from tests.fixtures.session_state import sandbox_cwd  # noqa: F401
+
 SKILL_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 HOOKS_JSON = os.path.join(SKILL_ROOT, "hooks", "hooks.json")
 HOOK_SH = os.path.join(SKILL_ROOT, "hooks", "scripts", "writ-bash-write-gate.sh")
@@ -43,6 +49,19 @@ def _seed(sid, **fields):
     data = cache._read_cache(sid)
     data.update(fields)
     cache._write_cache(sid, data)
+
+
+def _session_rows(sid: str) -> list[dict]:
+    """This session's rows from the test's friction log (conftest points
+    WRIT_FRICTION_LOG at tmp_path; hook subprocesses inherit it)."""
+    return [e for e in _imp("writ.analysis.friction").load_events(None)
+            if e.get("session") == sid]
+
+
+def _denied_rules(sid: str) -> list[str]:
+    """The rule ids `writ audit-session` prints under "Gate denials"."""
+    agg = _imp("writ.analysis.friction").aggregate_session(_session_rows(sid))
+    return [g["rule_id"] for g in agg["gate_denials"]]
 
 
 def _extractor_src() -> str:
@@ -179,6 +198,17 @@ class TestCredentialGuardInWriteCheck:
         _seed(sid, mode="conversation")
         res = gates._can_write_check(sid, self._env("/proj/src/main.py"), SKILL_ROOT)
         assert res["can_write"] is True
+
+    def test_credential_deny_is_audited(self):
+        # `writ audit-session` lists gate_denial rows only; the write_attempt row the
+        # branch already wrote carries no rule and never showed up as a denial.
+        gates = _imp("writ.session.gates")
+        sid = f"bwg-{uuid.uuid4().hex[:8]}"
+        _seed(sid, mode="conversation")
+        res = gates._can_write_check(sid, self._env("/proj/.env"), SKILL_ROOT)
+        assert res["can_write"] is False
+        assert _denied_rules(sid) == ["SEC-CREDENTIAL-WRITE"]
+        assert [e["event"] for e in _session_rows(sid)].count("write_attempt") == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -335,6 +365,23 @@ class TestHookEndToEnd:
         assert out is not None and out.get("permissionDecision") == "deny"
         assert "SEC-CREDENTIAL-WRITE" in out.get("permissionDecisionReason", "")
 
+    def test_credential_write_is_audited(self, tmp_path: Path):
+        sid = f"bwg-{uuid.uuid4().hex[:8]}"
+        _seed(sid, mode="conversation")
+        out = _run_hook("echo SECRET > .env", sid, str(tmp_path))
+        assert out is not None and out.get("permissionDecision") == "deny"
+        assert _denied_rules(sid) == ["SEC-CREDENTIAL-WRITE"]
+
+    def test_credential_path_with_a_quote_is_recorded_exactly(self, tmp_path: Path):
+        # The shell builds this row, so a quote in the path must not reach the JSON
+        # unescaped (SEC-INJ-LOG-001).
+        sid = f"bwg-{uuid.uuid4().hex[:8]}"
+        _seed(sid, mode="conversation")
+        out = _run_hook("echo SECRET > 'a\"b/.env'", sid, str(tmp_path))
+        assert out is not None and out.get("permissionDecision") == "deny"
+        rows = [e for e in _session_rows(sid) if e.get("event") == "gate_denial"]
+        assert len(rows) == 1 and rows[0].get("file_path", "").endswith('a"b/.env')
+
     def test_read_only_command_allowed(self, tmp_path: Path):
         sid = f"bwg-{uuid.uuid4().hex[:8]}"
         _seed(sid, mode="work")
@@ -428,3 +475,100 @@ class TestMatcherWired:
             if "Bash" in g.get("matcher", "").split("|"):
                 scripts += [h["command"].rsplit("/", 1)[-1] for h in g.get("hooks", [])]
         assert "writ-bash-write-gate.sh" in scripts
+
+
+class TestNonPathTokensAreNotTargets:
+    """`=` and `34,` were emitted as local targets and denied (audit 2026-09-06 11:26),
+    then escalated as repeated denials; a heredoc body containing `x = 1` was refused
+    as "Bash write to =" on 2026-09-13. A candidate whose basename has no letter is
+    not a file the plan gate should judge."""
+
+    def test_equals_sign_is_not_a_target(self):
+        assert not any(t.endswith("/=") for _, t in _extract("tee = < in.txt"))
+
+    def test_numeric_comma_is_not_a_target(self):
+        assert not any(t.endswith("/34,") for _, t in _extract("cp src 34,"))
+
+    def test_heredoc_assignment_is_not_a_target(self):
+        cmd = "cat >> tests/test_x.py <<'EOF'\nx = 1\nEOF"
+        assert not any(t.endswith("/=") for _, t in _extract(cmd))
+        assert any(t.endswith("/tests/test_x.py") for _, t in _extract(cmd))
+
+    def test_real_file_still_targeted(self):
+        assert any(t.endswith("/a.txt") for _, t in _extract("tee a.txt < in.txt"))
+
+
+class TestBareSecretDirWordInInterpreterCode:
+    """`_is_credential_path` wraps its input as /x/, so the word `secret` inside
+    interpreter source matched the `/secret/` directory segment and the one-liner
+    was refused as a credential write (observed 2026-09-25). A secret-directory
+    name only counts in the literal scan when a path follows it."""
+
+    def test_dict_key_named_secret_is_not_a_cred_target(self):
+        got = _extract("""python3 -c "d={'secret': 1}; print(d['secret'])\"""")
+        assert not any(kind == "cred" for kind, _ in got), got
+
+    def test_heredoc_regex_naming_secret_is_not_a_cred_target(self):
+        cmd = "python3 - <<'PY'\nimport re; re.compile('password|secret|token')\nPY"
+        assert not any(kind == "cred" for kind, _ in _extract(cmd))
+
+    @pytest.mark.parametrize("cmd", [
+        "echo x > secrets",
+        """python3 -c "open('secrets/k','w')\"""",
+        """python3 -c "open('.env','w')\"""",
+    ])
+    def test_real_credential_write_still_flagged(self, cmd):
+        assert any(kind == "cred" for kind, _ in _extract(cmd)), cmd
+
+
+class TestInterpreterArgDirectoryIsNotAWriteTarget:
+    """The inline-interpreter args scan fed DIRECTORY paths to the work gate.
+
+    Observed live: a read-only `python -c "validate('<project root>')"` probe
+    was denied as '[Bash write to writ]' -- the target was the repo root
+    itself, via the explicit `ap == cwd` branch. No language this vector
+    covers can open() a directory for writing, so an EXISTING directory can
+    never be an interpreter file-write target; gating it is pure false
+    positive. A NONEXISTENT path stays gated: it could be a file about to be
+    created. The extractor cannot know which without the filesystem, which is
+    why these cases use a real tmp tree instead of the harness's /proj."""
+
+    def test_existing_directory_arg_is_not_a_target(self, tmp_path) -> None:
+        (tmp_path / "writ").mkdir()
+        got = _extract(
+            f"python3 -c \"from x import check; check('{tmp_path}/writ')\"",
+            cwd=str(tmp_path),
+        )
+        assert not any(k == "local" for k, _ in got), (
+            f"an existing directory must not be a write target; extractor "
+            f"emitted {got}"
+        )
+
+    def test_project_root_itself_is_not_a_target(self, tmp_path) -> None:
+        got = _extract(
+            f"python3 -c \"validate('{tmp_path}')\"", cwd=str(tmp_path)
+        )
+        assert not any(k == "local" for k, _ in got), (
+            f"the project root is always a directory and was the live "
+            f"false-positive; extractor emitted {got}"
+        )
+
+    def test_existing_file_arg_is_still_a_target(self, tmp_path) -> None:
+        (tmp_path / "app.py").write_text("x = 1\n")
+        got = _extract(
+            f"python3 -c \"open('{tmp_path}/app.py','w')\"", cwd=str(tmp_path)
+        )
+        assert ("local", str(tmp_path / "app.py")) in got, (
+            f"an existing FILE named by interpreter args must stay gated; "
+            f"extractor emitted {got}"
+        )
+
+    def test_nonexistent_path_arg_is_still_a_target(self, tmp_path) -> None:
+        got = _extract(
+            f"python3 -c \"open('{tmp_path}/new_module.py','w')\"",
+            cwd=str(tmp_path),
+        )
+        assert ("local", str(tmp_path / "new_module.py")) in got, (
+            f"a not-yet-existing path could be a file about to be created and "
+            f"must stay gated; extractor emitted {got}"
+        )

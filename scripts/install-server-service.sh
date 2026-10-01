@@ -50,8 +50,9 @@ Environment=WRIT_PORT=$WRIT_PORT
 # No WRIT_CACHE_DIR pin. It used to be /tmp, which systemd EMPTIES at boot
 # (\`D /tmp\` in tmpfiles.d), so every reboot destroyed the session caches and a
 # resumed conversation silently lost its mode and gates. Unset, the daemon and the
-# hooks both fall back to the same durable default (<skill>/var/session), which is
-# what keeps them agreeing.
+# hooks both fall back to the same durable user-level default
+# (\$HOME/.cache/writ/session), which is what keeps them agreeing even when the
+# daemon runs from a checkout and the hooks from the plugin cache.
 # Boot ordering: Neo4j runs in docker (docker.service enabled + restart:unless-stopped),
 # but may still be coming up. Wait up to ~60s for its bolt port; fail-open after (Restart retries).
 ExecStartPre=/bin/bash -c 'for i in \$(seq 1 120); do (echo >/dev/tcp/$WRIT_HOST/$NEO4J_PORT) 2>/dev/null && exit 0; sleep 0.5; done; exit 0'

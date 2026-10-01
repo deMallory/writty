@@ -9,7 +9,7 @@ Four source-derived counts:
   node types  -- len(NODE_ID_FIELDS)  == 13
   edge types  -- len(ALLOWED_EDGE_TYPES) == 24
   modes       -- len(MODE_CONFIG)     == 5
-  hooks       -- json.load hooks/hooks.json, count "command" leaves == 44
+  hooks       -- json.load hooks/hooks.json, count "command" leaves == 48
   endpoints   -- regex @app/@router route decorators across writ/server/**.py == 46
 """
 from __future__ import annotations
@@ -114,9 +114,14 @@ class TestDocCounts:
         # 44 = the 41 long-standing registrations + writ-manual-test-grant.sh +
         # writ-state-write-gate.sh + writ-memory-capture.sh (the auto-memory mirror).
         source_count = _count_hooks_json_entries()
-        # main restored full upstream+fork surface; Grok adapter preserves 48.
-        assert source_count == 48, (
-            f"hooks/hooks.json has {source_count} 'command' entries; expected 48. "
+        # The fork briefly pruned this to 16 (commit 3837e3b, "option A": .claude/hooks
+        # authoritative) but nothing ever registered .claude/hooks, so the pruned
+        # hooks fired nowhere. Restored to the full upstream manifest (2026-09-01),
+        # then the four surviving fork hooks were ported in (2026-09-05): 44 + 4,
+        # then writ-read-credential-gate.sh (2026-09-25): 48 + 1.
+        # Grok aliases share those registrations; they do not add a command leaf.
+        assert source_count == 49, (
+            f"hooks/hooks.json has {source_count} 'command' entries; expected 49. "
             "Bump this (and HANDBOOK 'registers **N hook scripts**') when adding or "
             "removing a registration."
         )

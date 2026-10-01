@@ -38,6 +38,10 @@ SESSION_ID="$HOOK_SESSION_ID"
 # hatch in the prompt always overrides. is_work_mode only checks work, so read the
 # mode file-direct (authoritative, same as Fix C) and case on it.
 DISPATCH_MODE=$(python3 "$WRIT_DIR/bin/lib/writ-session.py" mode get "$SESSION_ID" 2>/dev/null | tr -d '[:space:]')
+# The gate rows this hook logs used to record mode:null while this very line held the
+# answer. common.sh falls back to the session cache when neither variable is set, but a
+# value the hook already resolved is the one it ACTED on, so hand it over directly.
+CURRENT_MODE="$DISPATCH_MODE"
 case "$DISPATCH_MODE" in
     work|investigate|"") ;;
     *) exit 0 ;;
@@ -96,9 +100,13 @@ def role():
     return ""
 
 
+# The plugin loader registers the roles under the plugin's name (plugin.json "name"), so a
+# bare writ-* name only resolves where scripts/bootstrap.sh linked it into ~/.claude/agents/.
+ROLE_PREFIX = "writ:" if os.environ.get("CLAUDE_PLUGIN_ROOT") else ""
 shown = st or "general-purpose"
 r = role()
 if r:
+    r = ROLE_PREFIX + r
     # Confident classification: REWRITE the dispatch to the governed Writ role via
     # updatedInput so the model proceeds with it directly. Deny-based steering is reserved
     # for the ambiguous branch below because a denial depends on the agent re-dispatching,
@@ -129,7 +137,8 @@ else:
             "permissionDecisionReason": (
                 f"[Writ dispatch discipline | SKL-PROC-DISPATCH-001] You dispatched the generic "
                 f"'{shown}' agent and the task did not map to a specific Writ role. Re-dispatch "
-                f"with writ-explorer (read-only) or writ-implementer, or add '[general-purpose]' "
+                f"with {ROLE_PREFIX}writ-explorer (read-only) or {ROLE_PREFIX}writ-implementer, "
+                f"or add '[general-purpose]' "
                 f"to the prompt to override."
             ),
         }

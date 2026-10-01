@@ -22,10 +22,10 @@ HOOKS_JSON = REPO / "hooks" / "hooks.json"
 SCRIPTS = REPO / "hooks" / "scripts"
 
 PORTED = {
-    "writ-agent-hotswap.sh": ("PreToolUse", "Task"),
-    "writ-sdd-review-order.sh": ("PreToolUse", "Task"),
-    "writ-output-rewrite.sh": ("PostToolUse", "Bash"),
-    "writ-bash-failure.sh": ("PostToolUseFailure", "Bash"),
+    "writ-agent-hotswap.sh": ("PreToolUse", "Task|spawn_subagent"),
+    "writ-sdd-review-order.sh": ("PreToolUse", "Task|spawn_subagent"),
+    "writ-output-rewrite.sh": ("PostToolUse", "Bash|run_terminal_command"),
+    "writ-bash-failure.sh": ("PostToolUseFailure", "Bash|run_terminal_command"),
 }
 
 
@@ -66,7 +66,7 @@ class TestRegistrations:
             f"{script} not registered as {expected}"
         )
 
-    def test_manifest_has_48_registrations_across_12_events(self) -> None:
+    def test_manifest_has_49_registrations_across_12_events(self) -> None:
         data = json.loads(HOOKS_JSON.read_text())
         assert len(data["hooks"]) == 12
         total = sum(
@@ -74,7 +74,7 @@ class TestRegistrations:
             for groups in data["hooks"].values()
             for group in groups
         )
-        assert total == 48
+        assert total == 49
 
     def test_settings_template_regenerates_byte_identically(self) -> None:
         result = subprocess.run(
@@ -126,6 +126,40 @@ class TestOutputRewrite:
         out = json.loads(result.stdout)["hookSpecificOutput"]["updatedToolOutput"]
         assert key not in out["stdout"]
         assert "[REDACTED:writ-output-rewrite]" in out["stdout"]
+
+    @pytest.mark.parametrize("line", [
+        "DB_PASSWORD=canary1234567890",
+        "STRIPE_SECRET_KEY=canary1234567890",
+        "PASSWORD=canary1234567890",
+    ])
+    def test_keyed_secret_value_is_redacted_even_with_a_prefix(
+        self, tmp_path: Path, line: str
+    ) -> None:
+        envelope = json.dumps({
+            "session_id": "rewrite-3",
+            "tool_name": "Bash",
+            "tool_response": {"stdout": line + "\n", "stderr": ""},
+        })
+        result = _run("writ-output-rewrite.sh", envelope, tmp_path)
+        assert result.returncode == 0, result.stderr
+        out = json.loads(result.stdout)["hookSpecificOutput"]["updatedToolOutput"]
+        assert "canary1234567890" not in out["stdout"]
+        assert line.split("=", 1)[0] + "=[REDACTED:writ-output-rewrite]" in out["stdout"]
+
+    def test_password_in_url_is_redacted(self, tmp_path: Path) -> None:
+        envelope = json.dumps({
+            "session_id": "rewrite-4",
+            "tool_name": "Bash",
+            "tool_response": {
+                "stdout": "DATABASE_URL=postgres://app:canarypass99@db.local/prod\n",
+                "stderr": "",
+            },
+        })
+        result = _run("writ-output-rewrite.sh", envelope, tmp_path)
+        assert result.returncode == 0, result.stderr
+        out = json.loads(result.stdout)["hookSpecificOutput"]["updatedToolOutput"]
+        assert "canarypass99" not in out["stdout"]
+        assert "postgres://app:" in out["stdout"] and "@db.local/prod" in out["stdout"]
 
     def test_clean_short_stdout_emits_nothing(self, tmp_path: Path) -> None:
         envelope = json.dumps({

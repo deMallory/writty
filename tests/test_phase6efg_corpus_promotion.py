@@ -50,15 +50,15 @@ EXPECTED_FILE_COUNTS = {
     "PBK": 16,  # Playbooks (+3 debug-mode Increment 3: PBK-PROC-DIAGNOSE-*; +1 INV-3: PBK-PROC-RESEARCH-001; +1 INV-6a: PBK-PROC-AUDIT-FANOUT-001)
     "SKL": 16,  # Skills (+1 INC-5: SKL-PROC-INVESTIGATE-001; +1 INC-7: SKL-PROC-TDD-DESIGN-FEEDBACK-001; +1 INC-11: SKL-PROC-METHODOLOGY-CHECK-001; +1 Phase3: SKL-PROC-DISPATCH-001; +1 Phase0: SKL-PROC-DEBUG-001; +1 2026-08-05: SKL-PROC-WRIT-DIAGNOSIS-001, the first ai-provisional node) -- INC-9 enriched existing SKL-PROC-REVRECV-001, no new node
     "ANT": 22,  # AntiPatterns (+1 INC-2: ANT-PROC-FINISH-001; +1 INC-7: ANT-PROC-TDD-006; +1 INC-10: ANT-PROC-WORKTREE-001; +1 2026-08-08: ANT-PROC-TDD-007, the absence claim whose search never reached the code)
-    "ROL": 7,   # SubagentRoles (explorer, planner, test-writer, implementer, reviewer) -- spec-reviewer + code-quality-reviewer merged into ROL-REVIEWER-001
+    "ROL": 7,   # SubagentRoles (explorer, planner, test-writer, implementer, reviewer, spec-reviewer, code-quality-reviewer)
     "FRB": 2,   # ForbiddenResponses
     "PHA": 25,  # Phases (+11 INC-4: PHA-WORK/ORCH/FANOUT)
     "RAT": 4,   # Rationalizations (+1 INC-11: RAT-PROC-SKILLCHECK-001)
     "PSC": 3,   # PressureScenarios
     "EXM": 3,   # WorkedExamples (+1 INC-8: EXM-PLAN-001)
-    "ENF": 11,  # Rule companions (+1 INC-3: ENF-META-CONCISE-001; +1 INC-11: ENF-PROC-PRIORITY-001; +1 Phase4-A3: ENF-COMMS-OUTPUT-001)
+    "ENF": 12,  # Rule companions (+1 INC-3: ENF-META-CONCISE-001; +1 INC-11: ENF-PROC-PRIORITY-001; +1 Phase4-A3: ENF-COMMS-OUTPUT-001; +1 cycle F: ENF-PROC-FIXLOOP-001, the fix-loop round cap)
     "META": 2,  # Meta-authoring nodes
-    "TEC": 18,  # Techniques (+2 INC-3: KEYWORDS, PERSUASION; +1 INC-7: RED-VERIFY; +1 INC-8: FILE-STRUCTURE; +2 INC-12: VERIFY-EVIDENCE-MAP, PARALLEL-PROMPT)
+    "TEC": 21,  # Techniques (+2 INC-3: KEYWORDS, PERSUASION; +1 INC-7: RED-VERIFY; +1 INC-8: FILE-STRUCTURE; +2 INC-12: VERIFY-EVIDENCE-MAP, PARALLEL-PROMPT; +4 fork: GSAP and editorial techniques; +3 cycle F: CONDITION-WAIT, DEFENSE-DEPTH, TEST-POLLUTION)
     "CAT": 23,  # Category nodes (Phase 0 Wave B: 22 CAT-*.md membership-target nodes; +1 fork: CAT-COMM-EDIT-001, editorial corpus category)
 }
 

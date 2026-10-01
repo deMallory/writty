@@ -3,7 +3,7 @@
 
 # Hook registration matrix
 
-48 registrations across 12 events wiring 44 scripts under `hooks/scripts/`, generated from `hooks/hooks.json` (the single source; `templates/settings.json` is rendered from the same file). `writ-statusline.sh` is wired through the settings `statusLine` channel, not a hook event. Behavior and blocking semantics: `HANDBOOK.md` section 14.
+49 registrations across 12 events wiring 45 scripts under `hooks/scripts/`, generated from `hooks/hooks.json` (the single source; `templates/settings.json` is rendered from the same file). `writ-statusline.sh` is wired through the settings `statusLine` channel, not a hook event. Behavior and blocking semantics: `HANDBOOK.md` section 14.
 
 ## SessionStart
 
@@ -81,6 +81,7 @@
 
 | Matcher | Script |
 |---|---|
+| `Read|Grep|Bash` | `writ-read-credential-gate.sh` |
 | `ExitPlanMode` | `validate-exit-plan.sh` |
 | `Read` | `writ-read-junk-gate.sh` |
 | `Read` | `writ-read-rag.sh` |

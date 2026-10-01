@@ -44,15 +44,15 @@ except (json.JSONDecodeError, ValueError) as _e:
     )
     sys.exit(0)
 ti = parsed.get("tool_input") or {}
-agent_type = (ti.get("subagent_type") or "").lower()
-if "code-review" not in agent_type and agent_type != "writ-code-reviewer":
+# A plugin install dispatches the reviewer as writ:writ-code-quality-reviewer.
+agent_type = (ti.get("subagent_type") or "").lower().removeprefix("writ:")
+if "code-review" not in agent_type and agent_type not in ("writ-code-quality-reviewer",):
     sys.exit(0)
+from review_findings import review_order_key, spec_review_done
 session = mod._read_cache("$SESSION_ID")
-state = session.get("review_ordering_state") or {}
-# Default task key if not specified: use the current active task id or 'default'
-task_id = ti.get("task_id") or session.get("active_phase") or "default"
-if not state.get(task_id, {}).get("spec_reviewer_completed", False):
-    print(f"ENF-PROC-SDD-001: code-quality review dispatched before spec-compliance review completed for task '{task_id}'. Run writ-spec-reviewer first, record its completion via /session/{{sid}}/review-ordering, then dispatch writ-code-reviewer.")
+if not spec_review_done(session, ti.get("task_id")):
+    key = review_order_key(session, ti.get("task_id"))
+    print(f"ENF-PROC-SDD-001: code-quality review dispatched before spec-compliance review completed for task '{key}'. Run writ-spec-reviewer first; its completion is recorded when it stops. Then dispatch writ-code-quality-reviewer.")
 PY
 )
 

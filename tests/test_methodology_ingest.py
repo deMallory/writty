@@ -202,13 +202,13 @@ class TestReachabilityInvariant:
             )
 
         report = asyncio.run(_run())
-        reachability_errors = [
-            e for e in report.errors
+        reachability_warnings = [
+            e for e in report.warnings
             if e.field == "category" and "reachability" in e.reason.lower()
         ]
-        assert reachability_errors, (
-            f"Expected at least one IngestError with field='category' and "
-            f"'reachability' in reason. Got errors: {report.errors}"
+        assert reachability_warnings, (
+            f"Expected at least one reachability warning with field='category' and "
+            f"'reachability' in reason. Got warnings: {report.warnings}"
         )
 
     def test_dry_run_skips_reachability(
@@ -229,13 +229,13 @@ class TestReachabilityInvariant:
             )
 
         report = asyncio.run(_run())
-        reachability_errors = [
-            e for e in report.errors
+        reachability_warnings = [
+            e for e in report.warnings
             if e.field == "category" and "reachability" in e.reason.lower()
         ]
-        assert not reachability_errors, (
-            f"dry_run=True must not produce reachability errors. "
-            f"Got: {reachability_errors}"
+        assert not reachability_warnings, (
+            f"dry_run=True must not produce reachability warnings. "
+            f"Got: {reachability_warnings}"
         )
 
 

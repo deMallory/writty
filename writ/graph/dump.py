@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+import neo4j.time
+
 if TYPE_CHECKING:
     from writ.graph.db import Neo4jConnection
 
@@ -38,6 +40,10 @@ def cypher_literal(value: object) -> str:
         return f"'{escaped}'"
     if isinstance(value, list):
         return "[" + ", ".join(cypher_literal(v) for v in value) + "]"
+    # The runtime stamps Rule.last_seen with Cypher datetime(); the driver hands
+    # it back as neo4j.time.DateTime, which is not a datetime.datetime subclass.
+    if isinstance(value, neo4j.time.DateTime):
+        return f"datetime('{value.iso_format()}')"
     raise TypeError(f"cypher_literal: unsupported type {type(value).__name__}")
 
 
@@ -67,7 +73,13 @@ def render_cypher_dump(nodes: list[dict], edges: list[dict]) -> str:
         props_str = _render_props(node["props"], {_STAGING_PROPERTY: node["id"]})
         lines.append(f"CREATE (:{node['label']} {props_str});")
 
-    for edge in sorted(edges, key=lambda e: (e["source_id"], e["target_id"])):
+    # The type is a required tie-break: two edges sharing a (source, target)
+    # pair with different types otherwise keep driver return order, and real
+    # exports flipped 7 such pairs between runs -- content-identical churn in
+    # every corpus diff, and a false "same bytes" promise above.
+    for edge in sorted(
+        edges, key=lambda e: (e["source_id"], e["target_id"], e["type"])
+    ):
         lines.append(
             f"MATCH (a {{{_STAGING_PROPERTY}: {cypher_literal(edge['source_id'])}}}), "
             f"(b {{{_STAGING_PROPERTY}: {cypher_literal(edge['target_id'])}}}) "
@@ -102,6 +114,10 @@ async def import_cypher_dump(db: "Neo4jConnection", text: str) -> dict:
     labels_in_dump = set(re.findall(r"CREATE \(:([A-Za-z]+)", text))
     await db.clear_all(preserve_labels=RECORD_LABELS - labels_in_dump)
     statements = [line for line in text.splitlines() if line.strip()]
-    for statement in statements:
-        await db.execute(statement)
+    # ONE transaction, not one per line. The per-statement loop made a 1714-line
+    # dump into 1714 independent transactions immediately after a mass delete,
+    # which is how a replay ended up chasing node ids the delete had just freed
+    # (Neo.ClientError.Statement.EntityNotFound). It also meant a replay that
+    # died halfway left a half-populated corpus with nothing to recover from.
+    await db.execute_many(statements)
     return {"statements_run": len(statements)}

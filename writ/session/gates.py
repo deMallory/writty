@@ -296,9 +296,18 @@ def _check_exempt_write(session_id: str, mode, file_path: str, cache: dict, skil
         # symlink resolves to its target basename and is denied (accepted fail-closed).
         settings_dir = os.path.realpath(os.path.join(home, ".claude"))
         real_path = os.path.realpath(file_path)
-        if (
-            os.path.basename(real_path) in _EXEMPT_SETTINGS_BASENAMES
-            and os.path.dirname(real_path) == settings_dir
+        # Nix Home Manager (and similar) symlinks settings.json into a store
+        # path, so realpath resolves the full path to a dir outside ~/.claude.
+        # Check the parent-resolved form: resolve the DIRECTORY but keep the
+        # basename literal. Only allow when the target itself is also named
+        # settings.json (blocks ~/.claude/settings.json -> /etc/evil-target).
+        parent_resolved_dir = os.path.realpath(os.path.dirname(file_path))
+        real_basename = os.path.basename(real_path)
+        orig_basename = os.path.basename(file_path)
+        if orig_basename in _EXEMPT_SETTINGS_BASENAMES and (
+            os.path.dirname(real_path) == settings_dir
+            or (parent_resolved_dir == settings_dir
+                and real_basename in _EXEMPT_SETTINGS_BASENAMES)
         ):
             # Log the ORIGINAL file_path (what was requested), not the resolved target,
             # so telemetry reflects the caller's intent.
@@ -342,7 +351,9 @@ def _check_special_files(basename: str, mode, current_phase) -> dict | None:
             return {
                 "can_write": False,
                 "reason": "[ENF-GATE-PLAN] plan.md cannot be modified during implementation phase. "
-                          "Invalidate the current gate to return to planning if the plan needs changes.",
+                          "If the plan needs changes, start a new task at planning: "
+                          "`python3 <skill>/bin/lib/writ-session.py mode set work <session_id>` "
+                          "(the agent may run this itself; it resets the phase, not the mode).",
             }
         return {"can_write": True, "reason": None}
 
@@ -470,6 +481,8 @@ def _can_write_check(session_id: str, envelope: dict, skill_dir: str = "", cache
     if _is_credential_path(file_path):
         _log_friction_event(session_id, mode, "write_attempt", file_path=file_path,
                             result="deny", gate_status="credential_path")
+        _log_friction_event(session_id, mode, "gate_denial", rule_id="SEC-CREDENTIAL-WRITE",
+                            file_path=file_path, gate="credential_path")
         return {
             "can_write": False,
             "reason": "[SEC-CREDENTIAL-WRITE] Refusing to write to a credential/secret path "

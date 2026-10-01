@@ -135,7 +135,10 @@ class TestEdges:
 class TestCensus:
     def test_tec_count(self) -> None:
         n = len(list(METH.glob("TEC-*.md")))
-        assert n == 11, f"expected 11 TEC-*.md, found {n}"
+        # The shipped corpus carries 21 TEC nodes: the original 18 plus upstream's
+        # three cycle-F nodes (CONDITION-WAIT, DEFENSE-DEPTH, TEST-POLLUTION), which
+        # now exist in bible/. Bump if new TEC nodes are added.
+        assert n == 21, f"expected 21 TEC-*.md, found {n}"
 
 
 class TestLiveGates:

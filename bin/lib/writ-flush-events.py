@@ -36,10 +36,10 @@ BUF_SUFFIX = ".buf"
 
 
 def _buffer_path(session_id: str) -> str:
-    cache_dir = os.environ.get("WRIT_CACHE_DIR")
-    if not cache_dir:
-        skill_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        cache_dir = os.path.join(skill_dir, "var", "session")
+    # Same default as writ/session/cache.py: one user-level store, never install-relative.
+    cache_dir = os.environ.get("WRIT_CACHE_DIR") or os.path.join(
+        os.path.expanduser("~"), ".cache", "writ", "session"
+    )
     return os.path.join(cache_dir, f"{BUF_PREFIX}{session_id or 'unknown'}{BUF_SUFFIX}")
 
 

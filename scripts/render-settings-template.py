@@ -42,6 +42,10 @@ DEFAULT_TARGET = SKILL_ROOT / "templates" / "settings.json"
 
 PLUGIN_VAR = "${CLAUDE_PLUGIN_ROOT}"
 INSTALL_VAR = "${WRIT_DIR}"
+# The plugin manifest falls back to GROK_PLUGIN_ROOT at runtime. This template is
+# the non-plugin install path: the installer bakes ${WRIT_DIR} into an absolute
+# path, and it only matches the braced form with the brace right after the name.
+PLUGIN_FALLBACK = "${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}"
 
 # Only the hooks block is generated. permissions and statusLine are owned by
 # patch-global-config.sh's own merge, so this template has exactly one job and the two steps
@@ -59,7 +63,8 @@ def render(source: Path) -> str:
     if not hooks:
         raise SystemExit(f"{source} has no 'hooks' block")
 
-    rewritten = json.loads(json.dumps(hooks).replace(PLUGIN_VAR, INSTALL_VAR))
+    raw = json.dumps(hooks).replace(PLUGIN_FALLBACK, INSTALL_VAR).replace(PLUGIN_VAR, INSTALL_VAR)
+    rewritten = json.loads(raw)
     if PLUGIN_VAR in json.dumps(rewritten):
         raise SystemExit("plugin-root variable survived the rewrite")
 

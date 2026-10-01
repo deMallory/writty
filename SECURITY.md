@@ -16,7 +16,7 @@ The latest released version on the `main` branch. There are no long-term support
 
 Read this before you decide how much to trust it. Writ is not a sandbox and its gates are not a security boundary.
 
-**It runs shell scripts with your privileges.** Writ installs about 44 hook registrations that Claude Code invokes on your behalf. Those hooks are bash, they run as your user, and they read and write inside your repositories. Anything your shell can do, a hook can do.
+**It runs shell scripts with your privileges.** Writ installs 49 hook registrations that Claude Code invokes on your behalf. Those hooks are bash, they run as your user, and they read and write inside your repositories. Anything your shell can do, a hook can do.
 
 **The daemon has no authentication.** `writ-server` listens on port 8765 and every route is unauthenticated. The bind address is the whole access control, and it defaults to `localhost`. Any process on the machine that can reach that port can read and modify session state, gate approvals, and the rule corpus, so treat a shared or multi-tenant host as one where Writ's session state is readable by anyone on it.
 
@@ -27,6 +27,18 @@ The bind address is configurable through `WRIT_HOST` (see `scripts/install-serve
 **Credentials.** Neo4j credentials resolve from environment variables, then `writ.toml`, then a built-in default (`writ/config.py`). That built-in default is a development password published in this repository, so a Writ install that was never configured is running on a password anyone can read here. If your Neo4j instance is reachable by anything other than you, set a real one via `WRIT_NEO4J_PASSWORD` or `writ.toml`. `writ doctor` reports which configuration keys are present and never returns, logs, or prints a credential value (`writ/session/doctor.py`).
 
 **What Writ stores.** The rule corpus, session state, decision records, and logs go into Neo4j and into `var/` inside the installation. Session logs can contain file paths, command text, and excerpts of your code. Before publishing a graph dump, an audit log, or a benchmark result, read it. Paths and command lines carry more about your environment and your employer than people expect.
+
+## What leaves your machine
+
+Short answer: your rules and your code do not. The longer answer, because "nothing is sent anywhere" is the kind of absolute worth checking rather than trusting.
+
+**Stays local, always.** The rule corpus, the graph database, session state, decision records, and every log stream. Neo4j runs in a container on your machine and the daemon binds loopback. There is no telemetry, no analytics, no usage reporting, and no phone-home of any kind. Nothing about your code, your prompts, or your session is transmitted for the project's benefit.
+
+**Goes out, opt-in, one destination.** The decision-memory PR sync posts per-file reasoning to Bitbucket Cloud, and `api.bitbucket.org` is the only host that client ever contacts (`writ/session/bitbucket_client.py`). It is off unless you put a token in `writ.toml`, and it is the only outbound network call Writ itself makes at runtime. Self-hosted Bitbucket Server is refused outright rather than half-supported. There is no GitHub client, so on a GitHub-hosted project this channel does nothing.
+
+**Goes out once, at install.** Bootstrap downloads the embedding model (`sentence-transformers/all-MiniLM-L6-v2`) and the Python dependencies. Ordinary package and model fetches, and after that the embedding runs locally.
+
+**Not Writ, but worth knowing.** Your AI assistant has its own network access and its own tools. If it searches the web or fetches a URL, that is the assistant acting, not Writ, and Writ neither performs nor prevents it. What Writ does add is a Bash egress guard that questions outbound commands to hosts you have not allowlisted (`[egress] allow_hosts` in `writ.toml`), which narrows one channel without pretending to close all of them.
 
 ## Your responsibility
 

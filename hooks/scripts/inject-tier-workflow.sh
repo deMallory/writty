@@ -89,7 +89,8 @@ fi
 # Detect "mode set <mode>" in the Bash command -- the only stdout/injection path.
 MODE=""
 if echo "$HOOK_COMMAND" | grep -qE 'mode set (conversation|debug|investigate|review|work)'; then
-    MODE=$(echo "$HOOK_COMMAND" | grep -oP 'mode set \K(conversation|debug|investigate|review|work)' || echo "")
+    # sed, not grep -P: BSD grep on macOS has no -P and printed its usage instead.
+    MODE=$(echo "$HOOK_COMMAND" | sed -nE 's/.*mode set (conversation|debug|investigate|review|work).*/\1/p' | head -n1)
 fi
 
 if [ -z "$MODE" ]; then
@@ -118,8 +119,13 @@ case "$MODE" in
         AC_TEXT="[Writ: Investigate mode. Evidence-grounded, read-heavy. Follow the investigation workflow for the selected source type (code/web/runtime); ground every claim in observed evidence. No code generation -- switch to Work mode to implement.]"
         ;;
     work)
-        # Check if plan gate already exists
-        if [ -n "$PROJECT_ROOT" ] && [ -f "$PROJECT_ROOT/.claude/gates/phase-a.approved" ]; then
+        # Check if THIS SESSION's own plan gate already exists. The project-wide path this
+        # replaces was satisfied by any session's approval, so a second instance in the same
+        # repo got no workflow instructions after its own `mode set work` -- silence that
+        # reads as "already past the plan gate". An unusable session id yields "" and the
+        # instructions print, which over-instructs rather than skipping the gate.
+        _WORK_GATE_DIR=$(writ_gate_dir "$PROJECT_ROOT" "$HOOK_SESSION_ID")
+        if [ -n "$_WORK_GATE_DIR" ] && [ -f "$_WORK_GATE_DIR/phase-a.approved" ]; then
             exit 0
         fi
 

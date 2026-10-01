@@ -290,11 +290,9 @@ class TestRealInstallLoadsTheAgents:
             assert role in installed["details"], f"{role} missing from the inventory"
 
     def test_the_hooks_fix_from_the_previous_cycle_is_intact(self, installed):
-        # Fork policy: see feat/upstream-resync migration (option A). The pruned
-        # plugin surface registers 9 events (the CLI counts events, not commands).
         import re as _re
         m = _re.search(r"Hooks \((\d+)\)", installed["details"])
-        assert m and int(m.group(1)) == 9, "the agents move broke hook loading"
+        assert m and int(m.group(1)) == 12, "the agents move broke hook loading"
 
     def test_the_install_reports_no_errors(self, installed):
         errors = []

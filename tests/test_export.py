@@ -613,12 +613,15 @@ class TestDualLocationCanonicalTarget:
 
     def test_dual_location_ids_defined(self) -> None:
         """The methodology-canonical set (excluded from domain rules.md export):
-        12 legacy dual-location rules + ENF-COMMS-OUTPUT-001 (Phase 4 A3, authored
-        methodology-only -- the exclusion keeps the Rule-export from writing a lossy
-        RULE-START copy that drops always_on / trigger_keywords / edges)."""
+        12 legacy dual-location rules + ENF-COMMS-OUTPUT-001 (Phase 4 A3) +
+        ENF-PROC-FIXLOOP-001 (cycle F, the first methodology Rule authored AFTER
+        the set existed -- it was missed, the auto-export wrote a duplicate
+        RULE-START copy, and the round-trip broke; export.py now ALSO derives
+        canonicity from bible/methodology/<id>.md existing, so membership here
+        is documentation, not the load-bearing check)."""
         ids = self._import_canonical()
-        assert len(ids) == 13, (
-            f"Expected 13 methodology-canonical IDs, found {len(ids)}: {sorted(ids)}"
+        assert len(ids) == 14, (
+            f"Expected 14 methodology-canonical IDs, found {len(ids)}: {sorted(ids)}"
         )
 
     def test_group_rules_by_file_excludes_dual_location(
@@ -846,3 +849,225 @@ class TestExportGraphToMarkdown:
         # Empty graph: both counts must be 0.
         assert result["nodes_exported"] == 0
         assert result["edges_exported"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 0 / corpus round-trip: lossless full export (stub, no Neo4j)
+# ---------------------------------------------------------------------------
+
+class _StubDb:
+    """Minimal in-memory stub satisfying the export_graph_to_markdown contract.
+
+    Exposes only the two async methods the function calls; all other attribute
+    access on this object will raise AttributeError, keeping the test honest
+    about what it exercises.
+    """
+
+    def __init__(
+        self,
+        nodes_by_label: dict[str, list[dict]],
+        edges: list[dict],
+    ) -> None:
+        self._nodes = nodes_by_label
+        self._edges = edges
+
+    async def get_all_edges_cross_type(self) -> list[dict]:
+        return list(self._edges)
+
+    async def get_all_nodes_by_type(self, label: str) -> list[dict]:
+        return list(self._nodes.get(label, []))
+
+
+class TestExportGraphToMarkdownLossless:
+    """export_graph_to_markdown with a stub db (no Neo4j required).
+
+    Tests the three cases from the plan's 'Tests first' table:
+    - Skill node with both authored and runtime fields: front matter keeps
+      the five authored fields and drops the four runtime-only ones.
+    - Abstraction node with two ABSTRACTS edges: no ABS-*.md written, and
+      abstractions.json is present with the right shape.
+    - Guard: node_to_yaml_frontmatter with no `exclude` kwarg still drops
+      every GRAPH_ONLY_FIELDS key (passes today; protects against regression).
+
+    The first two cases are RED until the implementation lands:
+    - Skill: authored fields are currently in GRAPH_ONLY_FIELDS and are dropped.
+    - Abstraction: current code writes ABS-*.md; abstractions.json is not written.
+    """
+
+    _SKILL_ID = "SKL-PROC-LOSSLESS-001"
+    _ABS_ID = "ABS-RT-001"
+    _RULE_IDS = ["ENF-PROC-001", "ENF-PROC-002"]
+
+    def _skill_node(self) -> dict:
+        return {
+            "skill_id": self._SKILL_ID,
+            "node_type": "Skill",
+            "domain": "testing",
+            "scope": "session",
+            "trigger": "trigger",
+            "statement": "statement",
+            "rationale": "rationale",
+            # Authored fields: the full export keeps them.
+            "authority": "human",
+            "confidence": "confirmed",
+            "last_validated": "2026-09-01",
+            "evidence": "doc:test",
+            "staleness_window": 365,
+            # Runtime fields: the full export drops them.
+            "times_seen_positive": 3,
+            "times_seen_negative": 1,
+            "last_seen": "2026-09-28T20:41:58+00:00",
+            "source_origin": "ingest",
+        }
+
+    def _abs_node(self) -> dict:
+        return {
+            "abstraction_id": self._ABS_ID,
+            "node_type": "Abstraction",
+            "summary": "a test abstraction",
+            "project": "writ",
+            "compression_ratio": 0.75,
+            "rule_count": 2,
+        }
+
+    def _abs_edges(self) -> list[dict]:
+        return [
+            {"source_id": self._ABS_ID, "target_id": rid, "type": "ABSTRACTS"}
+            for rid in self._RULE_IDS
+        ]
+
+    @pytest.mark.asyncio
+    async def test_skill_authored_fields_present_in_front_matter(
+        self, tmp_path: Path
+    ) -> None:
+        """The full export keeps authority, confidence, last_validated, evidence,
+        and staleness_window in the written front matter.
+
+        RED: these fields are currently in GRAPH_ONLY_FIELDS and are dropped by
+        node_to_yaml_frontmatter until RUNTIME_ONLY_FIELDS + the `exclude` kwarg
+        are added to the implementation.
+        """
+        import yaml  # noqa: PLC0415
+
+        from writ.export import export_graph_to_markdown  # noqa: PLC0415
+
+        stub = _StubDb({"Skill": [self._skill_node()]}, [])
+        await export_graph_to_markdown(stub, tmp_path)
+
+        out_file = tmp_path / "methodology" / f"{self._SKILL_ID}.md"
+        assert out_file.exists(), f"expected {out_file} to be written"
+
+        text = out_file.read_text(encoding="utf-8")
+        fm_text = text.split("---")[1]
+        fm = yaml.safe_load(fm_text)
+
+        authored = ("authority", "confidence", "last_validated", "evidence", "staleness_window")
+        for field in authored:
+            assert field in fm, (
+                f"authored field '{field}' must be present in the full-export front matter; "
+                f"it was dropped by GRAPH_ONLY_FIELDS"
+            )
+
+    @pytest.mark.asyncio
+    async def test_skill_runtime_fields_absent_from_front_matter(
+        self, tmp_path: Path
+    ) -> None:
+        """The full export drops times_seen_positive, times_seen_negative,
+        last_seen, and source_origin from the written front matter.
+
+        Passes today (they are already in GRAPH_ONLY_FIELDS); guard against
+        them being accidentally re-introduced.
+        """
+        import yaml  # noqa: PLC0415
+
+        from writ.export import export_graph_to_markdown  # noqa: PLC0415
+
+        stub = _StubDb({"Skill": [self._skill_node()]}, [])
+        await export_graph_to_markdown(stub, tmp_path)
+
+        out_file = tmp_path / "methodology" / f"{self._SKILL_ID}.md"
+        text = out_file.read_text(encoding="utf-8")
+        fm_text = text.split("---")[1]
+        fm = yaml.safe_load(fm_text)
+
+        runtime = ("times_seen_positive", "times_seen_negative", "last_seen", "source_origin")
+        for field in runtime:
+            assert field not in fm, (
+                f"runtime field '{field}' must be absent from the full-export front matter"
+            )
+
+    @pytest.mark.asyncio
+    async def test_abstraction_writes_no_abs_md_file(self, tmp_path: Path) -> None:
+        """The full export must not write any ABS-*.md file.
+
+        RED: current code treats Abstraction as a METHODOLOGY_NODE_TYPE and writes
+        methodology/<id>.md for it; the loop must skip ARTIFACT_AUTHORED_NODE_TYPES,
+        whose .md files the importer rejects.
+        """
+        from writ.export import export_graph_to_markdown  # noqa: PLC0415
+
+        stub = _StubDb({"Abstraction": [self._abs_node()]}, self._abs_edges())
+        await export_graph_to_markdown(stub, tmp_path)
+
+        abs_files = list(tmp_path.rglob("ABS-*.md"))
+        assert not abs_files, (
+            f"full export must not write ABS-*.md files; found: {abs_files}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_abstraction_writes_abstractions_json(self, tmp_path: Path) -> None:
+        """The full export writes abstractions.json listing the Abstraction node
+        with its rule_ids (sorted) from the outgoing ABSTRACTS edges.
+
+        RED: current code does not write abstractions.json; it writes a markdown
+        file instead.
+        """
+        import json  # noqa: PLC0415
+
+        from writ.export import export_graph_to_markdown  # noqa: PLC0415
+
+        stub = _StubDb({"Abstraction": [self._abs_node()]}, self._abs_edges())
+        await export_graph_to_markdown(stub, tmp_path)
+
+        artifact = tmp_path / "abstractions.json"
+        assert artifact.exists(), "full export must write abstractions.json"
+
+        data = json.loads(artifact.read_text(encoding="utf-8"))
+        assert data.get("project") == "writ", (
+            f"abstractions.json must carry project='writ'; got {data.get('project')!r}"
+        )
+        entries = data.get("abstractions", [])
+        assert len(entries) == 1, f"expected 1 abstraction entry; got {len(entries)}"
+
+        entry = entries[0]
+        assert entry.get("abstraction_id") == self._ABS_ID
+        assert sorted(entry.get("rule_ids", [])) == sorted(self._RULE_IDS), (
+            f"rule_ids must match the ABSTRACTS edge targets; got {entry.get('rule_ids')!r}"
+        )
+
+    def test_node_to_yaml_frontmatter_default_drops_graph_only_fields(self) -> None:
+        """node_to_yaml_frontmatter with no `exclude` kwarg still drops every key
+        in GRAPH_ONLY_FIELDS (guard: default behaviour must not regress).
+
+        Passes today; kept here so regression is caught immediately.
+        """
+        import yaml  # noqa: PLC0415
+
+        node = {
+            "skill_id": "SKL-PROC-GUARD-001",
+            "node_type": "Skill",
+            "domain": "testing",
+            "scope": "session",
+            "trigger": "t",
+            "statement": "s",
+            "rationale": "r",
+            **{field: "sentinel" for field in GRAPH_ONLY_FIELDS},
+        }
+        result = node_to_yaml_frontmatter(node)
+        fm_text = result.split("---")[1]
+        fm = yaml.safe_load(fm_text)
+        for field in GRAPH_ONLY_FIELDS:
+            assert field not in fm, (
+                f"GRAPH_ONLY_FIELDS key '{field}' must not appear in default "
+                f"node_to_yaml_frontmatter output"
+            )

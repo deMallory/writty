@@ -220,6 +220,15 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Read|Grep|Bash|read_file|grep|run_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-read-credential-gate.sh"
+          }
+        ]
+      },
+      {
         "matcher": "ExitPlanMode|exit_plan_mode",
         "hooks": [
           {
@@ -229,7 +238,7 @@
         ]
       },
       {
-        "matcher": "Read",
+        "matcher": "Read|read_file",
         "hooks": [
           {
             "type": "command",
@@ -238,7 +247,7 @@
         ]
       },
       {
-        "matcher": "Read",
+        "matcher": "Read|read_file",
         "hooks": [
           {
             "type": "command",
@@ -247,7 +256,7 @@
         ]
       },
       {
-        "matcher": "Grep|Read|Glob",
+        "matcher": "Grep|Read|Glob|grep|read_file",
         "hooks": [
           {
             "type": "command",
@@ -328,7 +337,7 @@
         ]
       },
       {
-        "matcher": "Write",
+        "matcher": "Write|write",
         "hooks": [
           {
             "type": "command",
@@ -337,7 +346,7 @@
         ]
       },
       {
-        "matcher": "Write",
+        "matcher": "Write|write",
         "hooks": [
           {
             "type": "command",
@@ -346,7 +355,7 @@
         ]
       },
       {
-        "matcher": "Write",
+        "matcher": "Write|write",
         "hooks": [
           {
             "type": "command",
@@ -429,7 +438,7 @@
         ]
       },
       {
-        "matcher": "Write",
+        "matcher": "Write|write",
         "hooks": [
           {
             "type": "command",

@@ -146,6 +146,8 @@ class TestClaudeDirConfigStaysWritable:
                 continue
             for dirpath, _dirs, files in os.walk(root):
                 for name in files:
+                    if not name.endswith(".md"):
+                        continue
                     target = os.path.join(dirpath, name)
                     checked += 1
                     assert _check(target)["can_write"] is True, (

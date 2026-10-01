@@ -27,7 +27,6 @@ GATE_CATEGORIES = WRIT_ROOT / "bin" / "lib" / "gate-categories.json"
 SCHEMA = WRIT_ROOT / "writ" / "graph" / "schema.py"
 RUN_ANALYSIS = WRIT_ROOT / "bin" / "run-analysis.sh"
 SESSION = WRIT_ROOT / "bin" / "lib" / "writ-session.py"
-REASONING = WRIT_ROOT / "bible" / "enforcement" / "reasoning-discipline.md"
 
 # Deleted tier-gate ids that must not remain anywhere in the live tree.
 DELETED_TIER_IDS = [
@@ -96,9 +95,18 @@ class TestLiveIdsPreserved:
     """Guard against over-deletion: the live rules + gate labels must survive."""
 
     def test_live_rules_still_defined(self) -> None:
-        text = REASONING.read_text(encoding="utf-8")
+        # An export cannot recreate the old hand-written filename reasoning-discipline.md;
+        # search every bible/enforcement/*.md instead so the test survives a rebuild.
+        enforcement_dir = WRIT_ROOT / "bible" / "enforcement"
+        all_text = " ".join(
+            p.read_text(encoding="utf-8")
+            for p in enforcement_dir.glob("*.md")
+            if p.is_file()
+        )
         for rid in ("ENF-GATE-006", "ENF-GATE-007"):
-            assert rid in text, f"{rid} (a live rule) was lost from reasoning-discipline.md"
+            assert rid in all_text, (
+                f"{rid} (a live rule) not found in any bible/enforcement/*.md"
+            )
 
     def test_live_gate_labels_present(self) -> None:
         # POL-6e moved the write-gate logic (and its labels) into writ/session/gates.py.
