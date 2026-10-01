@@ -119,6 +119,7 @@ class TestDocCounts:
         # hooks fired nowhere. Restored to the full upstream manifest (2026-09-01),
         # then the four surviving fork hooks were ported in (2026-09-05): 44 + 4,
         # then writ-read-credential-gate.sh (2026-09-25): 48 + 1.
+        # Grok aliases share those registrations; they do not add a command leaf.
         assert source_count == 49, (
             f"hooks/hooks.json has {source_count} 'command' entries; expected 49. "
             "Bump this (and HANDBOOK 'registers **N hook scripts**') when adding or "

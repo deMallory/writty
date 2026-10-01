@@ -138,6 +138,26 @@ class TestFalsePositives:
         assert _classifier()("Bash", {"command": cmd}) is not None, cmd
 
 
+class TestGrokToolNames:
+    def test_read_file_target_file_flagged(self):
+        assert _classifier()("read_file", {"target_file": ".env"}) is not None
+
+    def test_grep_tool_flagged(self):
+        assert _classifier()("grep", {"pattern": "KEY", "path": ".env"}) is not None
+
+    def test_run_terminal_command_flagged(self):
+        assert _classifier()("run_terminal_command", {"command": "cat .env"}) == ".env"
+
+    def test_camel_case_envelope_denied(self, tmp_path: Path):
+        out = _run_hook({
+            "sessionId": "rcg-grok",
+            "toolName": "read_file",
+            "toolInput": {"target_file": ".env"},
+        }, tmp_path)
+        assert out is not None and out.get("permissionDecision") == "deny"
+        assert "SEC-CREDENTIAL-READ" in out.get("permissionDecisionReason", "")
+
+
 class TestOtherTools:
     def test_unrelated_tool_ignored(self):
         assert _classifier()("Glob", {"pattern": ".env*"}) is None

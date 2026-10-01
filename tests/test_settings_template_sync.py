@@ -40,6 +40,7 @@ PATCHER = SKILL / "scripts" / "patch-global-config.sh"
 
 PLUGIN_VAR = "${CLAUDE_PLUGIN_ROOT}"
 INSTALL_VAR = "${WRIT_DIR}"
+PLUGIN_FALLBACK = "${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}"
 
 
 def _load(path: Path) -> dict:
@@ -89,7 +90,10 @@ class TestTemplateMatchesItsSource:
         src = _commands(_load(HOOKS_JSON))
         tpl = _commands(_load(TEMPLATE))
         for event, src_cmds in src.items():
-            expected = [c.replace(PLUGIN_VAR, INSTALL_VAR) for c in src_cmds]
+            expected = [
+                c.replace(PLUGIN_FALLBACK, INSTALL_VAR).replace(PLUGIN_VAR, INSTALL_VAR)
+                for c in src_cmds
+            ]
             assert tpl[event] == expected, (
                 f"{event} drifted from hooks/hooks.json; regenerate the template with "
                 f"{GENERATOR.name}"

@@ -26,7 +26,7 @@ try:
     d = json.load(sys.stdin)
 except Exception:
     print(''); sys.exit(0)
-print((d.get('agent_id') or d.get('session_id') or '').strip())
+print((d.get('agent_id') or d.get('agentId') or d.get('session_id') or d.get('sessionId') or '').strip())
 " 2>/dev/null || echo "")
 
 # THIS GATE'S OWN TELEMETRY IS KEYED HERE.

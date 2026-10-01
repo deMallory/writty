@@ -46,8 +46,9 @@ PARSED=$(echo "$STDIN_JSON" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
-    sid = data.get('agent_id', '') or data.get('session_id', '')
-    agent_id = data.get('agent_id', '')
+    sid = (data.get('session_id') or data.get('sessionId')
+           or data.get('agent_id') or data.get('agentId') or '')
+    agent_id = data.get('agent_id') or data.get('agentId') or ''
     prompt = data.get('prompt', data.get('message', data.get('content', '')))
     print(f'{sid}\n{prompt}\n{agent_id}')
 except Exception:
@@ -114,6 +115,20 @@ if [ "$TIER" = "none" ]; then
             >> "/tmp/writ-prompt-debug.log" 2>/dev/null || true
     fi
     exit 0
+fi
+
+# On Grok, the plan the user approved lives in the session directory, not in
+# repo plan.md. current-phase below fingerprints repo plan.md and the token is
+# bound to that hash, so the copy has to land first. A missing session plan
+# leaves the repo file alone (a later testing approval, or no plan yet).
+if [ "$TIER" = "exact" ] && [ -n "${GROK_SESSION_ID:-}" ]; then
+  WRIT_DIR="$WRIT_DIR" GROK_WORKSPACE_ROOT="${GROK_WORKSPACE_ROOT:-}" python3 -c "
+import os, sys
+sys.path.insert(0, os.environ['WRIT_DIR'])
+from writ.harness.grok_plan import materialize_plan
+cwd = os.environ.get('GROK_WORKSPACE_ROOT') or os.getcwd()
+materialize_plan(cwd, sys.argv[1])
+" "$GROK_SESSION_ID" >/dev/null 2>&1 || true
 fi
 
 # Deferred behind the tier gate: this prompt is approval-related, so the session's gate

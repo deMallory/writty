@@ -60,38 +60,50 @@ def resolve_current_session_id() -> str | None:
     """Resolve the CURRENT session id from the process's own environment, or None.
 
     Order (first non-empty wins):
-      1. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
-      2. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
-    Returns None when neither resolves. Each signal is individually guarded so a bad
+      1. $GROK_SESSION_ID            (Grok Build; wins over Claude so a dual-harness
+                                      machine does not attach a Grok turn to a stale
+                                      Claude id)
+      2. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
+      3. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
+    Returns None when none of them resolves. Each signal is individually guarded so a bad
     value never propagates: the resolver NEVER raises, and it never guesses.
 
-    THERE IS NO THIRD TIER, and the two that were here were wrong in the same way. Tier 3
-    read /tmp/writ-current-session, ONE file per machine that every Claude Code session's
-    UserPromptSubmit hook overwrites, so it named whichever session took a turn most
-    recently. Tier 4 took the newest writ-session-*.json by mtime out of a cache directory
-    every project shares. Both answered "which session am I" with "whichever one moved
-    last", and both did so live: the user's magento project reported `work` mode it had
-    never set, and a stray test run left the pointer naming
+    THERE IS NO POINTER TIER AND NO MTIME TIER. The two that were here were wrong in the
+    same way. The pointer read /tmp/writ-current-session, ONE file per machine that every
+    session's UserPromptSubmit hook overwrites, so it named whichever session took a turn
+    most recently. The mtime tier took the newest writ-session-*.json out of a cache
+    directory every project shares. Both answered "which session am I" with "whichever one
+    moved last", and both did so live: the user's magento project reported `work` mode it
+    had never set, and a stray test run left the pointer naming
     `tier-embed-directive-597898df`, a session with no cache anywhere, which the mtime
     glob could not tell apart from a real id. A wrong answer here is not a failed read, it
     is a mode, an approval or an audit coverage scope written into somebody else's
     session, and nothing in any log shows it happened. Callers get None and fail loud
-    instead (the CLI exits 2 naming the two env vars; the doctor reports no session).
+    instead (the CLI exits 2 naming the env vars; the doctor reports no session).
     """
-    # BOTH TIERS BELOW ARE UNREACHABLE FROM A BASH TOOL CALL, and the variable that WOULD
-    # answer is the one you must not read. Measured 2026-08-11 against Claude Code 2.1.227:
-    # CLAUDE_SESSION_ID and CLAUDE_JOB_DIR are NEVER exported, so this resolver returns
-    # None in practice and callers fail loud. CLAUDE_CODE_SESSION_ID *is* exported, and in
-    # a main session it equals the id hooks write state under, which makes it look like the
-    # fix. It is not: probed from inside a real sub-agent it still holds the PARENT's id,
-    # while Writ keys a sub-agent by its agent_id. Reading it would let a sub-agent resolve
-    # to its parent and approve or clear the PARENT's gates -- the same class of
-    # cross-session write that deleting tiers 3 and 4 closed. CLAUDE_CODE_CHILD_SESSION=1
-    # is a flag, not an id, and is set in the main session too, so it cannot tell parent
-    # from child either. The refusal therefore stands: the remedy is the explicit session
-    # argument at the call site, NOT another environment read.
+    # THE CLAUDE TIERS BELOW ARE UNREACHABLE FROM A BASH TOOL CALL, and the variable that
+    # WOULD answer is the one you must not read. Measured 2026-08-11 against Claude Code
+    # 2.1.227: CLAUDE_SESSION_ID and CLAUDE_JOB_DIR are NEVER exported, so those two tiers
+    # return None in practice and callers fail loud. CLAUDE_CODE_SESSION_ID *is* exported,
+    # and in a main session it equals the id hooks write state under, which makes it look
+    # like the fix. It is not: probed from inside a real sub-agent it still holds the
+    # PARENT's id, while Writ keys a sub-agent by its agent_id. Reading it would let a
+    # sub-agent resolve to its parent and approve or clear the PARENT's gates -- the same
+    # class of cross-session write that deleting the pointer and mtime tiers closed.
+    # CLAUDE_CODE_CHILD_SESSION=1 is a flag, not an id, and is set in the main session too,
+    # so it cannot tell parent from child either. The refusal therefore stands: the remedy
+    # is the explicit session argument at the call site, NOT another environment read.
+    # $GROK_SESSION_ID is the exception: the Grok runner injects it into every hook.
     #
-    # 1. per-process env id (empty string is treated as unset)
+    # 1. Grok runner id (empty string is treated as unset)
+    try:
+        grok_sid = os.environ.get("GROK_SESSION_ID", "")
+        if grok_sid:
+            return grok_sid
+    except Exception:
+        pass
+
+    # 2. per-process Claude env id (empty string is treated as unset)
     try:
         env_sid = os.environ.get("CLAUDE_SESSION_ID", "")
         if env_sid:
@@ -99,7 +111,7 @@ def resolve_current_session_id() -> str | None:
     except Exception:
         pass
 
-    # 2. basename of the per-job dir (trailing slash stripped first)
+    # 3. basename of the per-job dir (trailing slash stripped first)
     try:
         job_dir = os.environ.get("CLAUDE_JOB_DIR", "")
         if job_dir:

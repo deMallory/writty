@@ -16,10 +16,10 @@ STDIN_JSON="$(cat 2>/dev/null || true)"
 # 1. Resolve install root and persistent-data dir. The plugin loader sets
 #    CLAUDE_PLUGIN_ROOT; if unset, we're not running under the loader so
 #    there's nothing to bootstrap.
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${GROK_PLUGIN_ROOT:-}" ]; then
   exit 0
 fi
-WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"
+WRIT_DIR="${CLAUDE_PLUGIN_ROOT:-$GROK_PLUGIN_ROOT}"
 # Instrumented from HERE, not the top of the file: the early `exit 0` above fires
 # when CLAUDE_PLUGIN_ROOT is unset, which means we are not running under the plugin
 # loader and there is nothing to bootstrap -- a genuine no-op not worth a row, and
@@ -41,20 +41,21 @@ type hook_instrument >/dev/null 2>&1 && hook_instrument "session-start-bootstrap
 # The id is the payload's and only the payload's (agent_id first, so a sub-agent's rows
 # are not filed under its parent). It is never synthesized: an id the payload did not
 # carry stays EMPTY, leaving a visible gap rather than a silently wrong record. Step 5
-# keeps its own parse because it needs cwd and source as well.
+# keeps its own parse because it needs cwd and source as well. Grok sends the same
+# fields in camelCase (agentId, sessionId).
 SESSION_ID="$(printf '%s' "${STDIN_JSON}" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
 except Exception:
     print(''); sys.exit(0)
-print((d.get('agent_id') or d.get('session_id') or '').strip())
+print((d.get('agent_id') or d.get('agentId') or d.get('session_id') or d.get('sessionId') or '').strip())
 " 2>/dev/null || echo "")"
 
-WRIT_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}"
+WRIT_DATA="${GROK_PLUGIN_DATA:-${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}}"
 # Venv lives at ${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv so it
 # survives plugin upgrades that rewrite ${CLAUDE_PLUGIN_ROOT}.
-VENV_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv"
+VENV_DIR="${WRIT_DATA}/.venv"
 NEO4J_HOST="${WRIT_NEO4J_HOST:-localhost}"
 NEO4J_PORT="${WRIT_NEO4J_PORT:-7687}"
 
@@ -127,7 +128,7 @@ if [ -n "${STDIN_JSON}" ] && [ -f "${SESSION_HELPER}" ]; then
 import sys, json
 try:
     d = json.load(sys.stdin)
-    sid = str(d.get('session_id', '') or '').strip()
+    sid = str(d.get('session_id') or d.get('sessionId') or '').strip()
     cwd = str(d.get('cwd', '') or '').strip()
     source = str(d.get('source', '') or '').strip()
     print(sid)

@@ -69,8 +69,9 @@ def extract_keywords(raw: str) -> str:
 
 try:
     data = json.load(sys.stdin)
-    sid = data.get('agent_id', '') or data.get('session_id', '')
-    agent_id = data.get('agent_id', '')
+    sid = (data.get('agent_id') or data.get('agentId')
+           or data.get('session_id') or data.get('sessionId') or '')
+    agent_id = data.get('agent_id') or data.get('agentId') or ''
     raw = data.get('prompt', data.get('message', data.get('content', '')))
     prompt = extract_keywords(raw) if len(raw) > 300 else raw
     # Mode auto-routing: classify the RAW prompt (the keyword-extracted form scrambles the

@@ -1,10 +1,11 @@
 """PIECE 1 (Part 1 of the isolation cycle): resolve_current_session_id() loses its two
 guessing tiers.
 
-Ordering after this cycle (first non-empty wins):
-  1. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
-  2. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
-Returns None when neither resolves. There is no tier 3 and no tier 4 anymore.
+Ordering (first non-empty wins):
+  1. $GROK_SESSION_ID            (Grok Build)
+  2. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
+  3. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
+Returns None when none of them resolves. There is no pointer tier and no mtime tier.
 
 WHY THE OTHER TWO TIERS ARE GONE. The resolver's own (pre-cycle) docstring called tier 3
 "shared-global" and tier 4 "racy", and both words were literal. Tier 3 read
@@ -58,6 +59,7 @@ def _pointer_path(tmp_path, monkeypatch) -> str:
 @pytest.fixture(autouse=True)
 def _isolated_cache_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("GROK_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
     yield
@@ -66,6 +68,22 @@ def _isolated_cache_dir(tmp_path, monkeypatch):
 class TestResolverExists:
     def test_resolver_is_importable_and_callable(self):
         assert callable(cache.resolve_current_session_id)
+
+
+class TestGrokSessionIdWins:
+    def test_returns_grok_session_id_when_set(self, monkeypatch):
+        monkeypatch.setenv("GROK_SESSION_ID", "sid-from-grok")
+        assert cache.resolve_current_session_id() == "sid-from-grok"
+
+    def test_grok_session_id_wins_over_claude_session_id(self, monkeypatch):
+        monkeypatch.setenv("GROK_SESSION_ID", "sid-grok-wins")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "sid-claude-loses")
+        assert cache.resolve_current_session_id() == "sid-grok-wins"
+
+    def test_empty_grok_session_id_falls_through_to_claude(self, monkeypatch):
+        monkeypatch.setenv("GROK_SESSION_ID", "")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "sid-claude-fallback")
+        assert cache.resolve_current_session_id() == "sid-claude-fallback"
 
 
 class TestEnvSessionIdWins:

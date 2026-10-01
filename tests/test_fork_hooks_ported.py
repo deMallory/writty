@@ -22,10 +22,10 @@ HOOKS_JSON = REPO / "hooks" / "hooks.json"
 SCRIPTS = REPO / "hooks" / "scripts"
 
 PORTED = {
-    "writ-agent-hotswap.sh": ("PreToolUse", "Task"),
-    "writ-sdd-review-order.sh": ("PreToolUse", "Task"),
-    "writ-output-rewrite.sh": ("PostToolUse", "Bash"),
-    "writ-bash-failure.sh": ("PostToolUseFailure", "Bash"),
+    "writ-agent-hotswap.sh": ("PreToolUse", "Task|spawn_subagent"),
+    "writ-sdd-review-order.sh": ("PreToolUse", "Task|spawn_subagent"),
+    "writ-output-rewrite.sh": ("PostToolUse", "Bash|run_terminal_command"),
+    "writ-bash-failure.sh": ("PostToolUseFailure", "Bash|run_terminal_command"),
 }
 
 

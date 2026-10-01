@@ -104,6 +104,17 @@ class TestConjunctionPattern:
 
 # -- Non-approval: must NOT match (existing + new governance guards) ----------
 
+class TestWritApproveSlashCommand:
+    def test_slash_writ_approve_returns_true(self):
+        assert _check_approval("/writ-approve")
+
+    def test_writ_approve_without_slash_returns_true(self):
+        assert _check_approval("writ-approve")
+
+    def test_unrelated_slash_command_returns_false(self):
+        assert not _check_approval("/help")
+
+
 class TestNonApproval:
     def test_question_about_approval_returns_false(self):
         assert not _check_approval("how do I get this approved?")

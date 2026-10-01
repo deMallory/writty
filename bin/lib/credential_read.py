@@ -157,13 +157,13 @@ def find_credential_read(tool_name: str, tool_input: dict) -> str | None:
     """Return the first secret path this tool call would read, else None."""
     if not isinstance(tool_input, dict):
         return None
-    if tool_name == "Read":
-        path = tool_input.get("file_path") or ""
+    if tool_name in ("Read", "read_file"):
+        path = tool_input.get("file_path") or tool_input.get("target_file") or ""
         return path if _is_secret(path) else None
-    if tool_name == "Grep":
+    if tool_name in ("Grep", "grep"):
         path = tool_input.get("path") or ""
         return path if _is_secret(path) else None
-    if tool_name == "Bash":
+    if tool_name in ("Bash", "run_terminal_command"):
         command = tool_input.get("command") or ""
         for seg in _segments(_tokens(command)):
             hit = _check_segment(seg)
@@ -179,8 +179,16 @@ def main() -> None:
         return
     # The gate files its hook_execution row under this; returning it here saves the
     # gate a second python3 start (20ms) on every Read, Grep and Bash call.
-    sys.stdout.write((envelope.get("agent_id") or envelope.get("session_id") or "") + "\n")
-    hit = find_credential_read(envelope.get("tool_name", ""), envelope.get("tool_input", {}))
+    # Grok sends camelCase (sessionId, toolName, toolInput). normalize keeps the
+    # snake_case names this function already returns.
+    from writ.harness.envelope import normalize
+    normalized = normalize(envelope if isinstance(envelope, dict) else {})
+    sys.stdout.write((normalized.get("agent_id") or normalized.get("session_id") or "") + "\n")
+    tool_input = normalized.get("tool_input")
+    hit = find_credential_read(
+        normalized.get("tool_name") or "",
+        tool_input if isinstance(tool_input, dict) else {},
+    )
     if hit:
         sys.stdout.write(hit)
         sys.stdout.flush()
@@ -188,7 +196,7 @@ def main() -> None:
         try:
             from writ.session.cache import _read_cache
             from writ.session.friction import _log_friction_event
-            sid = envelope.get("session_id") or ""
+            sid = normalized.get("session_id") or ""
             _log_friction_event(sid, _read_cache(sid).get("mode") if sid else None,
                                 "gate_denial", rule_id="SEC-CREDENTIAL-READ",
                                 file_path=hit, gate="credential_read")
