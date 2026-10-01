@@ -1,6 +1,6 @@
-# Writ turn rule (Grok)
+# Grit turn rule (Grok)
 
-Grok's `UserPromptSubmit` hook cannot inject text into the model. Writ writes the retrieved rule bundle to `$GROK_PLUGIN_DATA/current-rules.md` (or `$WRIT_DATA/current-rules.md`).
+On Grok this plugin is Grit (plugin id `gritty`). Grok's `UserPromptSubmit` hook cannot inject text into the model. Grit writes the retrieved rule bundle to `$GROK_PLUGIN_DATA/current-rules.md` (or `$WRIT_DATA/current-rules.md`).
 
 Before you write or edit source, or run a mutating shell command:
 

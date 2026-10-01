@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Writ bootstrap for Grok Build. Reuses the Claude plugin venv/daemon when they
+# Grit bootstrap for Grok Build. The plugin id is gritty. Reuses the Claude plugin venv/daemon when they
 # already exist. Does not write ~/.claude/settings.json.
 #
 # Usage:
@@ -23,7 +23,7 @@ WRIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WRIT_DATA="${GROK_PLUGIN_DATA:-${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}}"
 VENV_DIR="${WRIT_DATA}/.venv"
 
-echo "Writ Grok bootstrap"
+echo "Grit bootstrap (plugin gritty)"
 echo "  WRIT_DIR=$WRIT_DIR"
 echo "  WRIT_DATA=$WRIT_DATA"
 
@@ -55,10 +55,10 @@ else
 fi
 
 if command -v grok >/dev/null 2>&1; then
-    echo "Install the plugin with:"
+    echo "Install Grit with:"
     echo "  grok plugin install \"$WRIT_DIR\" --trust"
 else
-    echo "grok CLI not on PATH. Install Grok Build, then:"
+    echo "grok CLI not on PATH. Install Grok Build, then install Grit with:"
     echo "  grok plugin install \"$WRIT_DIR\" --trust"
 fi
 

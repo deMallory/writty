@@ -44,8 +44,9 @@ except (json.JSONDecodeError, ValueError) as _e:
     )
     sys.exit(0)
 ti = parsed.get("tool_input") or {}
-# A plugin install dispatches the reviewer as writ:writ-code-quality-reviewer.
-agent_type = (ti.get("subagent_type") or "").lower().removeprefix("writ:")
+# Claude dispatches the reviewer as writ:writ-code-quality-reviewer.
+# Grok dispatches it as gritty:writ-code-quality-reviewer.
+agent_type = (ti.get("subagent_type") or "").lower().removeprefix("gritty:").removeprefix("writ:")
 if "code-review" not in agent_type and agent_type not in ("writ-code-quality-reviewer",):
     sys.exit(0)
 from review_findings import review_order_key, spec_review_done

@@ -102,7 +102,13 @@ def role():
 
 # The plugin loader registers the roles under the plugin's name (plugin.json "name"), so a
 # bare writ-* name only resolves where scripts/bootstrap.sh linked it into ~/.claude/agents/.
-ROLE_PREFIX = "writ:" if os.environ.get("CLAUDE_PLUGIN_ROOT") else ""
+# Grok's manifest names the plugin gritty, and Grok also sets CLAUDE_PLUGIN_ROOT, so the
+# Grok root has to win or the rewrite would ask for writ:writ-* agents that are not registered.
+ROLE_PREFIX = (
+    "gritty:" if os.environ.get("GROK_PLUGIN_ROOT")
+    else "writ:" if os.environ.get("CLAUDE_PLUGIN_ROOT")
+    else ""
+)
 shown = st or "general-purpose"
 r = role()
 if r:

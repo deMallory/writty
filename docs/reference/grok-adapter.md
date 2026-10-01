@@ -1,6 +1,6 @@
 # Grok Build adapter
 
-Writ's daemon, graph, and gates stay the source of truth. This adapter translates Grok Build hook envelopes and decisions so Work mode can refuse writes on Grok the same way it does on Claude Code.
+On Grok the plugin is Grit. Its id is `gritty` (`.grok-plugin/plugin.json`); Claude keeps `writ` / `writty`. Writ's daemon, graph, and gates stay the source of truth. This adapter translates Grok Build hook envelopes and decisions so Work mode can refuse writes on Grok the same way it does on Claude Code.
 
 ## Dialect
 
@@ -22,6 +22,8 @@ Grok skips unknown events (`CwdChanged`). Matcher aliases map Claude tool names 
 bash scripts/bootstrap-grok.sh
 grok plugin install "$PWD" --trust
 ```
+
+`grok plugin validate` reports `name: gritty`. The slash command that opens the gate stays `/writ-approve`.
 
 If Grok also scans `~/.claude/settings.json` hooks, they will double-fire. Add:
 

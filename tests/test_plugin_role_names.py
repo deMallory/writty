@@ -1,7 +1,10 @@
 """PLUGIN ROLE NAMES: the hooks must use the names Claude Code registered for the Writ agents.
 
-On a plugin install the agents live under the plugin's namespace (`writ:writ-explorer`),
-the prefix being `name` in .claude-plugin/plugin.json. Bare `writ-*` names exist only when
+On a Claude plugin install the agents live under the plugin's namespace
+(`writ:writ-explorer`), the prefix being `name` in .claude-plugin/plugin.json.
+On Grok the manifest is .grok-plugin/plugin.json and the prefix is `gritty:`.
+Grok also sets CLAUDE_PLUGIN_ROOT, so the Grok root has to win.
+Bare `writ-*` names exist only when
 scripts/bootstrap.sh linked agents/ into ~/.claude/agents/; scripts/bootstrap-plugin.sh
 creates no such links. Four hooks assumed bare names:
 
@@ -32,6 +35,7 @@ from tests.fixtures.session_state import sandbox_cwd  # noqa: F401
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = SKILL_ROOT / "hooks" / "scripts"
 PLUGIN_MANIFEST = SKILL_ROOT / ".claude-plugin" / "plugin.json"
+GROK_MANIFEST = SKILL_ROOT / ".grok-plugin" / "plugin.json"
 HELPER = SKILL_ROOT / "bin" / "lib" / "writ-session.py"
 
 BLOCKING_MESSAGE = """```json
@@ -42,15 +46,20 @@ BLOCKING_MESSAGE = """```json
 """
 
 
-def _env(cache_dir: Path, *, plugin: bool) -> dict[str, str]:
+def _env(cache_dir: Path, *, plugin: bool, host: str = "claude") -> dict[str, str]:
     env = os.environ.copy()
     env["WRIT_CACHE_DIR"] = str(cache_dir)
     env["WRIT_FRICTION_LOG"] = str(cache_dir / "friction.log")
     env["WRIT_LOG_ROOT"] = str(cache_dir / "logs")
-    if plugin:
+    # The ambient shell may be a Grok session. Drop both roots, then set the
+    # pair the host under test actually injects. Grok sets the Claude alias too.
+    env.pop("CLAUDE_PLUGIN_ROOT", None)
+    env.pop("GROK_PLUGIN_ROOT", None)
+    if host == "grok":
+        env["GROK_PLUGIN_ROOT"] = str(SKILL_ROOT)
         env["CLAUDE_PLUGIN_ROOT"] = str(SKILL_ROOT)
-    else:
-        env.pop("CLAUDE_PLUGIN_ROOT", None)
+    elif plugin:
+        env["CLAUDE_PLUGIN_ROOT"] = str(SKILL_ROOT)
     return env
 
 
@@ -94,8 +103,15 @@ def _task(sid: str, subagent_type: str, **tool_input: str) -> dict:
 
 
 def test_plugin_manifest_name_is_the_role_prefix() -> None:
-    """The hooks hardcode `writ:`; renaming the plugin must fail here, not in dispatch."""
+    """The hooks hardcode `writ:`; renaming the Claude plugin must fail here, not in dispatch."""
     assert json.loads(PLUGIN_MANIFEST.read_text())["name"] == "writ"
+
+
+def test_grok_plugin_manifest_name_is_gritty() -> None:
+    """Grok shows this name. The display name is Grit; the id has to be lowercase."""
+    manifest = json.loads(GROK_MANIFEST.read_text())
+    assert manifest["name"] == "gritty"
+    assert manifest["displayName"] == "Grit"
 
 
 class TestDispatchDiscipline:
@@ -126,6 +142,16 @@ class TestDispatchDiscipline:
         assert out["permissionDecision"] == "deny"
         assert "writ:writ-explorer" in out["permissionDecisionReason"]
         assert "writ:writ-implementer" in out["permissionDecisionReason"]
+
+    def test_grok_rewrites_to_the_gritty_explorer(self, tmp_path: Path) -> None:
+        _seed_mode(tmp_path, "dd-grok", "work")
+        result = _run(
+            self.HOOK,
+            _task("dd-grok", "general-purpose", prompt=self.EXPLORE_PROMPT),
+            _env(tmp_path, plugin=True, host="grok"),
+        )
+        out = _hook_output(result.stdout)
+        assert out["updatedInput"]["subagent_type"] == "gritty:writ-explorer"
 
     def test_standalone_keeps_the_bare_explorer(self, tmp_path: Path) -> None:
         _seed_mode(tmp_path, "dd-bare", "work")
@@ -167,6 +193,30 @@ class TestAgentHotswap:
         assert updated["subagent_type"] == "writ:writ-implementer"
         assert updated["model"] == "sonnet"
 
+    def test_grok_explore_becomes_the_gritty_explorer_on_opus(
+        self, tmp_path: Path
+    ) -> None:
+        result = _run(
+            self.HOOK,
+            _task("hs-grok", "Explore", prompt="look around"),
+            _env(tmp_path, plugin=True, host="grok"),
+        )
+        updated = _hook_output(result.stdout)["updatedInput"]
+        assert updated["subagent_type"] == "gritty:writ-explorer"
+        assert updated["model"] == "opus"
+
+    def test_gritty_implementer_without_model_gets_sonnet(
+        self, tmp_path: Path
+    ) -> None:
+        result = _run(
+            self.HOOK,
+            _task("hs-gritty", "gritty:writ-implementer", prompt="implement the plan"),
+            _env(tmp_path, plugin=True, host="grok"),
+        )
+        updated = _hook_output(result.stdout)["updatedInput"]
+        assert updated["subagent_type"] == "gritty:writ-implementer"
+        assert updated["model"] == "sonnet"
+
     def test_standalone_explore_keeps_the_bare_explorer(self, tmp_path: Path) -> None:
         result = _run(
             self.HOOK,
@@ -182,7 +232,10 @@ class TestAgentHotswap:
 class TestSubagentStop:
     HOOK = "writ-subagent-stop.sh"
 
-    @pytest.mark.parametrize("agent_type", ["writ-reviewer", "writ:writ-reviewer"])
+    @pytest.mark.parametrize(
+        "agent_type",
+        ["writ-reviewer", "writ:writ-reviewer", "gritty:writ-reviewer"],
+    )
     def test_reviewer_verdict_is_recorded(
         self, tmp_path: Path, agent_type: str
     ) -> None:
@@ -214,7 +267,11 @@ class TestReviewOrder:
 
     @pytest.mark.parametrize(
         "subagent_type",
-        ["writ-code-quality-reviewer", "writ:writ-code-quality-reviewer"],
+        [
+            "writ-code-quality-reviewer",
+            "writ:writ-code-quality-reviewer",
+            "gritty:writ-code-quality-reviewer",
+        ],
     )
     def test_quality_review_before_spec_review_is_denied(
         self, tmp_path: Path, subagent_type: str

@@ -1,0 +1,29 @@
+{
+  "name": "gritty",
+  "owner": {
+    "name": "deMallory",
+    "url": "https://github.com/deMallory"
+  },
+  "metadata": {
+    "description": "Single-plugin marketplace for Grit, the Grok name of this plugin. The repository root is the plugin, so source is './'. Claude installs keep the writty marketplace.",
+    "version": "1.7.5"
+  },
+  "plugins": [
+    {
+      "name": "gritty",
+      "source": "./",
+      "version": "1.7.5",
+      "displayName": "Grit",
+      "description": "Grit on Grok Build: the rules that fit the task, delivered per prompt, and no risky writes before you approve a plan and tests. Same guardrails as Writ, over a Neo4j knowledge graph, wired in through hook scripts and a session state machine.",
+      "category": "workflow",
+      "keywords": ["grok", "grit", "rag", "rules", "enforcement", "neo4j", "fastapi", "hooks", "workflow", "code-quality", "ai-tooling", "governance", "guardrails", "knowledge-graph", "tdd"],
+      "homepage": "https://github.com/deMallory/writty",
+      "repository": "https://github.com/deMallory/writty",
+      "license": "MIT",
+      "author": {
+        "name": "Lucio Saldivar & David de Mallory",
+        "url": "https://github.com/infinri"
+      }
+    }
+  ]
+}

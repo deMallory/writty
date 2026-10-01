@@ -196,8 +196,10 @@ fi
 # harness hands us the reviewer's own final text, so the author is never the courier.
 # Recorded against the PARENT session (the one that will run `git commit`), not the
 # agent's own throwaway session. Fire-and-forget: never changes the hook outcome.
-# A plugin install reports the reviewer as writ:writ-reviewer.
-if [ "${AGENT_TYPE#writ:}" = "writ-reviewer" ] && [ -n "$PARENT_SESSION" ]; then
+# Claude reports the reviewer as writ:writ-reviewer. Grok reports gritty:writ-reviewer.
+ROLE="${AGENT_TYPE#gritty:}"
+ROLE="${ROLE#writ:}"
+if [ "$ROLE" = "writ-reviewer" ] && [ -n "$PARENT_SESSION" ]; then
     REVIEW_MSG=$(parsed_field "$STDIN_JSON" "last_assistant_message")
     # Recorded UNCONDITIONALLY, including when the message is empty: an empty
     # message parses as unparseable, which counts as blocking. Skipping the record
@@ -219,7 +221,7 @@ fi
 # ENF-PROC-SDD-001: writ-sdd-review-order.sh holds the code-quality reviewer until
 # the spec reviewer has finished. This is the only writer of that flag, against the
 # PARENT session like the verdict above, and just as fire-and-forget.
-if [ "${AGENT_TYPE#writ:}" = "writ-spec-reviewer" ] && [ -n "$PARENT_SESSION" ]; then
+if [ "$ROLE" = "writ-spec-reviewer" ] && [ -n "$PARENT_SESSION" ]; then
     if ! python3 "$WRIT_DIR/bin/lib/review_findings.py" spec-done \
             "$PARENT_SESSION" "$AGENT_ID" >/dev/null 2>&1; then
         log_friction_event "$PARENT_SESSION" "" "review_order_record_failed" \

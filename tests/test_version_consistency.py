@@ -101,6 +101,19 @@ class TestVersionConsistencyAcrossFiles:
             ),
             "writ.__version__": writ.__version__,
         }
+        grok_plugin = json.loads(
+            (SKILL_DIR / ".grok-plugin" / "plugin.json").read_text()
+        )
+        grok_market = json.loads(
+            (SKILL_DIR / ".grok-plugin" / "marketplace.json").read_text()
+        )
+        versions[".grok-plugin/plugin.json:version"] = grok_plugin.get("version")
+        versions[".grok-plugin/marketplace.json:plugins[0].version"] = grok_market[
+            "plugins"
+        ][0].get("version")
+        versions[".grok-plugin/marketplace.json:metadata.version"] = grok_market.get(
+            "metadata", {}
+        ).get("version")
         wrong = {k: v for k, v in versions.items() if v != EXPECTED_VERSION}
         assert not wrong, (
             f"The following manifests do not declare version '{EXPECTED_VERSION}': "

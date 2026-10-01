@@ -33,8 +33,14 @@ SUBAGENT=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // empty')
 
 # The plugin loader registers the roles under the plugin's name (plugin.json "name"), so a
 # bare writ-* name only resolves where scripts/bootstrap.sh linked it into ~/.claude/agents/.
+# Grok's manifest names the plugin gritty. Grok also sets CLAUDE_PLUGIN_ROOT, so that
+# root has to win or this rewrite would point at writ:writ-* agents Grok did not register.
 ROLE_PREFIX=""
-[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && ROLE_PREFIX="writ:"
+if [ -n "${GROK_PLUGIN_ROOT:-}" ]; then
+  ROLE_PREFIX="gritty:"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  ROLE_PREFIX="writ:"
+fi
 
 # Generic -> writ-* routing map
 case "$SUBAGENT" in
@@ -47,7 +53,9 @@ esac
 # Only stamp when the caller did not set a model explicitly.
 MODEL=$(echo "$INPUT" | jq -r '.tool_input.model // empty')
 if [ -z "$MODEL" ]; then
-  case "${NEW_TYPE#writ:}" in
+  BARE_TYPE="${NEW_TYPE#gritty:}"
+  BARE_TYPE="${BARE_TYPE#writ:}"
+  case "$BARE_TYPE" in
     writ-explorer|writ-planner|writ-spec-reviewer|writ-code-quality-reviewer)
       NEW_MODEL="opus" ;;
     writ-implementer|writ-test-writer|general-purpose|claude)

@@ -124,7 +124,8 @@ class TestReviewOrderKey:
 # --------------------------------------------------------------------------- #
 class TestSpecReviewerStopSetsFlag:
     @pytest.mark.parametrize(
-        "agent_type", ["writ-spec-reviewer", "writ:writ-spec-reviewer"]
+        "agent_type",
+        ["writ-spec-reviewer", "writ:writ-spec-reviewer", "gritty:writ-spec-reviewer"],
     )
     def test_spec_reviewer_stop_sets_the_flag(
         self, agent_type: str, cache_dir: Path
@@ -200,7 +201,12 @@ class TestSpecReviewerStopSetsFlag:
 # --------------------------------------------------------------------------- #
 class TestOrderGate:
     @pytest.mark.parametrize(
-        "reviewer", ["writ-code-quality-reviewer", "writ:writ-code-quality-reviewer"]
+        "reviewer",
+        [
+            "writ-code-quality-reviewer",
+            "writ:writ-code-quality-reviewer",
+            "gritty:writ-code-quality-reviewer",
+        ],
     )
     def test_refused_before_spec_review(self, reviewer: str, cache_dir: Path) -> None:
         sid = _sid()
