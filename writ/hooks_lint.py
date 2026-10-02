@@ -59,7 +59,11 @@ _ALLOWLIST: frozenset[str] = frozenset()
 def _resolve_script(command: str, plugin_root: Path) -> Path | None:
     """Resolve a hooks.json command string to a script path under plugin_root."""
     command = command.replace('"', "")  # the manifest quotes the path; see test_hooks_quote_the_plugin_root
-    m = re.search(r"\$\{CLAUDE_PLUGIN_ROOT\}/(\S+)", command)
+    # Bare root, or the Grok fallback `${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}` the manifest uses.
+    # Only a `.sh` path is a script: `test -f "${CLAUDE_PLUGIN_ROOT}/state/ready"` is not one.
+    m = re.search(
+        r"\$\{CLAUDE_PLUGIN_ROOT(?::-\$\{GROK_PLUGIN_ROOT\})?\}/([^\s\"']+\.sh)(?![^\s\"'])", command
+    )
     if m:
         return plugin_root / m.group(1)
     for tok in reversed(command.split()):
@@ -167,7 +171,8 @@ def lint_hooks(hooks_json: Path, plugin_root: Path) -> list[dict]:
     "rejected" (the script emits additionalContext on an event whose schema does not accept
     it, so CC discards the entire reply), "inert" (high confidence: no model channel this
     event accepts), "review" (a model channel exists but the script ALSO emits injection text
-    to bare stdout on this event), or "error" (could not read hooks.json).
+    to bare stdout on this event), or "error" (could not read hooks.json, or a registered
+    script has no file behind it).
     """
     findings: list[dict] = []
     try:
@@ -180,17 +185,26 @@ def lint_hooks(hooks_json: Path, plugin_root: Path) -> list[dict]:
 
     hooks = data.get("hooks", data)
     for event, groups in hooks.items():
-        # On these events plain stdout reaches the model, so injecting freely is
-        # correct -- nothing to flag.
-        if event in STDOUT_TO_MODEL_EVENTS:
-            continue
         if not isinstance(groups, list):
             continue
         for g in groups:
             matcher = g.get("matcher", "")
             for h in g.get("hooks", []):
                 spath = _resolve_script(h.get("command", ""), plugin_root)
-                if spath is None or not spath.exists():
+                if spath is None:
+                    continue
+                # Reported, not skipped: a path form this parser does not know once made
+                # the whole lint read nothing and report a clean run.
+                if not spath.exists():
+                    findings.append({
+                        "severity": "error", "script": str(spath.relative_to(plugin_root)),
+                        "event": event, "matcher": matcher,
+                        "detail": f"registered in hooks.json but no file at {spath}",
+                    })
+                    continue
+                # On these events plain stdout reaches the model, so injecting freely is
+                # correct -- nothing to flag.
+                if event in STDOUT_TO_MODEL_EVENTS:
                     continue
                 name = spath.name
                 if name in _ALLOWLIST:
