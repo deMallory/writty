@@ -21,6 +21,7 @@ Every `writ` command, generated from the Typer app. Run `writ <command> --help` 
 | `writ git-hooks bootstrap` | Register the writ project bound to its remote_url before first auto-register |
 | `writ git-hooks install` | Install the Writ post-commit git hook into a repo (removes the retired prepare-commit-msg block) |
 | `writ git-hooks uninstall` | Remove the Writ git-hook block from a repo (preserving other content) |
+| `writ grok materialize-plan` | Copy ~/.grok/sessions/<encoded-cwd>/<sid>/plan.md to <repo>/plan.md |
 | `writ handoff` | Write a session handoff: where the session stands, what it wrote, what is open |
 | `writ harvest` | Harvest git commits + transcript plans into decision-memory records |
 | `writ import-cypher` | Rebuild the graph from a Cypher dump script produced by export-cypher |
@@ -57,4 +58,4 @@ The hook-facing dispatcher; hooks call it when the daemon is unreachable. Simple
 | Kind | Subcommands |
 |---|---|
 | simple | `aggregate-findings`, `auto-feedback`, `check-escalation`, `clear-pending-violations`, `clear-rules-for-compaction`, `coverage`, `coverage-map`, `coverage-rollup`, `current-phase`, `lens`, `pending-violations`, `read`, `reset-after-compaction`, `staleness-check`, `synthesis-gate`, `triangulation-gate` |
-| complex | `add-pending-violation`, `advance-phase`, `can-read-code`, `can-write`, `carry-forward-mode`, `format`, `invalidate-gate`, `metrics`, `mode`, `partition-scope`, `record-analysis`, `reopen-planning`, `rollup-subagent`, `scope-estimate`, `should-skip`, `update` |
+| complex | `add-pending-violation`, `advance-phase`, `can-read-code`, `can-write`, `carry-forward-mode`, `detect-compaction`, `format`, `invalidate-gate`, `metrics`, `mode`, `partition-scope`, `record-analysis`, `reopen-planning`, `rollup-subagent`, `scope-estimate`, `should-skip`, `update` |
