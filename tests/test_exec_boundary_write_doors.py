@@ -70,10 +70,19 @@ SESSION_HELPER = REPO / "bin" / "lib" / "writ-session.py"
 
 assert str(BASH_HOOK) == BASH_HOOK_SH, "SKILL_ROOT-relative path disagrees with the module constant"
 
-# The derived platform limit, the same idiom `tests/test_subagent_seed.py:70` uses:
-# never the literal 131072, so this pins the real defect on a kernel whose page size
-# differs rather than only on this one.
-_MAX_ARG_STRLEN = 32 * os.sysconf("SC_PAGE_SIZE")
+# The derived platform limit, the same idiom `tests/test_subagent_seed.py` uses:
+# never the literal 131072. Linux enforces MAX_ARG_STRLEN at 32 pages per argument.
+# macOS has no per-argument cap; kern.argmax is the combined argv and environment
+# ceiling, so one argument of that size cannot fit beside the inherited environment.
+def _single_arg_ceiling() -> int:
+    per_arg = 32 * os.sysconf("SC_PAGE_SIZE")
+    if os.uname().sysname != "Darwin":
+        return per_arg
+    argmax = int(subprocess.check_output(["sysctl", "-n", "kern.argmax"], text=True))
+    return max(per_arg, argmax)
+
+
+_MAX_ARG_STRLEN = _single_arg_ceiling()
 _OVERSIZE_MARGIN = 4096
 OVERSIZE_PAD_BYTES = _MAX_ARG_STRLEN + _OVERSIZE_MARGIN
 
@@ -101,7 +110,7 @@ def _require_oversized_arg_support(pad_bytes: int = OVERSIZE_PAD_BYTES, *,
     if not probe(pad_bytes):
         pytest.skip(
             f"platform accepted a {pad_bytes}-byte argv[1] without raising E2BIG; "
-            "the derived MAX_ARG_STRLEN probe (32 * SC_PAGE_SIZE) does not hold here, "
+            "the derived single-argument ceiling (32 pages, or kern.argmax on macOS) does not hold here, "
             "so the oversized-argument regression cannot be reproduced"
         )
     return pad_bytes
@@ -300,7 +309,7 @@ def _recording_python3_shim(bindir: Path, report: Path) -> str:
         '    eval "VAL=\\${$VAR:-}"\n'
         '    if [ -n "$VAL" ]; then\n'
         '        if [ -e "$VAL" ]; then\n'
-        '            MODE=$(stat -c "%a" "$VAL" 2>/dev/null || echo unknown)\n'
+        '            MODE=$(stat -c "%a" "$VAL" 2>/dev/null || stat -f "%Lp" "$VAL" 2>/dev/null || echo unknown)\n'
         '            printf "%s path=%s exists=1 mode=%s\\n" "$VAR" "$VAL" "$MODE" >> "$REPORT"\n'
         '        else\n'
         '            printf "%s path=%s exists=0\\n" "$VAR" "$VAL" >> "$REPORT"\n'

@@ -314,6 +314,10 @@ if [ "${AGENT_TYPE#writ:}" = "writ-spec-reviewer" ] && [ -n "$PARENT_SESSION" ];
     if ! python3 "$WRIT_DIR/bin/lib/review_findings.py" spec-done \
             "$PARENT_SESSION" "$AGENT_ID" >/dev/null 2>&1; then
         log_friction_event "$PARENT_SESSION" "" "review_order_record_failed" \
+            "{\"hook\":\"writ-subagent-stop\",\"agent_id\":\"$AGENT_ID\"}"
+    fi
+fi
+
 # ROLL THIS CHILD UP INTO ITS PARENT: the files it examined into the parent's
 # pretool_queried_files, and the rule ids it was shown into the parent's subagent_rule_ids.
 # Without it a fan-out lead's synthesis-gate saw none of its workers' reads, and the phase-a

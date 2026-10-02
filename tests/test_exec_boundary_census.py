@@ -58,14 +58,15 @@ BOUNDED = "bounded"
 # looked up in ITS OWN derived population below rather than a merged one, so a
 # site moving between the two roots is still caught by the per-root lookup.
 # The ONE canonical count of exec-boundary payload crossings the detector finds across both
-# roots, 64 under hooks/scripts and 2 under bin/lib as of this cycle (68 until the per-Read
-# session-id/file_path parse in writ-read-rag.sh and the SubagentStart extractions moved
-# off two crossings). Held here and nowhere
+# roots, 65 under hooks/scripts and 2 under bin/lib. The extra hooks site against upstream's
+# 64 is the fork spec-done argv crossing in writ-subagent-stop.sh (session ids, bounded).
+# Was 68 until the per-Read session-id/file_path parse in writ-read-rag.sh and the
+# SubagentStart extractions moved off two crossings. Held here and nowhere
 # else: a duplicated count pin is what this repo's "a broken count pin is usually a
 # DUPLICATE" lesson is about. Most of these carry values bounded by construction, which is
 # why the map below classifies only the ones that matter while this number forces a look at
 # anything new. Lower it when a crossing is removed; add a CENSUS entry when one appears.
-DERIVED_SITE_COUNT = 66
+DERIVED_SITE_COUNT = 67
 
 
 class CensusSite(NamedTuple):
@@ -243,6 +244,18 @@ CENSUS: dict[str, CensusSite] = {
             "this same crossing changes only the line this test reports"
         ),
     ),
+    "subagent-stop-spec-done": CensusSite(
+        script="writ-subagent-stop.sh",
+        anchor='review_findings.py" spec-done',
+        status=BOUNDED,
+        reason=(
+            "the fork-only spec-done call passes PARENT_SESSION and AGENT_ID on argv. "
+            "Both are session ids, and the id validators elsewhere accept at most 128 "
+            "characters, so this is not the review payload: the sibling record call "
+            "puts that message on stdin. A failure here loses the spec-done flag and "
+            "writes a friction row; the stop outcome stays fire-and-forget"
+        ),
+    ),
 }
 
 
@@ -294,7 +307,7 @@ class TestCensusAgreesWithTheDerivedPopulation:
         `HOOK_FILE_PATH`) plus a bare `NAME=$(cat)`, and follows values derived from them.
         MEASURED against copies of the real tree, not reasoned: appending
         `WRIT_PROBE="$CMD" python3 -c ...` to `writ-bash-write-gate.sh`, where `CMD` comes
-        from `HOOK_COMMAND`, takes the count 66 to 67 and reddens this test; appending
+        from `HOOK_COMMAND`, takes the count 67 to 68 and reddens this test; appending
         `WRIT_PROBE="literal" python3 -c ...` to the same file leaves it at 66, correctly
         ignored. My first attempt at that proof used a `$CMD` in a script where the name
         derives from no root, the count did not move, and the honest conclusion was that
@@ -426,6 +439,18 @@ SPLICE_MAP: dict[str, SpliceSite] = {
             "quote or a backslash would corrupt the embedded string. Out of scope "
             "this cycle (plan.md's own 'Out of scope' section): fixing it needs its "
             "own session-id validation decision, not a transport swap."
+        ),
+    ),
+    "sdd-review-order-session-read": SpliceSite(
+        script="writ-sdd-review-order.sh",
+        anchor='mod._read_cache("$SESSION_ID")',
+        reason=(
+            "an unquoted python3 heredoc expands $WRIT_DIR, $SESSION_HELPER and "
+            "$SESSION_ID into the program text before Python starts. The envelope "
+            "already travels in WRIT_PARSED_ENVELOPE, so it is not spliced; the "
+            "session id is, into a Python string. That is the same latent injection "
+            "the pressure-audit entry records rather than closes, and it needs the "
+            "same session-id validation decision, not a transport swap."
         ),
     ),
 }

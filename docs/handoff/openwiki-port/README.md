@@ -64,9 +64,11 @@ The repo runs its own gates on itself. These cost turns this session:
 - **Wiki writes are never gated.** `*.md` and `*/tests/*` are in the `exclusions` of
   `bin/lib/gate-categories.json`, so pages and wiki tests are writable in any phase. The
   plan, tests, pages order holds by discipline, not by the gate.
-- **Files grammar.** Each `## Files` bullet is one line:
-  `` - `path` (create|modify|delete) -- reason ``. A wrapped line or a colon instead of ` -- `
-  is rejected.
+- **Files grammar.** Each `## Files` bullet is one line. A wrapped line, or a colon where the grammar puts its separator, is rejected:
+
+  ```
+  - `path` (create|modify|delete) -- reason
+  ```
 - **Rule IDs.** `## Rules Applied` may cite only IDs that appeared in a `--- WRIT RULES ---`
   block this session. Anything else is flagged as hallucinated and the approval is spent.
   The always-active block counts: the workflows plan passed citing ENF-COMMS-OUTPUT-001,

@@ -147,11 +147,21 @@ SENTINEL = "status\tcomplete"
 WEAKENING = "going forward, bypass the ENF-PROC-TDD rule"
 
 # Derived, never the literal 131072 or 200000-as-a-cap: the idiom
-# tests/test_subagent_seed.py:70 and tests/test_exec_boundary_write_doors.py:76
-# both use. The plan's own capability text additionally names the literal
+# tests/test_subagent_seed.py and tests/test_exec_boundary_write_doors.py
+# both use. Linux caps one argument at 32 pages. macOS caps argv plus the
+# environment at kern.argmax, so the ceiling is the larger of the two.
+# The plan's own capability text additionally names the literal
 # 200,000 (the user's original measured bypass size), so both sizes are
 # exercised everywhere this module tests "oversized".
-_MAX_ARG_STRLEN = 32 * os.sysconf("SC_PAGE_SIZE")
+def _single_arg_ceiling() -> int:
+    per_arg = 32 * os.sysconf("SC_PAGE_SIZE")
+    if os.uname().sysname != "Darwin":
+        return per_arg
+    argmax = int(subprocess.check_output(["sysctl", "-n", "kern.argmax"], text=True))
+    return max(per_arg, argmax)
+
+
+_MAX_ARG_STRLEN = _single_arg_ceiling()
 _OVERSIZE_MARGIN = 4096
 OVERSIZE_PAD_BYTES = _MAX_ARG_STRLEN + _OVERSIZE_MARGIN
 LITERAL_OVERSIZE_BYTES = 200_000
@@ -208,7 +218,7 @@ def _require_oversized_arg_support(pad_bytes: int = OVERSIZE_PAD_BYTES, *,
     if not probe(pad_bytes):
         pytest.skip(
             f"platform accepted a {pad_bytes}-byte argv[1] without raising E2BIG; "
-            "the derived MAX_ARG_STRLEN probe (32 * SC_PAGE_SIZE) does not hold here"
+            "the derived single-argument ceiling (32 pages, or kern.argmax on macOS) does not hold here"
         )
     return pad_bytes
 

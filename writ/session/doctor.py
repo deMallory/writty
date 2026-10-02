@@ -727,7 +727,13 @@ def _resolve_hook_script(command: str) -> Path | None:
             break
     if token is None:
         return None
-    token = token.replace("${CLAUDE_PLUGIN_ROOT}", str(_PACKAGE_ROOT))
+    root = str(_PACKAGE_ROOT)
+    # The nested default must be replaced first. ${CLAUDE_PLUGIN_ROOT} is a
+    # prefix of ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}, so the bare token
+    # would leave the `:-${GROK_PLUGIN_ROOT}` tail in the path.
+    token = token.replace("${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}", root)
+    token = token.replace("${CLAUDE_PLUGIN_ROOT}", root)
+    token = token.replace("${GROK_PLUGIN_ROOT}", root)
     return Path(token)
 
 
@@ -1409,9 +1415,11 @@ def _registered_hook_scripts() -> dict[str, Path]:
                 for token in str(hook.get("command", "")).replace('"', "").split():
                     if not token.endswith(".sh"):
                         continue
-                    # Commands are `bash "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/<name>.sh"`;
-                    # everything after the closing brace is the package-relative path.
-                    relative = token.split("}", 1)[-1].lstrip("/")
+                    # Commands are `bash "${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/<name>.sh"`.
+                    # The nested default has two closing braces; the package-relative
+                    # path starts after the last one. A single brace, or none, still
+                    # yields the same suffix.
+                    relative = token.rsplit("}", 1)[-1].lstrip("/")
                     found[token.rsplit("/", 1)[-1][:-3]] = _PACKAGE_ROOT / relative
     return found
 

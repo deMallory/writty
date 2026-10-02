@@ -68,10 +68,18 @@ PARENT_STATE = {
 
 # The platform's own definition of MAX_ARG_STRLEN (32 pages): debug.md evidence 5 measured
 # the live parent cache at 181,529 bytes against a 131,072-byte cap on that machine.
-# DERIVED, not the literal 131072, so this pins the real defect on a kernel whose page
-# size differs rather than only on this one (plan dfacff61-23d5-474e-846c-2e2f0f0ea482,
-# capability 11).
-_MAX_ARG_STRLEN = 32 * os.sysconf("SC_PAGE_SIZE")
+# DERIVED, not the literal 131072. On macOS the ceiling is kern.argmax, because there
+# is no per-argument cap and one argument of that size cannot fit beside the environment
+# (plan dfacff61-23d5-474e-846c-2e2f0f0ea482, capability 11).
+def _single_arg_ceiling() -> int:
+    per_arg = 32 * os.sysconf("SC_PAGE_SIZE")
+    if os.uname().sysname != "Darwin":
+        return per_arg
+    argmax = int(subprocess.check_output(["sysctl", "-n", "kern.argmax"], text=True))
+    return max(per_arg, argmax)
+
+
+_MAX_ARG_STRLEN = _single_arg_ceiling()
 _OVERSIZE_MARGIN = 4096
 OVERSIZE_PAD_BYTES = _MAX_ARG_STRLEN + _OVERSIZE_MARGIN
 
@@ -223,7 +231,7 @@ def _require_oversized_arg_support(pad_bytes: int = OVERSIZE_PAD_BYTES, *,
     if not probe(pad_bytes):
         pytest.skip(
             f"platform accepted a {pad_bytes}-byte argv[1] without raising E2BIG; "
-            "the derived MAX_ARG_STRLEN probe (32 * SC_PAGE_SIZE) does not hold "
+            "the derived single-argument ceiling (32 pages, or kern.argmax on macOS) does not hold "
             "here, so the oversized-parent regression cannot be reproduced"
         )
     return pad_bytes

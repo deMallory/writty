@@ -276,6 +276,15 @@ class TestFrictionRowModeMatchesTheChildCache:
         )
 
 
+def _single_arg_ceiling() -> int:
+    """Linux MAX_ARG_STRLEN is 32 pages. macOS caps argv plus the environment at kern.argmax."""
+    per_arg = 32 * os.sysconf("SC_PAGE_SIZE")
+    if os.uname().sysname != "Darwin":
+        return per_arg
+    argmax = int(subprocess.check_output(["sysctl", "-n", "kern.argmax"], text=True))
+    return max(per_arg, argmax)
+
+
 class TestSeedFailureStillFallsBackToModeGet:
     """Capability: when the seed exec prints nothing (the oversized-role fault
     tests/test_subagent_seed.py::TestSeedFailureIsVisible triggers it with), the hook
@@ -291,8 +300,7 @@ class TestSeedFailureStillFallsBackToModeGet:
     time and never touches MAX_ARG_STRLEN.
     """
 
-    _MAX_ARG_STRLEN = 32 * os.sysconf("SC_PAGE_SIZE")
-    _PAD_BYTES = _MAX_ARG_STRLEN + 4096
+    _PAD_BYTES = _single_arg_ceiling() + 4096
 
     @staticmethod
     def _platform_enforces_arg_limit(pad_bytes: int) -> bool:
