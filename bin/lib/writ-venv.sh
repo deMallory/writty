@@ -101,16 +101,44 @@ writ_venv_repoint() {
     # pip is time-boxed (WRIT_REPOINT_TIMEOUT, default 120s) because the fallback can fetch a
     # build backend, and an offline machine must not stall SessionStart on it.
     local t="${WRIT_REPOINT_TIMEOUT:-120}"
-    if (
-        flock -w $((t * 2 + 10)) 9 || exit 1
-        writ_venv_serves "$venv" "$root" && exit 0
-        timeout "$t" "$venv/bin/python3" -m pip install --quiet --no-deps --no-build-isolation -e "$root" >/dev/null 2>&1 \
-            || timeout "$t" "$venv/bin/python3" -m pip install --quiet --no-deps -e "$root" >&2
-    ) 9>"$venv/.writ-repoint.lock"; then
-        if writ_venv_serves "$venv" "$root"; then
-            echo "[Writ] Repointed. A daemon that was already running still serves the old code: restart it (systemctl --user restart writ-server, or scripts/stop-server.sh then scripts/ensure-server.sh). If this release changed dependencies, run: bash $root/scripts/bootstrap-plugin.sh" >&2
-            return 0
+    local bounded
+    bounded="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-bounded.py"
+    _writ_repoint_pip() {
+        writ_venv_serves "$venv" "$root" && return 0
+        "$bounded" "$t" "$venv/bin/python3" -m pip install --quiet --no-deps --no-build-isolation -e "$root" >/dev/null 2>&1 \
+            || "$bounded" "$t" "$venv/bin/python3" -m pip install --quiet --no-deps -e "$root" >&2
+    }
+    local limit=$((t * 2 + 10))
+    if command -v flock >/dev/null 2>&1; then
+        if (
+            flock -w "$limit" 9 || exit 1
+            _writ_repoint_pip
+        ) 9>"$venv/.writ-repoint.lock"; then
+            :
+        else
+            echo "[Writ] Warning: could not repoint $venv at this install; run: bash $root/scripts/bootstrap-plugin.sh" >&2
+            return 1
         fi
+    else
+        # macOS ships no flock(1). mkdir is the atomic lock, the same fallback
+        # writ_ensure_server uses. The waiter re-checks and leaves once the
+        # holder has already pointed the venv at this install.
+        local lockdir="$venv/.writ-repoint.lock.d" waited=0
+        while ! mkdir "$lockdir" 2>/dev/null; do
+            writ_venv_serves "$venv" "$root" && return 0
+            if [ "$waited" -ge "$limit" ]; then
+                echo "[Writ] Warning: could not repoint $venv at this install; run: bash $root/scripts/bootstrap-plugin.sh" >&2
+                return 1
+            fi
+            sleep 1
+            waited=$((waited + 1))
+        done
+        _writ_repoint_pip || true
+        rmdir "$lockdir" 2>/dev/null || true
+    fi
+    if writ_venv_serves "$venv" "$root"; then
+        echo "[Writ] Repointed. A daemon that was already running still serves the old code: restart it (systemctl --user restart writ-server, or scripts/stop-server.sh then scripts/ensure-server.sh). If this release changed dependencies, run: bash $root/scripts/bootstrap-plugin.sh" >&2
+        return 0
     fi
     echo "[Writ] Warning: could not repoint $venv at this install; run: bash $root/scripts/bootstrap-plugin.sh" >&2
     return 1

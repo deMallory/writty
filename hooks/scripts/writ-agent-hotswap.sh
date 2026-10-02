@@ -70,11 +70,21 @@ UPDATED_INPUT=$(echo "$INPUT" | jq -c --arg t "$NEW_TYPE" --arg m "$NEW_MODEL" '
   | if $m != "" then .model = $m else . end
 ')
 
-jq -n --argjson updated "$UPDATED_INPUT" '{
+# jq builds the dual envelope (top-level decision plus hookSpecificOutput). A python
+# dualize here would be a new exec-boundary crossing, and a bare jq print is the
+# emission the funnel forbids. The program is a quoted heredoc so the key stays
+# inside the capture.
+DECISION=$(jq -nc --argjson updated "$UPDATED_INPUT" --arg reason "Writ agent hot-swap" -f /dev/stdin <<'JQ'
+{
+  "decision": "allow",
+  "reason": $reason,
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "allow",
-    "permissionDecisionReason": "Writ agent hot-swap",
+    "permissionDecisionReason": $reason,
     "updatedInput": $updated
   }
-}'
+}
+JQ
+)
+emit_hook_reply "$DECISION"

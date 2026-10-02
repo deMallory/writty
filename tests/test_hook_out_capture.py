@@ -410,13 +410,8 @@ class TestEmitDenyAskByteIdentity:
             extra_env={"TRICKY_REASON": TRICKY_REASON},
         )
         assert result.returncode == 0, result.stderr
-        expected = json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": TRICKY_REASON,
-            },
-        })
+        from writ.harness.decisions import pretool_payload
+        expected = json.dumps(pretool_payload("deny", TRICKY_REASON))
         assert result.stdout == expected + "\n", (
             f"emit_deny's envelope changed: got {result.stdout!r}, expected "
             f"{expected + chr(10)!r}"
@@ -430,13 +425,8 @@ class TestEmitDenyAskByteIdentity:
             extra_env={"TRICKY_REASON": TRICKY_REASON},
         )
         assert result.returncode == 0, result.stderr
-        expected = json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "ask",
-                "permissionDecisionReason": TRICKY_REASON,
-            },
-        })
+        from writ.harness.decisions import pretool_payload
+        expected = json.dumps(pretool_payload("ask", TRICKY_REASON))
         assert result.stdout == expected + "\n", (
             f"emit_ask's envelope changed: got {result.stdout!r}, expected "
             f"{expected + chr(10)!r}"

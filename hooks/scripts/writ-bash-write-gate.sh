@@ -797,9 +797,20 @@ _irrev_script_target() {
     local cmd="$1"
     case " $cmd " in *" -m "*|*" -c "*) return 0 ;; esac
     local -a toks; read -ra toks <<< "$cmd"
-    local n=${#toks[@]} i j
+    local n=${#toks[@]} i j base
+    # ${tok##*/} is quadratic on a slash-free token in bash 5.3: measured 2.2s at
+    # 64KB and 8.9s at 128KB, a run of one byte and no slash. A padded command is
+    # one long word, so that strip ran on every Bash call before any guard and, past
+    # a few hundred KB, outlasted the hook timeout (a fail-open of every guard here,
+    # the same shape as the whitespace loop this file already retired). The slash
+    # test is linear; a token with no slash is already its own basename, and the
+    # strip runs only when a slash says it can match.
     for ((i = 0; i < n; i++)); do
-        case "${toks[i]##*/}" in
+        base="${toks[i]}"
+        case "$base" in
+            */*) base="${base##*/}" ;;
+        esac
+        case "$base" in
             python|python3|python3.*|pythonw) ;;
             *) continue ;;
         esac
