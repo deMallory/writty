@@ -116,8 +116,7 @@ if [ -n "$VIOLATION" ]; then
 The user forbids em dashes and em-dash-substitute double hyphens. Re-send the SAME content using \
 commas, colons, semicolons, or parentheses for clause breaks, and hyphens only to join words."
     echo "$REASON" >&2
-    emit_stop_block "$REASON"
-    exit 2
+    exit 1
 fi
 log_gate_decision "comms-output" "allow" "no forbidden punctuation" "assistant-response"
 exit 0

@@ -97,6 +97,7 @@ ROUTE_BASELINE: list[tuple[str, str]] = [
     ("POST", "/commit/capture"),
     ("POST", "/conflicts"),
     ("POST", "/feedback"),
+    ("POST", "/feedback/batch"),
     ("POST", "/git-hooks/auto-install"),
     ("POST", "/memory-record"),
     ("POST", "/methodology-companion"),
@@ -118,12 +119,13 @@ ROUTE_BASELINE: list[tuple[str, str]] = [
     ("POST", "/session/{session_id}/detect-compaction"),
     ("POST", "/session/{session_id}/invalidate-gate"),
     ("POST", "/session/{session_id}/mode"),
+    ("POST", "/session/{session_id}/promotion-review"),
     ("POST", "/session/{session_id}/promote-candidate"),
     ("POST", "/session/{session_id}/quality-judgment"),
     ("POST", "/session/{session_id}/review-findings"),
     ("POST", "/session/{session_id}/reset-after-compaction"),
-    ("POST", "/session/{session_id}/update"),
     ("POST", "/session/{session_id}/verification-evidence"),
+    ("POST", "/subagent/start-context"),
 ]
 
 
@@ -144,15 +146,18 @@ def _current_route_tuples() -> list[tuple[str, str]]:
 
 class TestServerIsPackage:
     def test_route_baseline_captured_count(self) -> None:
-        """Sanity check on the frozen constant itself: exactly 57 tuples are
-        declared (53 captured from HEAD, plus /memory-record, plus the GET and POST
-        halves of /session/{sid}/review-findings added 2026-08-06, plus GET
-        /session/{sid}/prompt-state added 2026-08-08). Guards against a copy/paste
-        mistake in ROUTE_BASELINE, independent of the split."""
-        # Fork policy: see feat/upstream-resync migration (option A).
-        # Restored detect-compaction route: 57 -> 58.
-        assert len(ROUTE_BASELINE) == 58
-        assert len(set(ROUTE_BASELINE)) == 58, "ROUTE_BASELINE must have no duplicate tuples"
+        """Sanity check on the frozen constant itself: exactly 60 tuples are
+        declared (upstream's 59, plus this fork's POST /session/{id}/detect-compaction).
+        Guards against a copy/paste mistake in ROUTE_BASELINE, independent
+        of the split."""
+        # THE CANONICAL ROUTE LITERAL, kept here because the baseline list it guards lives
+        # in this file: a deliberate route change is reviewed by editing both together.
+        assert len(ROUTE_BASELINE) == 60
+        # This said `== 57` too, which restated the line above rather than adding a claim.
+        # The claim is that no tuple appears twice.
+        assert len(set(ROUTE_BASELINE)) == len(ROUTE_BASELINE), (
+            "ROUTE_BASELINE must have no duplicate tuples"
+        )
 
     def test_writ_server_is_package(self) -> None:
         """RED now: `writ.server` is still the single-file writ/server.py module
@@ -254,8 +259,14 @@ class TestRouteParityVsBaseline:
     def test_route_count_matches_baseline(self) -> None:
         """PASS now; a duplicate or dropped route changes the count even if
         set membership alone were checked loosely elsewhere."""
-        # Fork policy: see feat/upstream-resync migration (option A).
-        assert len(_current_route_tuples()) == len(ROUTE_BASELINE) == 58
+        # 58 before the session-cache key setter was removed: an arbitrary-key
+        # writer with no callers, which could set the gate inputs `mode` and
+        # `current_phase`. See tests/test_daemon_authorization.py.
+        # The `== 57` that used to close this line restated len(ROUTE_BASELINE), a list
+        # twenty lines above, so it added no claim and broke on every deliberate route
+        # change (58 before the session-cache key setter was removed). The BASELINE LIST is
+        # the review gate: a route added without updating it fails the first comparison.
+        assert len(_current_route_tuples()) == len(ROUTE_BASELINE)
 
 
 # ---------------------------------------------------------------------------

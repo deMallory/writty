@@ -2,7 +2,7 @@
 
 The audit said: "22 subprocess.run/Popen/check_output call sites in writ/; non-zero exits
 are largely unchecked and unrecorded." Reading all 22 shows otherwise. Every site outside
-the two exempt families either raises with the exit code attached, or treats a non-zero
+the exempt family either raises with the exit code attached, or treats a non-zero
 exit as a documented expected outcome (a "is this a repo?" probe).
 
 Adding an emit to the probe sites would repeat the mistake P1's SCOPE CORRECTION already
@@ -13,10 +13,8 @@ in a non-repo directory is the same shape.
 So this file records the verification instead of changing code. It fails if a site starts
 swallowing a non-zero exit silently, which is when the finding WOULD become real.
 
-Exempt families, per the audit's own B2 ("acceptable silence, leave alone"):
+Exempt family, per the audit's own B2 ("acceptable silence, leave alone"):
   writ/session/doctor.py    the diagnostic IS the output; a failed probe is a reported check
-  writ/analysis/efficacy_ab.py  benchmark harness, explicit check=False, off every
-                                production path (and deferred to the API-spending runbook)
 """
 from __future__ import annotations
 
@@ -27,7 +25,7 @@ from pathlib import Path
 import pytest
 
 WRIT_PKG = Path(__file__).resolve().parent.parent / "writ"
-EXEMPT = {"doctor.py", "efficacy_ab.py"}
+EXEMPT = {"doctor.py"}
 _SUBPROCESS_CALL = re.compile(r"subprocess\.(run|Popen|check_output)\(|\brun\(\s*\[")
 
 # Every non-exempt site, with how it handles a non-zero exit. Verified by reading each one.
@@ -101,36 +99,6 @@ class TestExemptFamiliesAreDeliberate:
         """doctor's whole contract is turning failures into reported checks."""
         text = (WRIT_PKG / "session" / "doctor.py").read_text()
         assert "returncode" in text, "doctor must still inspect exits to report them"
-
-    def test_efficacy_ab_is_never_imported_at_module_scope(self):
-        """The exemption rests on it loading only when a human runs `writ efficacy-ab`.
-
-        Detected via AST, not substring: a docstring that merely names the module and a
-        function-scoped import both matched a text search, so the first version of this
-        test failed on writ/analysis/jsonl.py's docstring and on the CLI command's own
-        function name. A module-scope import is the thing that would actually put those
-        check=False subprocess calls on a path that runs without being asked for.
-        """
-        offenders = []
-        for path in sorted(WRIT_PKG.rglob("*.py")):
-            if path.name == "efficacy_ab.py" or "test" in path.name:
-                continue
-            try:
-                tree = ast.parse(path.read_text())
-            except SyntaxError:
-                continue
-            for node in tree.body:  # module scope ONLY, not nested function bodies
-                targets = []
-                if isinstance(node, ast.Import):
-                    targets = [a.name for a in node.names]
-                elif isinstance(node, ast.ImportFrom):
-                    targets = [node.module or ""] + [a.name for a in node.names]
-                if any("efficacy_ab" in t for t in targets):
-                    offenders.append(f"{path.relative_to(WRIT_PKG.parent)}:{node.lineno}")
-        assert offenders == [], (
-            "efficacy_ab is imported at module scope, so its check=False exemption "
-            f"lapses: {offenders}"
-        )
 
 
 class TestNoSilentSwallowIsIntroduced:

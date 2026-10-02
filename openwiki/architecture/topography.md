@@ -60,6 +60,7 @@ Not tracked: `bible/` (a Markdown export of the graph, regenerated with `writ ex
 | `writ/analysis/` | Code compliance behind `/analyze`, friction-log analysis, token audit, efficacy A/B | `writ/analysis/analyzer.py` |
 | `writ/compression/` | Builds Abstraction nodes (rule summaries) by clustering, for `writ compress` | `writ/compression/abstractions.py` |
 | `writ/shared/` | Logging, token estimates, the hook delivery table, the budget file | `writ/shared/logging.py` |
+| `writ/harness/` | Host adapters: one decision payload for Claude Code and Grok, plus envelope and plan helpers | `writ/harness/decisions.py` |
 
 Modules directly under `writ/`:
 

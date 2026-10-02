@@ -17,7 +17,7 @@ def _scripts() -> set[str]:
             for hook in group.get("hooks", []):
                 cmd = hook.get("command", "")
                 if "hooks/scripts/" in cmd:
-                    found.add(cmd.rsplit("/", 1)[-1])
+                    found.add(cmd.rsplit("/", 1)[-1].strip("\"'"))
     return found
 
 

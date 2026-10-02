@@ -22,16 +22,16 @@ Must match `^[a-z][a-z0-9_-]*$`. Examples: `layout`, `component`, `task`, `sessi
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `node_type` | string | yes | -- |
-| `domain` | string | yes | -- |
-| `scope` | string | yes | -- |
-| `trigger` | string | yes | -- |
-| `statement` | string | yes | -- |
-| `rationale` | string | yes | -- |
+| `node_type` | string | yes | none |
+| `domain` | string | yes | none |
+| `scope` | string | yes | none |
+| `trigger` | string | yes | none |
+| `statement` | string | yes | none |
+| `rationale` | string | yes | none |
 | `tags` | list[string] | no | [] |
 | `confidence` | enum | no | `production-validated` |
 | `authority` | string | no | `human` |
-| `last_validated` | date (YYYY-MM-DD) | yes | -- |
+| `last_validated` | date (YYYY-MM-DD) | yes | none |
 | `staleness_window` | int | no | 365 |
 | `evidence` | string | no | `peer-reviewed` |
 | `source_attribution` | string | no | null |
@@ -46,10 +46,10 @@ ID field: `rule_id` (no type prefix; uses domain prefix like `ANIM-GSAP-*`, `EDI
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `rule_id` | string | yes | -- |
-| `violation` | string | yes | -- |
-| `pass_example` | string | yes | -- |
-| `enforcement` | string | yes | -- |
+| `rule_id` | string | yes | none |
+| `violation` | string | yes | none |
+| `pass_example` | string | yes | none |
+| `enforcement` | string | yes | none |
 | `mandatory` | bool | no | false |
 | `always_on` | bool | no | false |
 | `rationalization_counters` | list[{thought, counter}] | no | [] |
@@ -68,8 +68,8 @@ ID field: `playbook_id`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `playbook_id` | string | yes | -- |
-| `phase_ids` | list[string] | yes | -- |
+| `playbook_id` | string | yes | none |
+| `phase_ids` | list[string] | yes | none |
 | `preconditions` | list[string] | no | [] |
 | `dispatched_roles` | list[string] | no | [] |
 
@@ -85,8 +85,8 @@ ID field: `antipattern_id`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `antipattern_id` | string | yes | -- |
-| `counter_nodes` | list[string] | yes | -- |
+| `antipattern_id` | string | yes | none |
+| `counter_nodes` | list[string] | yes | none |
 | `named_in` | string | no | null |
 
 ### ForbiddenResponse (prefix: `FRB-`)
@@ -95,9 +95,9 @@ ID field: `forbidden_id`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `forbidden_id` | string | yes | -- |
-| `forbidden_phrases` | list[string] | yes | -- |
-| `what_to_say_instead` | string | yes | -- |
+| `forbidden_id` | string | yes | none |
+| `forbidden_phrases` | list[string] | yes | none |
+| `what_to_say_instead` | string | yes | none |
 | `always_on` | bool | no | true |
 
 ### Phase (prefix: `PHA-`, non-retrievable)
@@ -106,11 +106,11 @@ ID field: `phase_id`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `phase_id` | string | yes | -- |
-| `position` | int | yes | -- |
-| `name` | string | yes | -- |
-| `description` | string | yes | -- |
-| `parent_playbook_id` | string | yes | -- |
+| `phase_id` | string | yes | none |
+| `position` | int | yes | none |
+| `name` | string | yes | none |
+| `description` | string | yes | none |
+| `parent_playbook_id` | string | yes | none |
 
 Severity is optional for non-retrievable types.
 
@@ -120,10 +120,10 @@ ID field: `rationalization_id`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `rationalization_id` | string | yes | -- |
-| `thought` | string | yes | -- |
-| `counter` | string | yes | -- |
-| `attached_to` | string | yes | -- |
+| `rationalization_id` | string | yes | none |
+| `thought` | string | yes | none |
+| `counter` | string | yes | none |
+| `attached_to` | string | yes | none |
 
 ### PressureScenario (prefix: `PSC-`, non-retrievable)
 
@@ -131,12 +131,12 @@ ID field: `scenario_id`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `scenario_id` | string | yes | -- |
-| `prompt` | string | yes | -- |
-| `expected_compliance` | string | yes | -- |
-| `failure_patterns` | list[string] | yes | -- |
-| `rule_under_test` | string | yes | -- |
-| `difficulty` | string | yes | -- |
+| `scenario_id` | string | yes | none |
+| `prompt` | string | yes | none |
+| `expected_compliance` | string | yes | none |
+| `failure_patterns` | list[string] | yes | none |
+| `rule_under_test` | string | yes | none |
+| `difficulty` | string | yes | none |
 
 ### WorkedExample (prefix: `EXM-`, non-retrievable)
 
@@ -144,12 +144,12 @@ ID field: `example_id`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `example_id` | string | yes | -- |
-| `title` | string | yes | -- |
-| `before` | string | yes | -- |
-| `applied_skill` | string | yes | -- |
-| `result` | string | yes | -- |
-| `linked_skill` | string | yes | -- |
+| `example_id` | string | yes | none |
+| `title` | string | yes | none |
+| `before` | string | yes | none |
+| `applied_skill` | string | yes | none |
+| `result` | string | yes | none |
+| `linked_skill` | string | yes | none |
 
 ### SubagentRole (prefix: `ROL-`, non-retrievable)
 
@@ -157,9 +157,9 @@ ID field: `role_id`
 
 | Field | Type | Required | Default |
 |-------|------|----------|---------|
-| `role_id` | string | yes | -- |
-| `name` | string | yes | -- |
-| `prompt_template` | string | yes | -- |
+| `role_id` | string | yes | none |
+| `name` | string | yes | none |
+| `prompt_template` | string | yes | none |
 | `dispatched_by` | list[string] | no | [] |
 | `model_preference` | string | no | null |
 | `tools` | string | no | null |

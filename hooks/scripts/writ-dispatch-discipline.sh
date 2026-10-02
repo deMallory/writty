@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Phase 3: dispatch discipline -- hot-swap generic sub-agent dispatches to the named Writ role.
 #
-# PreToolUse on Task. In work, investigate, and mode-unset sessions, if the dispatched
-# subagent_type is generic (general-purpose / Explore / claude / plan / empty) and the
-# prompt carries no escape marker ([general-purpose] / [writ:dispatch-ok]), REWRITE the
+# PreToolUse on Task|Agent (Agent is the current tool name, Task its legacy alias). In
+# work, investigate, and mode-unset sessions, if the dispatched subagent_type is generic
+# (general-purpose / Explore / claude / plan / empty) and the prompt carries no escape marker ([general-purpose] / [writ:dispatch-ok]), REWRITE the
 # dispatch in place via updatedInput to the Writ role keyword-mapped from the prompt,
 # disclosing the swap in additionalContext; a prompt that maps to no role confidently
 # is denied with the role menu instead ("workflow-subagent" is exempt: the Workflow
@@ -11,7 +11,7 @@
 # Generic agents are the exception, not the default (SKL-PROC-DISPATCH-001): they carry
 # no role prompt and run outside the Writ session (mode/gates/RAG).
 #
-# Hook type: PreToolUse (matcher: Task)
+# Hook type: PreToolUse (matcher: Task|Agent)
 # Exit: always 0 (denial is expressed via permissionDecision in stdout JSON, not exit code)
 set -euo pipefail
 
@@ -47,14 +47,23 @@ case "$DISPATCH_MODE" in
     *) exit 0 ;;
 esac
 
+# The agent type each role is dispatchable as on this install ("writ:<role>" on a plugin
+# install, bare when bootstrap.sh linked ~/.claude/agents), one "<role> <name>" per line.
+# Built after the mode case so ungoverned modes pay nothing.
+DISPATCH_NAMES=""
+for _role in writ-explorer writ-test-writer writ-reviewer writ-planner writ-implementer; do
+    DISPATCH_NAMES+="$_role $(writ_agent_dispatch_name "$_role")"$'\n'
+done
+
 # Pass the normalized envelope via env var rather than heredoc substitution: raw JSON
 # substituted into a heredoc body preserves embedded control chars that json.loads
 # rejects (same bug class fixed in writ-sdd-review-order.sh). Quoted '<<PY' delimiter =
 # no shell substitution inside; pure stdlib, no module import needed.
-DECISION=$(WRIT_PARSED_ENVELOPE="$HOOK_ENVELOPE" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$WRIT_DIR" python3 <<'PY'
+DECISION=$(WRIT_PARSED_ENVELOPE="$HOOK_ENVELOPE" WRIT_DISPATCH_NAMES="$DISPATCH_NAMES" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$WRIT_DIR" python3 <<'PY'
 import json, os, sys
 from writ.harness.decisions import dualize_pretool
 raw = os.environ.get("WRIT_PARSED_ENVELOPE", "")
+names = dict(line.split(" ", 1) for line in os.environ.get("WRIT_DISPATCH_NAMES", "").splitlines() if line)
 try:
     parsed = json.loads(raw)
 except (json.JSONDecodeError, ValueError) as _e:
@@ -114,7 +123,8 @@ if r:
     # the swap visible so the agent can re-issue with '[general-purpose]' if generic was
     # genuinely intended.
     new_ti = dict(ti)
-    new_ti["subagent_type"] = r
+    target = names.get(r, r)
+    new_ti["subagent_type"] = target
     print(json.dumps(dualize_pretool({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -122,7 +132,7 @@ if r:
             "updatedInput": new_ti,
             "additionalContext": (
                 f"[Writ dispatch discipline | SKL-PROC-DISPATCH-001] Routed the generic "
-                f"'{shown}' dispatch to the governed Writ role '{r}' (carries the role prompt + "
+                f"'{shown}' dispatch to the governed Writ role '{target}' (carries the role prompt + "
                 f"runs inside the Writ session: mode/gates/RAG). To force generic, re-issue the "
                 f"Task with '[general-purpose]' in the prompt."
             ),
@@ -137,17 +147,15 @@ else:
             "permissionDecisionReason": (
                 f"[Writ dispatch discipline | SKL-PROC-DISPATCH-001] You dispatched the generic "
                 f"'{shown}' agent and the task did not map to a specific Writ role. Re-dispatch "
-                f"with {ROLE_PREFIX}writ-explorer (read-only) or {ROLE_PREFIX}writ-implementer, "
-                f"or add '[general-purpose]' "
-                f"to the prompt to override."
+                f"with {names.get('writ-explorer', ROLE_PREFIX + 'writ-explorer')} (read-only) or {names.get('writ-implementer', ROLE_PREFIX + 'writ-implementer')}, "
+                f"or add '[general-purpose]' to the prompt to override."
             ),
         }
     })))
 PY
 )
 
-[ -n "$DECISION" ] && printf '%s' "$DECISION" | blackbox_log out writ-dispatch-discipline "$SESSION_ID"
-[ -n "$DECISION" ] && echo "$DECISION"
+emit_hook_reply "$DECISION" "" "$SESSION_ID"
 
 # THE AUDIT ROW SAYS WHAT WAS EMITTED, read back out of the JSON above rather than
 # inferred from "did we emit anything".

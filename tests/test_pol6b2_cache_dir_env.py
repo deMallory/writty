@@ -89,18 +89,17 @@ class TestEnvHonored:
         """REVERSED 2026-07-23. This asserted the default WAS tempfile.gettempdir(),
         which encoded the mode=None wipe: `/usr/lib/tmpfiles.d/tmp.conf` declares
         `D /tmp`, so systemd empties it at boot and every session cache died on
-        reboot, silently blanking mode/gates/loaded_rule_ids on resume. Moved again
-        2026-09-14 from <skill>/var/session to $HOME/.cache/writ/session, because an
-        install-relative default gave the checkout daemon and the plugin-cache hooks
-        two different stores. Must NOT track tempfile.gettempdir().
+        reboot, silently blanking mode/gates/loaded_rule_ids on resume. The default
+        is now the XDG state root's session/ and must NOT track tempfile.gettempdir().
         See tests/test_session_cache_durability.py for the full contract.
         """
+        from writ.shared.state_root import state_root
         monkeypatch.delenv("WRIT_CACHE_DIR", raising=False)
         monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
         cache = _load_cache_module()
         path = cache._cache_path("d")
         assert not path.startswith(str(tmp_path))
-        assert path.startswith(os.path.join(os.path.expanduser("~"), ".cache", "writ", "session"))
+        assert path.startswith(os.path.join(state_root(), "session") + os.sep)
 
 
 class TestSnapshotForServer:

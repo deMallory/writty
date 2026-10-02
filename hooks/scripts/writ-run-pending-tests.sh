@@ -36,7 +36,7 @@ is_work_mode "$SESSION_ID" || exit 0
 # writ-mark-pending-test.sh writes: this hook is the only reader of that marker, so the two
 # expressions moving apart would silently stop the end-of-turn test run with both hooks
 # still exiting 0. Hardcoded, both wrote into the live checkout under an isolated run.
-CACHE_ROOT="${WRIT_CACHE_DIR:-$WRIT_DIR/cache}"
+CACHE_ROOT="${WRIT_CACHE_DIR:-$_WRIT_STATE_ROOT/cache}"
 MARKER="$CACHE_ROOT/$SESSION_ID/pending-tests.txt"
 [ -f "$MARKER" ] || exit 0
 
@@ -66,7 +66,9 @@ LOG="$LOG_DIR/last-test-run.log"
 declare -A RUNNER_CMD RUNNER_CFG RUNNER_FILES RUNNER_FMT
 while IFS= read -r tf; do
     [ -z "$tf" ] && continue
-    INFO=$(python3 "$TEST_PATHS_HELPER" runner-for "$tf" 2>/dev/null)
+    # --session is what makes the PHPUnit cache directory per-session; without it
+    # the substitution falls back to the shared root and two sessions collide.
+    INFO=$(python3 "$TEST_PATHS_HELPER" runner-for "$tf" --session "$SESSION_ID" 2>/dev/null)
     CMD=$(echo "$INFO" | sed -n '1p')
     CFG=$(echo "$INFO" | sed -n '2p')
     [ -z "$CMD" ] && continue
@@ -95,8 +97,10 @@ run_group() {
     local rc=0
     {
         echo "===== $fmt: $cmd ====="
-        # run-bounded.py, not GNU timeout: stock macOS lacks it, and every group exited 127.
-        python3 "$WRIT_DIR/bin/lib/run-bounded.py" 60 bash -c "$cmd" 2>&1
+        # Color is hygiene. run-bounded.py, not GNU timeout: stock macOS lacks it.
+        # NO_COLOR and the unset color variables keep the log readable. The guard
+        # that still refuses a colored runner lives in bin/lib/emit-summary.py.
+        env -u FORCE_COLOR -u PY_COLORS NO_COLOR=1 python3 "$WRIT_DIR/bin/lib/run-bounded.py" 60 bash -c "$cmd" 2>&1
     } >> "$LOG" || rc=$?
     if [ $rc -ne 0 ]; then
         OVERALL_RC=$rc
@@ -155,6 +159,11 @@ SUMMARY=$(python3 "$WRIT_DIR/bin/lib/emit-summary.py" \
     --rule "ENF-TEST-001" \
     --label "test failure(s)" 2>&1)
 [ -z "$SUMMARY" ] && exit 0
+# The hook_execution rows above say the runner RAN; none of them says this hook REFUSED the
+# stop. Found while enumerating the refusing surfaces beside enforce-violations.sh: same
+# class of gap, so fixing only the other one would have been fixing the string instead of
+# the class. The exit code stays 1, because flipping it to 2 would start blocking real turns and
+# needs the user's explicit consent, so the drill pins it at 1 rather than changing it.
+log_gate_decision "pending-tests" "deny" "$SUMMARY" "$SESSION_ID"
 echo "$SUMMARY" >&2
-emit_stop_block "$SUMMARY"
-exit 2
+exit 1

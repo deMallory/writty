@@ -38,10 +38,11 @@ from tests._graph import apply_isolation_env  # noqa: E402
 WRIT_SUITE_IS_ISOLATED = apply_isolation_env(_os.environ)
 
 # Force WRIT_CACHE_DIR to a session-owned temp dir, at import (before any test or
-# subprocess). The session-cache default moved off /tmp to <skill>/var/session so it
-# survives a reboot -- but that made the install dir the fallback, so any subprocess
-# test that does NOT set WRIT_CACHE_DIR (many build their own env from os.environ)
-# would now write real session caches into var/session, polluting live state. /tmp
+# subprocess). The session-cache default is the XDG state root (off /tmp, so it
+# survives a reboot), which made the operator's real state directory the fallback, so
+# any subprocess test that does NOT set WRIT_CACHE_DIR (many build their own env from
+# os.environ) would now write real session caches into that state directory,
+# polluting live state. /tmp
 # used to absorb those harmlessly. This restores that: a stable non-production dir
 # for the whole run (the daemon reads it once at start via expected_cache_dir(), so
 # it must not change per-test), off the install tree. Tests that set their own
@@ -49,6 +50,21 @@ WRIT_SUITE_IS_ISOLATED = apply_isolation_env(_os.environ)
 # default afterward. mkdtemp (not a fixed name) so parallel `pytest` invocations do
 # not share one dir.
 _os.environ.setdefault("WRIT_CACHE_DIR", _tempfile.mkdtemp(prefix="writ-test-cache-"))
+
+# Force WRIT_LOG_ROOT the same way and for the same reason, at import rather than
+# per test. `_isolate_friction_log` below sets it with monkeypatch.setenv, but that
+# fixture is function scoped, so it is not in effect during COLLECTION, and
+# collection is when the damage happens. Test modules resolve config at their own
+# import (see the seventeen modules named above), get_neo4j_uri() calls load_config,
+# and load_config emits a `config_resolved` row on the metrics stream the first time
+# it sees a path. With WRIT_LOG_ROOT unset, log_root() returns <skill>/var/logs and
+# resolve_project derives the project from the git remote, so that row lands in the
+# operator's REAL metrics stream. It also defeats a live-corpus guard downstream:
+# tests/test_subagent_seed.py used to skip on "metrics.jsonl does not exist", and a
+# collection-time row makes the file exist while holding no census population.
+# The per-test monkeypatch.setenv still overrides this and monkeypatch restores it
+# afterwards, so per-test isolation is unchanged.
+_os.environ.setdefault("WRIT_LOG_ROOT", _tempfile.mkdtemp(prefix="writ-test-logs-"))
 
 # Never let a hook auto-spawn a daemon during the suite. writ-rag-inject.sh
 # auto-starts the Writ server when its health check fails, guarded by
@@ -107,6 +123,10 @@ def _isolate_friction_log(request, tmp_path, monkeypatch):
     # real events into the operator's home log store. Separate concern from the
     # WRIT_FRICTION_LOG isolation below.
     monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path / "logs"))
+    # A suite run from inside a Claude Code session (the Stop hook) inherits the INSTALLED
+    # plugin's CLAUDE_PLUGIN_ROOT; hooks prefer it over their own location, so the
+    # working-tree hook would source the installed copy's libraries. Tests that need it set it.
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
     if request.node.get_closest_marker("no_friction_isolation"):
         # These tests assert on marker-walk / unwritable-path resolution, so force
         # the env var OFF (a stray session-level value would defeat that).
@@ -115,6 +135,106 @@ def _isolate_friction_log(request, tmp_path, monkeypatch):
         return
     monkeypatch.setenv("WRIT_FRICTION_LOG", str(tmp_path / "workflow-friction.log"))
     yield
+
+
+@pytest.fixture(scope="session")
+def _daemon_leak_state() -> dict:
+    """The chain's first link: one process-table snapshot, taken before the first module
+    boundary the guard below reaches.
+
+    THIS IS WHY THE OPERATOR'S OWN DAEMON NEEDS NO EXCLUSION. It is already running when
+    this snapshot is taken, so it is in the baseline and can never be reported as a
+    survivor. That is structural, not a name in a list, and it holds for whatever else the
+    machine happens to be running too.
+    """
+    from tests._daemon_leak import live_snapshot
+
+    return {"snapshot": live_snapshot()}
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _daemon_leak_guard(_daemon_leak_state):
+    """Fail the module that leaves a live Writ daemon behind, whatever launched it.
+
+    WHY A RUNTIME CHAIN AND NOT A SOURCE DETECTOR (recorded in full in
+    docs/adr/ADR-daemon-leak-guard.md): the launcher of the daemon this cycle's diagnosis
+    found squatting port 19998 was never established, so a detector that recognizes known
+    launch sites would have missed the one process that motivated it. This asks the
+    process table instead, and the process table is the population.
+
+    ONE SNAPSHOT PER MODULE BOUNDARY, CHAINED: each boundary compares against the previous
+    boundary's snapshot and then becomes the next baseline, so a leak is attributed to the
+    module that caused it rather than to a chunk of two hundred, and the end of the last
+    module is the end of the session. Cost is one `ps` per module. The new snapshot is
+    stored BEFORE the failure is raised, so one leak is reported once, by its own module,
+    instead of once per module for the rest of the run.
+
+    The suite's own daemon is excluded by PORT, resolved live from WRIT_PORT the same way
+    tests/_daemon.py::_port() resolves it, because that daemon's lifecycle belongs to
+    pytest_sessionfinish rather than to any module. A survivor ON the suite port is
+    therefore out of this guard's reach by design; `curl localhost:$WRIT_PORT/health`
+    answers that one by hand.
+
+    An UNMEASURED snapshot fails instead of reading clean, and "unmeasured" includes a
+    snapshot that came back FULL but TRUNCATED (`live_snapshot` proves it can still see
+    this process's own whole command line). A guard that goes green because it could not
+    look is the failure mode this repo has already paid for, once in this cycle.
+    """
+    from tests._daemon_leak import (
+        UnmeasurableSnapshot,
+        confirm_survivors,
+        find_survivors,
+        format_report,
+        health_of,
+        live_snapshot,
+        suite_port,
+    )
+
+    yield
+    baseline = _daemon_leak_state["snapshot"]
+    current = live_snapshot()
+    _daemon_leak_state["snapshot"] = current
+    try:
+        survivors = find_survivors(baseline, current, suite_port=suite_port())
+    except UnmeasurableSnapshot as refusal:
+        pytest.fail(f"daemon leak guard: {refusal}", pytrace=False)
+    # A dying process is not a leak, and this boundary snapshot is taken the instant the
+    # module's own teardown returns. MEASURED: a correctly stopped daemon is still listed
+    # for 0.05 to 0.10 seconds after its /health goes silent, and during a 2056-test run
+    # this guard reported one such process. The re-check asks the same question again
+    # rather than exempting anything, and only costs time on a hit.
+    survivors = confirm_survivors(survivors)
+    if survivors:
+        reports = "\n".join(
+            format_report(survivor, health_of(survivor["port"])) for survivor in survivors
+        )
+        pytest.fail(
+            f"daemon leak guard: {len(survivors)} Writ daemon(s) started during this "
+            f"module are still running at its end. They are NOT signalled from here: a "
+            f"process the suite did not prove it started is the operator's to stop.\n"
+            f"{reports}",
+            pytrace=False,
+        )
+
+
+# The gate-token leak chain, registered for the whole tests/ tree by the same one-line
+# import convention `tests/fixtures/session_state.py`'s `sandbox_cwd` uses per module.
+# All three live in tests/_gate_token_leak.py rather than here, so the proof in
+# tests/test_gate_token_leak_guard.py can load the REAL fixtures into a nested pytest run
+# with `-p tests._gate_token_leak` and drive them, instead of asserting against a
+# re-implementation of them (a conftest cannot be loaded that way, and a synthetic module
+# placed under tests/ to reach this one would trigger the graph wipe and the daemon stop
+# in pytest_sessionstart / pytest_sessionfinish above).
+#
+# WHY IT IS SAFE TREE-WIDE. `_sweep_gate_tokens` is opt-in through a module's own
+# GATE_TOKEN_SESSION_PREFIX constant and is one getattr for every module that declares
+# none, and `_gate_token_leak_guard` REPORTS and never removes. Divergences from the daemon
+# guard above are recorded in docs/adr/ADR-gate-token-leak-guard.md.
+from tests._gate_token_leak import (  # noqa: E402,F401
+    _gate_token_leak_guard,
+    _gate_token_leak_state,
+    _sweep_gate_tokens,
+)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -180,6 +300,33 @@ def pytest_sessionfinish(session, exitstatus):
         pass
 
 
+def _isolation_report_line(total: int, census: dict, rebuild_seconds: float) -> str:
+    """The single line the preflight prints, and the reason it prints one. (cycle 9)
+
+    Without it the only evidence that the start state is deterministic would be
+    "two consecutive runs matched", and a preflight that silently did NOTHING
+    against a graph that happened to be clean produces exactly that same
+    evidence. The line carries three facts a run cannot fake: the number of
+    nodes that existed before the delete (proof the wipe had work to do), the
+    per-label census of what that was (proof of WHICH residue existed, records
+    included), and the seconds the rebuild cost (the price this cycle adds,
+    printed on every run so it cannot drift unnoticed).
+
+    The census is printed WHOLE, biggest label first, never truncated to a top
+    N. Truncation would drop exactly the labels this cycle exists to remove:
+    after the first wipe the record counts are single digits against a corpus
+    in the hundreds, so a "top 8" line would report a clean sweep by omitting
+    the sweepings.
+    """
+    labels = ", ".join(
+        f"{label} {n}" for label, n in sorted(census.items(), key=lambda kv: (-kv[1], kv[0]))
+    )
+    return (
+        f"graph isolation: wiped {total} nodes ({labels or 'no labels'}), "
+        f"corpus rebuilt in {rebuild_seconds:.1f}s"
+    )
+
+
 def _preflight_isolated_graph() -> None:
     """Refuse to start a run that cannot be isolated. (cycle 8)
 
@@ -205,6 +352,31 @@ def _preflight_isolated_graph() -> None:
         once, loudly, with the per-label census attached, instead of by two
         hundred individual failures with no cause on them.
 
+    CYCLE 9: THE RUN ALSO STARTS FROM A KNOWN GRAPH, NOT AN INHERITED ONE.
+    Between the isolation verdict and the corpus warm the preflight now
+    censuses every label, deletes every node, and rebuilds. The reason is that
+    clear_all preserves the record labels by default and an isolated run skips
+    the end-of-suite restore, so whatever a module left behind survived to the
+    next run forever: measured at 651 record nodes of 1,119, 57 percent of the
+    graph being residue from previous runs. Two consecutive runs against that
+    graph are two different experiments.
+
+    THE THREE STEPS ARE ORDERED AND THE ORDER IS ASSERTED (see
+    tests/test_cycle8_graph_isolation.py::TestSessionStartPreflightWiring). The
+    census must precede the delete or it can only ever report zero. The delete
+    must follow the classification, because a target that was never confirmed
+    isolated must receive no delete statement at all. The delete must precede
+    the warm, or the warm is what gets undone.
+
+    The wipe is safe HERE and would be wrong anywhere else. A Decision record
+    has no file to rebuild from, which is a statement about a graph somebody
+    cares about; the disposable instance holds only test residue, and the guard
+    inside clear_all still refuses if the target turns out not to be disposable
+    after all. That refusal is converted to a UsageError below rather than
+    allowed to escape: anything leaving pytest_sessionstart that is not a
+    UsageError becomes an INTERNALERROR with a traceback and no remedy on it,
+    and a refusal that names no way out is a deadlock.
+
     Every graph read happens in a worker thread, for the reason the bible/ warm
     below already documents: calling asyncio.run on the MAIN thread here, before
     pytest's event-loop policy is set up, leaves the main thread's current loop
@@ -212,14 +384,26 @@ def _preflight_isolated_graph() -> None:
     happens on the main thread.
     """
     import concurrent.futures
+    import time
 
-    from tests._corpus import ensure_corpus, is_complete, methodology_counts, neo4j_reachable
+    from writ.graph.db._safety import FullWipeRefused
+
+    from tests._corpus import (
+        corpus_shortfall,
+        ensure_corpus,
+        is_complete,
+        methodology_counts,
+        neo4j_reachable,
+    )
     from tests._graph import (
         STATE_ISOLATED,
         classify_isolation,
+        count,
         isolation_refusal_message,
+        label_census,
         resolved_uri,
         targets_production,
+        wipe_everything,
     )
 
     uri = resolved_uri()
@@ -244,12 +428,47 @@ def _preflight_isolated_graph() -> None:
         if state != STATE_ISOLATED:
             raise pytest.UsageError(f"graph isolation: {state}\n{isolation_refusal_message(uri)}")
 
-        # Warm a cold instance. ensure_corpus is a no-op when the graph is already
-        # complete (one census read), so a warm instance costs nothing here.
+        # Step 1 of 3: what is here BEFORE anything is deleted. Two reads: the
+        # unfiltered per-label census (methodology_counts cannot serve, it
+        # projects onto a methodology-only label list and reports zero for
+        # every record label), and the node total, which is not the sum of the
+        # census because a node carrying two labels is counted under both.
         try:
-            ex.submit(ensure_corpus).result(timeout=180)
+            census = ex.submit(lambda: label_census()).result(timeout=60)
+            before_total = ex.submit(
+                lambda: count("MATCH (n) RETURN count(n) AS c")
+            ).result(timeout=60)
+        except Exception as exc:  # noqa: BLE001
+            raise pytest.UsageError(
+                f"graph isolation: pre-wipe census failed ({exc})\n"
+                f"{isolation_refusal_message(uri)}"
+            ) from exc
+
+        # Step 2 of 3: the delete. Lambda-wrapped rather than submitted bare so
+        # the call is a call, both here and to the source-order assertions that
+        # pin this sequence.
+        try:
+            ex.submit(lambda: wipe_everything()).result(timeout=180)
+        except FullWipeRefused as exc:
+            raise pytest.UsageError(
+                f"graph isolation: whole-graph wipe refused ({exc})\n"
+                f"{isolation_refusal_message(uri)}"
+            ) from exc
+
+        # Step 3 of 3: rebuild, and time it. The seconds go on the report line
+        # every run because this is the cost the wipe adds; a printed cost
+        # cannot drift unnoticed the way a one-off measurement can.
+        rebuild_started = time.monotonic()
+        try:
+            ex.submit(lambda: ensure_corpus()).result(timeout=300)
         except Exception:  # noqa: BLE001
             pass  # the completeness check below is the verdict, not this call
+        rebuild_seconds = time.monotonic() - rebuild_started
+
+        # Emitted BEFORE the completeness verdict, so a run that refuses for an
+        # incomplete corpus still tells the operator what was deleted and how
+        # long the failed rebuild took.
+        print(_isolation_report_line(before_total, census, rebuild_seconds))
 
         # Refuse rather than propagate: any exception escaping pytest_sessionstart
         # that is not a UsageError becomes an INTERNALERROR with a traceback and no
@@ -265,10 +484,28 @@ def _preflight_isolated_graph() -> None:
             ) from exc
 
     if not is_complete(counts):
+        # The shortfall comes from the census already in hand, so this costs no extra
+        # graph read. It is computed HERE because this is the only place that holds both
+        # halves: without it the refusal can only repeat the whole census and leave the
+        # reader to compare it against a floor that is printed nowhere.
         raise pytest.UsageError(
             "graph isolation: corpus incomplete after warm\n"
-            f"{isolation_refusal_message(uri, counts=counts)}"
+            f"{isolation_refusal_message(uri, counts=counts, shortfall=corpus_shortfall(counts))}"
         )
+
+
+def pytest_configure(config):
+    """Keep pytest's temp root short enough for a macOS AF_UNIX socket.
+
+    sockaddr_un.sun_path is 104 bytes including the trailing NUL. The default
+    root under /var/folders plus a long test name exceeds that, and several
+    tests bind a real socket inside tmp_path. A caller-supplied --basetemp wins.
+    """
+    import sys
+
+    if sys.platform != "darwin" or getattr(config.option, "basetemp", None):
+        return
+    config.option.basetemp = _tempfile.mkdtemp(prefix="wt", dir="/tmp")
 
 
 def pytest_sessionstart(session):

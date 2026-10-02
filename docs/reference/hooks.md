@@ -3,7 +3,7 @@
 
 # Hook registration matrix
 
-49 registrations across 12 events wiring 45 scripts under `hooks/scripts/`, generated from `hooks/hooks.json` (the single source; `templates/settings.json` is rendered from the same file). `writ-statusline.sh` is wired through the settings `statusLine` channel, not a hook event. Behavior and blocking semantics: `HANDBOOK.md` section 14.
+50 registrations across 12 events wiring 46 scripts under `hooks/scripts/`, generated from `hooks/hooks.json` (the single source; `templates/settings.json` is rendered from the same file). `writ-statusline.sh` is wired through the settings `statusLine` channel, not a hook event. Behavior and blocking semantics: `HANDBOOK.md` section 14.
 
 ## SessionStart
 
@@ -48,7 +48,7 @@
 | Matcher | Script |
 |---|---|
 | `.*` | `writ-blackbox-capture.sh` |
-| `Bash` | `writ-bash-failure.sh` |
+| `Bash|run_terminal_command` | `writ-bash-failure.sh` |
 
 ## PreCompact
 
@@ -81,35 +81,36 @@
 
 | Matcher | Script |
 |---|---|
-| `Read|Grep|Bash` | `writ-read-credential-gate.sh` |
-| `ExitPlanMode` | `validate-exit-plan.sh` |
-| `Read` | `writ-read-junk-gate.sh` |
-| `Read` | `writ-read-rag.sh` |
-| `Grep|Read|Glob` | `writ-debug-code-gate.sh` |
-| `Write|Edit|NotebookEdit` | `writ-state-write-gate.sh` |
-| `Write|Edit|NotebookEdit` | `writ-pre-write-dispatch.sh` |
-| `Write|Edit` | `pre-validate-file.sh` |
-| `Task` | `writ-dispatch-discipline.sh` |
-| `Task` | `writ-agent-hotswap.sh` |
-| `Task` | `writ-sdd-review-order.sh` |
-| `Bash` | `writ-worktree-safety.sh` |
-| `Bash` | `writ-bash-write-gate.sh` |
-| `Write` | `validate-test-file.sh` |
-| `Write` | `validate-design-doc.sh` |
-| `Write` | `writ-memory-policy-guard.sh` |
+| `Read|Grep|Bash|read_file|grep|run_terminal_command` | `writ-read-credential-gate.sh` |
+| `ExitPlanMode|exit_plan_mode` | `validate-exit-plan.sh` |
+| `Read|read_file` | `writ-read-junk-gate.sh` |
+| `Read|read_file` | `writ-read-rag.sh` |
+| `Grep|Read|Glob|grep|read_file` | `writ-debug-code-gate.sh` |
+| `Write|Edit|NotebookEdit|write|search_replace` | `writ-state-write-gate.sh` |
+| `Write|Edit|NotebookEdit|write|search_replace` | `writ-pre-write-dispatch.sh` |
+| `Write|Edit|write|search_replace` | `pre-validate-file.sh` |
+| `Task|Agent|spawn_subagent` | `writ-dispatch-discipline.sh` |
+| `Task|spawn_subagent` | `writ-agent-hotswap.sh` |
+| `Task|spawn_subagent` | `writ-sdd-review-order.sh` |
+| `Bash|run_terminal_command` | `writ-worktree-safety.sh` |
+| `Bash|run_terminal_command` | `writ-bash-write-gate.sh` |
+| `Write|write` | `validate-test-file.sh` |
+| `Write|write` | `validate-design-doc.sh` |
+| `Write|write` | `writ-memory-policy-guard.sh` |
 
 ## PostToolUse
 
 | Matcher | Script |
 |---|---|
-| `Bash` | `inject-tier-workflow.sh` |
-| `Bash` | `writ-output-rewrite.sh` |
-| `WebFetch|WebSearch` | `writ-web-capture.sh` |
-| `Write|Edit` | `validate-file.sh` |
-| `Write|Edit` | `writ-bible-authoring-push.sh` |
-| `Write|Edit` | `validate-handoff.sh` |
-| `Write|Edit` | `validate-rules.sh` |
-| `Write|Edit|NotebookEdit` | `writ-posttool-rag.sh` |
-| `Write` | `writ-quality-judge.sh` |
-| `Write|Edit` | `writ-mark-pending-test.sh` |
-| `Write|Edit` | `writ-memory-capture.sh` |
+| `Bash|run_terminal_command` | `inject-tier-workflow.sh` |
+| `Bash|run_terminal_command` | `writ-output-rewrite.sh` |
+| `WebFetch|WebSearch|web_search|web_fetch` | `writ-web-capture.sh` |
+| `Write|Edit|write|search_replace` | `validate-file.sh` |
+| `Write|Edit|write|search_replace` | `writ-output-compress.sh` |
+| `Write|Edit|write|search_replace` | `writ-bible-authoring-push.sh` |
+| `Write|Edit|write|search_replace` | `validate-handoff.sh` |
+| `Write|Edit|write|search_replace` | `validate-rules.sh` |
+| `Write|Edit|NotebookEdit|write|search_replace` | `writ-posttool-rag.sh` |
+| `Write|write` | `writ-quality-judge.sh` |
+| `Write|Edit|write|search_replace` | `writ-mark-pending-test.sh` |
+| `Write|Edit|write|search_replace` | `writ-memory-capture.sh` |

@@ -11,9 +11,11 @@ creates no such links. Four hooks assumed bare names:
     bare one, so a plugin reviewer's verdict was never recorded (the CRITICAL-review commit
     gate never fired) and the spec-before-quality review order never held.
 
-CLAUDE_PLUGIN_ROOT is the signal: the plugin loader sets it, a settings.json-seeded hook
-does not. Every test here sets or removes it explicitly, so the ambient shell cannot decide
-the outcome.
+CLAUDE_PLUGIN_ROOT is the signal for the hot-swap prefix: the plugin loader sets it, a
+settings.json-seeded hook does not. Dispatch names come from writ_agent_dispatch_name,
+which returns the bare role only when $HOME/.claude/agents/<role>.md exists. Every test
+sets or removes the plugin root and pins HOME under the tmp dir, so the ambient shell
+cannot decide the outcome.
 """
 
 from __future__ import annotations
@@ -44,6 +46,9 @@ BLOCKING_MESSAGE = """```json
 
 def _env(cache_dir: Path, *, plugin: bool) -> dict[str, str]:
     env = os.environ.copy()
+    home = cache_dir / "home"
+    home.mkdir(exist_ok=True)
+    env["HOME"] = str(home)
     env["WRIT_CACHE_DIR"] = str(cache_dir)
     env["WRIT_FRICTION_LOG"] = str(cache_dir / "friction.log")
     env["WRIT_LOG_ROOT"] = str(cache_dir / "logs")
@@ -128,6 +133,10 @@ class TestDispatchDiscipline:
         assert "writ:writ-implementer" in out["permissionDecisionReason"]
 
     def test_standalone_keeps_the_bare_explorer(self, tmp_path: Path) -> None:
+        # Bare only when bootstrap.sh linked the role into ~/.claude/agents.
+        agents = tmp_path / "home" / ".claude" / "agents"
+        agents.mkdir(parents=True)
+        (agents / "writ-explorer.md").write_text("---\nname: writ-explorer\n---\n")
         _seed_mode(tmp_path, "dd-bare", "work")
         result = _run(
             self.HOOK,

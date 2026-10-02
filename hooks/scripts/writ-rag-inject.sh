@@ -7,12 +7,14 @@ set -euo pipefail
 # fall back to the dirname walk that standalone installs rely on.
 if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"
-  VENV_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv"
 else
   HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
   WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
-  VENV_DIR="$WRIT_DIR/.venv"
 fi
+# The shared resolver costs no fork, which is why this per-prompt hook can use it.
+# shellcheck source=bin/lib/writ-venv.sh
+source "$WRIT_DIR/bin/lib/writ-venv.sh"
+writ_resolve_venv "$WRIT_DIR" || true
 SESSION_HELPER="$WRIT_DIR/bin/lib/writ-session.py"
 FA="$WRIT_DIR/bin/lib/friction-append.py"
 source "$WRIT_DIR/bin/lib/common.sh"
@@ -20,8 +22,8 @@ source "$WRIT_DIR/bin/lib/common.sh"
 WRIT_HOST="${WRIT_HOST:-localhost}"
 WRIT_PORT="${WRIT_PORT:-8765}"
 # #8: the broad /query + /always-on + /methodology-companion channels are fetched in ONE
-# warm call to /prompt-bundle (below). COMPANION_URL is still used by the orchestrator branch.
-COMPANION_URL="http://${WRIT_HOST}:${WRIT_PORT}/methodology-companion"
+# warm call to /prompt-bundle (below), for an orchestrator master too, so this hook no
+# longer holds a second URL for the companion channel.
 WRIT_HEALTH_URL="http://${WRIT_HOST}:${WRIT_PORT}/health"
 WRIT_DEBUG_LOG="${WRIT_DEBUG_LOG:-/tmp/writ-rag-debug.log}"
 
@@ -45,7 +47,7 @@ debug "stdin: ${STDIN_JSON:0:200}"
 # Auto-start: ensure Neo4j and the Writ server are running.
 # WRIT_NO_AUTOSTART (set by tests / CI) suppresses the auto-start so running this hook
 # against a throwaway WRIT_PORT does not spawn (and leak) a real daemon on that port.
-if [ -z "${WRIT_NO_AUTOSTART:-}" ] && ! curl -sf --connect-timeout 0.2 "$WRIT_HEALTH_URL" >/dev/null 2>&1; then
+if [ -z "${WRIT_NO_AUTOSTART:-}" ] && ! curl ${WRIT_CURL_TRANSPORT} -sf --connect-timeout 0.2 "$WRIT_HEALTH_URL" >/dev/null 2>&1; then
     debug "server down, attempting auto-start"
 
     # Ensure Neo4j is running (docker start is a no-op if already up).
@@ -85,11 +87,15 @@ fi
 # output are stripped so the RAG query contains only the user's intent.
 PARSED=$(echo "$STDIN_JSON" | python3 "$WRIT_DIR/bin/lib/writ-prompt-parse.py" 2>/dev/null) || true
 
+# THE PROMPT IS THE LAST FIELD AND IS READ AS THE REMAINDER. It is the only field that may
+# legitimately contain the record's delimiter, so every scalar is sliced ahead of it and the
+# tail read (4,$p) hands the prompt over whole. Read positionally before this change, a
+# prompt with N newlines was truncated to its first line and pushed AGENT_ID and MODE_HINT
+# N lines late, which silently disabled the mode auto-route.
 SESSION_ID=$(echo "$PARSED" | head -1)
-PROMPT=$(echo "$PARSED" | sed -n '2p')
-AGENT_ID=$(echo "$PARSED" | sed -n '3p')
-MODE_HINT=$(echo "$PARSED" | sed -n '4p' | tr -d '[:space:]')
-EFFORT=$(echo "$PARSED" | sed -n '5p' | tr -d '[:space:]')
+AGENT_ID=$(echo "$PARSED" | sed -n '2p')
+MODE_HINT=$(echo "$PARSED" | sed -n '3p' | tr -d '[:space:]')
+PROMPT=$(echo "$PARSED" | sed -n '4,$p')
 
 # This project's root, computed ONCE for the whole hook and used by two consumers:
 # the retrieval requests below send it so the daemon can scope them to this project
@@ -245,11 +251,18 @@ if [ -z "$AGENT_ID" ] && [ -n "$MODE_HINT" ]; then
   # switch INTO work below (from investigate, or from any mode an auto-routed session was
   # sitting in). Initialized here because the hook runs under `set -u`.
   RESTORED_GATES=""
+  # Work is routed as an ORCHESTRATOR: --orchestrator stamps is_orchestrator, so this session
+  # dispatches writ-planner, writ-test-writer, writ-implementer and writ-reviewer instead of
+  # writing source itself (rules/writ-orchestrator.md). A hand-set orchestrator always got
+  # that; an auto-routed one never did, because nobody typed the flag. The flag only ever SETS
+  # the field. Investigate is not orchestrated: its worker is writ-explorer, which its own
+  # announcement names.
+  if [ "$MODE_HINT" = "work" ]; then ROUTE_ORCH_FLAG="--orchestrator"; else ROUTE_ORCH_FLAG=""; fi
   if [ -z "$PRIOR_MODE" ]; then
     # `mode init` (not `mode set`): authoritatively sets the mode ONLY if still
     # unset (checked inside the helper's own cache read), so a spurious re-fire on
     # a transient empty PRIOR_MODE read can never reset a live gate cycle.
-    python3 "$SESSION_HELPER" mode init "$MODE_HINT" "$SESSION_ID" >/dev/null 2>&1 || true
+    python3 "$SESSION_HELPER" mode init "$MODE_HINT" "$SESSION_ID" $ROUTE_ORCH_FLAG >/dev/null 2>&1 || true
     # Re-read and act on the mode that is ACTUALLY set. `mode init` declines when a mode
     # already exists (its own locked check is the authority, not ours) and prints
     # "init: <mode>" either way, so its output cannot distinguish the two. Trusting the
@@ -315,7 +328,7 @@ if [ -z "$AGENT_ID" ] && [ -n "$MODE_HINT" ]; then
         # promise, not less: more sessions are now reachable from a guess, so the property
         # that a misclassified prompt costs a detour instead of an approved plan and
         # approved test skeletons is the whole reason this arm is allowed to exist.
-        python3 "$SESSION_HELPER" mode switch "$MODE_HINT" "$SESSION_ID" >/dev/null 2>&1 || true
+        python3 "$SESSION_HELPER" mode switch "$MODE_HINT" "$SESSION_ID" --auto $ROUTE_ORCH_FLAG >/dev/null 2>&1 || true
         # Re-read rather than trust the hint, for the same reason the unset path does:
         # announcing the mode we ASKED for is how the hook came to tell the user the mode
         # was 'work' while the cache said otherwise.
@@ -346,14 +359,20 @@ if [ -z "$AGENT_ID" ] && [ -n "$MODE_HINT" ]; then
   fi
   # Announce ONLY a change we actually made.
   if [ "$AUTOROUTED" = "yes" ]; then
+    # Name the roles as this install dispatches them ("writ:<role>" on a plugin install).
+    WRIT_EXPLORER_AGENT=$(writ_agent_dispatch_name writ-explorer)
+    WRIT_PLANNER_AGENT=$(writ_agent_dispatch_name writ-planner)
+    WRIT_TEST_WRITER_AGENT=$(writ_agent_dispatch_name writ-test-writer)
+    WRIT_IMPLEMENTER_AGENT=$(writ_agent_dispatch_name writ-implementer)
+    WRIT_REVIEWER_AGENT=$(writ_agent_dispatch_name writ-reviewer)
     if [ "$MODE_HINT" = "investigate" ]; then
       cat << AUTOROUTE
 
 [Writ: audit/explore request -> investigate mode set automatically]
 This reads as an audit / exploration / research task, so the mode is now 'investigate'
-(the evidence-grounded audit/explore/research engine). Dispatch writ-explorer (read-only)
+(the evidence-grounded audit/explore/research engine). Dispatch $WRIT_EXPLORER_AGENT (read-only)
 for the actual exploration; it inherits this mode and runs governed. To override:
-  python3 $SESSION_HELPER mode set <conversation|debug|review|work|investigate> $SESSION_ID
+  writ mode set <conversation|debug|review|work|investigate> $SESSION_ID
 AUTOROUTE
     elif [ -n "$RESTORED_GATES" ] && [ "$RESTORED_GATES" != "0" ]; then
       # The switch restored a paused work cycle: plan.md was unchanged, so the approvals
@@ -364,22 +383,32 @@ AUTOROUTE
 [Writ: implementation request -> paused work mode restored automatically]
 This reads as a build/implementation task, so the mode is back to 'work'. The plan did not
 change during the detour, so the paused phase and $RESTORED_GATES already-approved gate(s)
-were restored with it. Continue that cycle: do not rewrite plan.md and do not re-request an
-approval you already hold. If this is a trivial edit that needs no workflow, override with:
-  python3 $SESSION_HELPER mode set conversation $SESSION_ID
+were restored with it. Continue that cycle as its orchestrator: dispatch the worker the
+restored phase is waiting on ($WRIT_TEST_WRITER_AGENT while the test skeletons are unapproved,
+$WRIT_IMPLEMENTER_AGENT once they are approved), then $WRIT_REVIEWER_AGENT on the result. Do not rewrite
+plan.md and do not re-request an approval you already hold. If this is a trivial edit that
+needs no workflow, override with:
+  writ mode set conversation $SESSION_ID
 WORKRESTORE
     else
       cat << WORKROUTE
 
 [Writ: implementation request -> work mode set automatically]
 This reads as a build/implementation task, so the mode is now 'work' (the full gated
-workflow). BEFORE writing source: write plan.md and capabilities.md at the project root by
-filling in templates/plan-template.md and templates/capabilities-template.md from the Writ
-skill directory (they encode the gate's exact format, including the ## Files line grammar),
-present them for approval, then write test skeletons, then implement. Source writes are
-BLOCKED by the gate until the plan and test-skeleton gates are approved. If this is a trivial
-edit that needs no workflow, override with:
-  python3 $SESSION_HELPER mode set conversation $SESSION_ID
+workflow) and this session is its orchestrator: dispatch the workers below in order rather
+than writing source yourself, the way an audit dispatches $WRIT_EXPLORER_AGENT.
+  1. $WRIT_PLANNER_AGENT writes plan.md and capabilities.md to .claude/plans/$SESSION_ID/, each by
+     filling in templates/plan-template.md and templates/capabilities-template.md from the
+     Writ skill directory (they encode the gate's exact format, including the ## Files line
+     grammar). The directory is session-scoped, so a second session working this same project
+     cannot revoke your approvals by saving its own plan. Then present them for approval.
+  2. $WRIT_TEST_WRITER_AGENT writes the test skeletons once the plan is approved; present those for
+     approval too.
+  3. $WRIT_IMPLEMENTER_AGENT makes those tests pass once they are approved.
+  4. $WRIT_REVIEWER_AGENT reviews the result before you report the work done.
+Source writes are BLOCKED by the gate until the plan and test-skeleton gates are approved. If
+this is a trivial edit that needs no workflow, override with:
+  writ mode set conversation $SESSION_ID
 WORKROUTE
     fi
   fi
@@ -437,7 +466,7 @@ print(json.dumps({'project_root': os.environ.get('WRIT_ROOT', ''), 'budget': 200
 " 2>/dev/null)
         # Documented daemon-down-equivalent raw curl: with curl absent this degrades to
         # exactly the "no briefing this session" branch a stopped daemon produces.
-        RECALL_RESP=$(curl -s --connect-timeout 0.3 --max-time 1.5 -X POST "http://${WRIT_HOST}:${WRIT_PORT}/recall" \
+        RECALL_RESP=$(curl ${WRIT_CURL_TRANSPORT} -s --connect-timeout 0.3 --max-time 1.5 -X POST "http://${WRIT_HOST}:${WRIT_PORT}/recall" \
             -H "Content-Type: application/json" -d "$RECALL_REQ" 2>/dev/null) || true
         # parsed_field (jq-first, python3 fallback) rather than raw jq: with jq absent the
         # raw extraction returned empty and the briefing was silently dropped.
@@ -472,12 +501,23 @@ fi
 # and the directive fires on the first prompt that does get through. Nothing blocks on it.
 if parsed_bool "$CACHE" "post_compact_pending"; then
     emit_post_compact_directive "$CURRENT_MODE" "$(parsed_field "$CACHE" "current_phase")"
+    # Name the handoff writ-precompact.sh wrote. This is the ONLY channel that reaches
+    # the model at a compaction boundary (PreCompact stdout is not injected and CC
+    # rejects a PostCompact hookSpecificOutput reply), so without this line the file
+    # exists and nothing is ever told it does. Announced only when it is really there.
+    HANDOFF_FILE="${WRIT_ROOT:-$WRIT_DIR}/.claude/handoffs/session-${SESSION_ID}.md"
+    if [ -f "$HANDOFF_FILE" ]; then
+        echo "[Writ: session handoff written before compaction] $HANDOFF_FILE"
+        echo "It carries mode, phase, approved gates, the plan's declared files, what this"
+        echo "session wrote, and the still-unchecked capabilities. Derived from session state,"
+        echo "not summarized, so it is first-hand evidence where the recalled context is not."
+    fi
     python3 "$SESSION_HELPER" update "$SESSION_ID" --clear-post-compact-pending 2>>"$WRIT_HOOK_LOG_SINK" || true
     debug "emitted post-compact directive (one-shot)"
 fi
 
 if [ "$IS_ORCHESTRATOR" = "true" ]; then
-    debug "orchestrator mode: skipping broad /query, firing methodology companion + status line"
+    debug "orchestrator mode: suppressing the ranked channel, keeping the always-on floor + companion"
     # Still emit mode-classification directive if no mode set
     if [ -z "$CURRENT_MODE" ]; then
         emit_mode_directive "$SESSION_HELPER" "$SESSION_ID"
@@ -496,77 +536,14 @@ except Exception:
     print('[Writ: orchestrator mode active]')
 " 2>/dev/null)
     echo "$STATUS_LINE"
-
-    # PSR-008 Finding 1: orchestrator master must still surface
-    # methodology context (skills, playbooks). The broad coding-rule
-    # RAG is intentionally suppressed -- workers cover that domain --
-    # but methodology nodes guide workflow decisions the orchestrator
-    # itself owns. Fires when CURRENT_MODE=work AND prompt is non-trivial.
-    ORCH_REMAINING_BUDGET=$(echo "$CACHE_DATA" | json_transform 'if (.remaining_budget // null) == null then 8000 else .remaining_budget end' "(8000 if d.get('remaining_budget') is None else d.get('remaining_budget'))" 2>/dev/null || echo '8000')
-    ORCH_LOADED_RULE_IDS=$(echo "$CACHE_DATA" | python3 "$WRIT_DIR/bin/lib/writ_phase_scoped_rules.py" 2>/dev/null || echo '[]')
-
-    if [ "${CURRENT_MODE:-}" = "work" ] && [ "${ORCH_REMAINING_BUDGET:-0}" -gt 600 ] && [ ${#PROMPT} -ge $MIN_QUERY_LENGTH ]; then
-        ORCH_METHOD_REQUEST=$(python3 -c "
-import json, sys
-try:
-    exclude = json.loads(sys.argv[2])
-except (json.JSONDecodeError, ValueError) as _e:
-    sys.stderr.write(
-        f'[writ-hook json.loads recovery] argv[2] (exclude_rule_ids) in writ-rag-inject.sh '
-        f'orchestrator companion request: {_e}\\n  sample={sys.argv[2][:200]!r}\\n'
-    )
-    exclude = []
-print(json.dumps({
-    'mode': 'work',
-    'prompt': sys.argv[1],
-    'exclude_rule_ids': exclude,
-    'budget_tokens': 2000,
-    'project_root': sys.argv[3],
-}))
-" "$PROMPT" "$ORCH_LOADED_RULE_IDS" "${_PROJECT_ROOT:-}" 2>/dev/null)
-
-        if [ -n "$ORCH_METHOD_REQUEST" ]; then
-            # Documented daemon-down-equivalent raw curl: no companion block, same as a
-            # stopped daemon produces.
-            ORCH_METHOD_RESPONSE=$(curl -s --connect-timeout 0.5 --max-time 2 -X POST "$COMPANION_URL" \
-                -H "Content-Type: application/json" \
-                -d "$ORCH_METHOD_REQUEST" 2>/dev/null) || true
-
-            if [ -n "$ORCH_METHOD_RESPONSE" ]; then
-                ORCH_METHOD_FORMAT=$(echo "$ORCH_METHOD_RESPONSE" | _writ_session format 2>/dev/null) || true
-                ORCH_METHOD_TEXT=""
-                ORCH_METHOD_META=""
-                if [ -n "$ORCH_METHOD_FORMAT" ]; then
-                    ORCH_METHOD_TEXT=$(echo "$ORCH_METHOD_FORMAT" | grep -v "^WRIT_META:" || true)
-                    ORCH_METHOD_META=$(echo "$ORCH_METHOD_FORMAT" | grep "^WRIT_META:" | head -1 || true)
-                fi
-
-                if [ -n "$ORCH_METHOD_TEXT" ]; then
-                    echo ""
-                    echo "[Writ: methodology companion]"
-                    echo "$ORCH_METHOD_TEXT"
-                fi
-
-                if [ -n "$ORCH_METHOD_META" ]; then
-                    ORCH_METHOD_META_JSON="${ORCH_METHOD_META#WRIT_META:}"
-                    ORCH_METHOD_FIELDS=$(echo "$ORCH_METHOD_META_JSON" | parse_writ_meta)
-                    ORCH_METHOD_RULE_IDS=$(echo "$ORCH_METHOD_FIELDS" | sed -n '1p'); ORCH_METHOD_RULE_IDS="${ORCH_METHOD_RULE_IDS:-[]}"
-                    ORCH_METHOD_COST=$(echo "$ORCH_METHOD_FIELDS" | sed -n '2p'); ORCH_METHOD_COST="${ORCH_METHOD_COST:-0}"
-
-                    if [ "$ORCH_METHOD_RULE_IDS" != "[]" ]; then
-                        _writ_session update "$SESSION_ID" \
-                            --add-rules "$ORCH_METHOD_RULE_IDS" \
-                            --cost "$ORCH_METHOD_COST" \
-                            --inc-queries 2>>"$WRIT_HOOK_LOG_SINK" || true
-                    fi
-
-                    log_rag_query_event "$SESSION_ID" "${CURRENT_MODE:-}" "methodology" "$ORCH_METHOD_COST" "$ORCH_METHOD_RULE_IDS" "$EFFORT" "UserPromptSubmit" "stdout"
-                fi
-            fi
-        fi
-    fi
-
-    exit 0
+    # NO exit HERE, and that absence is the fix. This branch used to hand-roll a
+    # methodology-companion call and return, which skipped the always-on channel
+    # entirely: RANKED_INCLUDE_WHERE excludes every mandatory rule from the ranked pool
+    # by construction, so the always-on block is a mandatory rule's ONLY delivery path
+    # and a master received none of them. The branch now falls through into the shared
+    # /prompt-bundle call below, which turns the ranked channel off per request
+    # (include_ranked=false) and keeps channels 2 and 3. Step 8b returns for a master
+    # once those are emitted, so nothing from step 9 onward changes for one.
 fi
 
 # 2. Minimum query length gate
@@ -582,7 +559,11 @@ fi
 # degrades exactly as before. The endpoint returns the three rendered pieces SEPARATELY
 # so they keep their legacy emit order around the bash-side mode reminders (step 9b).
 case "${WRIT_ALWAYS_ON_FILTER:-1}" in 1|on|true|yes) _AO_FILTER_BOOL=true ;; *) _AO_FILTER_BOOL=false ;; esac
-# jq builds this request when present: five strings and a boolean assembled from
+# Channel 1 off for an orchestrator master, on for everyone else. Derived HERE, from the
+# one flag, so no new session state exists to disagree with it. Like _AO_FILTER_BOOL this
+# must stay a bare true/false: it goes on the wire as a JSON boolean.
+if [ "$IS_ORCHESTRATOR" = "true" ]; then _INCLUDE_RANKED_BOOL=false; else _INCLUDE_RANKED_BOOL=true; fi
+# jq builds this request when present: four strings and a boolean assembled from
 # variables already in the shell cost a 9.5ms interpreter start plus 4.9 for `import
 # json`, against 2.3 for jq. --arg is used for every value so a prompt containing quotes,
 # newlines or backslashes is encoded by jq rather than by string concatenation here.
@@ -594,22 +575,22 @@ if [ -z "${WRIT_NO_JQ:-}" ] && command -v jq >/dev/null 2>&1; then
         --arg session_id "$SESSION_ID" \
         --arg mode "${CURRENT_MODE:-}" \
         --arg prompt "$PROMPT" \
-        --arg effort "$EFFORT" \
         --arg project_root "${_PROJECT_ROOT:-}" \
         --argjson always_on_filter "$_AO_FILTER_BOOL" \
-        '{session_id: $session_id, mode: $mode, prompt: $prompt, effort: $effort, project_root: $project_root, always_on_filter: $always_on_filter}' \
+        --argjson include_ranked "$_INCLUDE_RANKED_BOOL" \
+        '{session_id: $session_id, mode: $mode, prompt: $prompt, project_root: $project_root, always_on_filter: $always_on_filter, include_ranked: $include_ranked}' \
         2>/dev/null) || BUNDLE_REQUEST=""
 fi
 if [ -z "$BUNDLE_REQUEST" ]; then
-    BUNDLE_REQUEST=$(WRIT_SID="$SESSION_ID" WRIT_MODE="${CURRENT_MODE:-}" WRIT_PROMPT="$PROMPT" WRIT_EFFORT="$EFFORT" WRIT_AOF="$_AO_FILTER_BOOL" WRIT_PROOT="${_PROJECT_ROOT:-}" python3 -c "
+    BUNDLE_REQUEST=$(WRIT_SID="$SESSION_ID" WRIT_MODE="${CURRENT_MODE:-}" WRIT_PROMPT="$PROMPT" WRIT_AOF="$_AO_FILTER_BOOL" WRIT_IRK="$_INCLUDE_RANKED_BOOL" WRIT_PROOT="${_PROJECT_ROOT:-}" python3 -c "
 import os, json
 print(json.dumps({
     'session_id': os.environ['WRIT_SID'],
     'mode': os.environ.get('WRIT_MODE', ''),
     'prompt': os.environ.get('WRIT_PROMPT', ''),
-    'effort': os.environ.get('WRIT_EFFORT', ''),
     'project_root': os.environ.get('WRIT_PROOT', ''),
     'always_on_filter': os.environ.get('WRIT_AOF', 'true') == 'true',
+    'include_ranked': os.environ.get('WRIT_IRK', 'true') == 'true',
 }))" 2>/dev/null)
 fi
 
@@ -697,7 +678,7 @@ _FRICTION_ROWS_OK=""
 if [ -z "${WRIT_NO_JQ:-}" ] && command -v jq >/dev/null 2>&1 \
         && [ -r "$WRIT_DIR/bin/lib/friction-rows.jq" ]; then
     if FRICTION_ROWS=$(printf '%s' "$BUNDLE" | jq -R -s -r \
-            --arg sid "$SESSION_ID" --arg mode "${CURRENT_MODE:-}" --arg effort "$EFFORT" \
+            --arg sid "$SESSION_ID" --arg mode "${CURRENT_MODE:-}" \
             -f "$WRIT_DIR/bin/lib/friction-rows.jq" 2>>"$WRIT_HOOK_LOG_SINK"); then
         _FRICTION_ROWS_OK=1
     else
@@ -705,7 +686,7 @@ if [ -z "${WRIT_NO_JQ:-}" ] && command -v jq >/dev/null 2>&1 \
     fi
 fi
 if [ -z "$_FRICTION_ROWS_OK" ]; then
-FRICTION_ROWS=$(printf '%s' "$BUNDLE" | WRIT_SID="$SESSION_ID" WRIT_MODE="${CURRENT_MODE:-}" WRIT_EFFORT="$EFFORT" python3 -c "
+FRICTION_ROWS=$(printf '%s' "$BUNDLE" | WRIT_SID="$SESSION_ID" WRIT_MODE="${CURRENT_MODE:-}" python3 -c "
 import json, os, sys
 try:
     b = json.load(sys.stdin)
@@ -713,19 +694,25 @@ except Exception:
     sys.exit(0)
 sid = os.environ.get('WRIT_SID', '')
 mode = os.environ.get('WRIT_MODE', '') or None
-effort = os.environ.get('WRIT_EFFORT', '')
 def rag(src, meta):
     e = {'session': sid, 'mode': mode, 'event': 'rag_query', 'query_source': src,
          'tokens_injected': int(meta.get('cost', 0)),
          'rules_returned_count': len(meta.get('rule_ids', [])), 'rule_ids': meta.get('rule_ids', [])}
-    if effort:
-        e['effort'] = effort
     e['event_name'] = 'UserPromptSubmit'; e['mechanism'] = 'stdout'
     return e
 lines = []
 bm = b.get('broad_meta')
 if bm is not None:
-    lines.append(rag('broad', bm))
+    # A suppressed ranked channel (include_ranked=false) is NOT a zero-rule
+    # rag_query: a zero-rule rag_query is the abstention signal every census
+    # that counts retrievals by source relies on, so recording the
+    # suppression that way would be indistinguishable from a real retrieval
+    # that came back empty.
+    if bm.get('suppressed'):
+        lines.append({'session': sid, 'mode': mode, 'event': 'rag_channel_suppressed',
+                      'channel': 'broad', 'event_name': 'UserPromptSubmit', 'mechanism': 'stdout'})
+    else:
+        lines.append(rag('broad', bm))
 ao = b.get('ao_meta')
 if ao is not None and int(ao.get('tokens', 0)) > 0:
     lines.append({'session': sid, 'mode': mode, 'event': 'always_on_inject',
@@ -787,6 +774,21 @@ if [ -n "$_WRIT_SIDECAR_DIR" ]; then
     } > "$_WRIT_SIDECAR_DIR/current-rules.md" 2>/dev/null || true
 fi
 
+# 8b. The orchestrator master's single exit. Everything a master gets is now emitted:
+# the status line (printed by the branch near step 1d), the always-on floor above, and
+# the companion here, in the same two lines step 11c uses. Everything from step 9 down is
+# deliberately out of scope for a master: the work-mode reminder tells the reader to enter
+# /plan and write plan.md, which is the planner worker's job, and the mode directive was
+# already emitted by the branch, so delivering either again would be a misdirection.
+if [ "$IS_ORCHESTRATOR" = "true" ]; then
+    if [ -n "$METHOD_BLOCK" ]; then
+        echo ""
+        echo "$METHOD_BLOCK"
+    fi
+    debug "orchestrator mode: emitted always-on floor + companion, skipping steps 9+"
+    exit 0
+fi
+
 # 9. Inject mode classification directive if no mode set yet
 if [ -z "$CURRENT_MODE" ]; then
     emit_mode_directive "$SESSION_HELPER" "$SESSION_ID"
@@ -802,7 +804,7 @@ case "$CURRENT_MODE" in
         ;;
     debug)
         echo ""
-        echo "[Writ: Debug mode. Rules injected for investigation. No code generation -- recommend Work mode when fix is identified.]"
+        echo "[Writ: Debug mode. Rules injected for investigation. No code generation: recommend Work mode when fix is identified.]"
         debug "injected debug mode reminder"
         ;;
     review)
@@ -828,11 +830,11 @@ case "$CURRENT_MODE" in
 
             if [ ! -f "$_PHASE_A" ]; then
                 echo ""
-                echo "[Writ: Work mode -- plan gate pending. Enter /plan, write plan.md, exit, present, wait for approval.]"
+                echo "[Writ: Work mode, plan gate pending. Enter /plan, write plan.md, exit, present, wait for approval.]"
                 debug "injected work mode state (plan)"
             elif [ ! -f "$_TEST_SKEL" ]; then
                 echo ""
-                echo "[Writ: Work mode -- test-skeletons gate pending. Write test files to disk, present, wait for approval.]"
+                echo "[Writ: Work mode, test-skeletons gate pending. Write test files to disk, present, wait for approval.]"
                 debug "injected work mode state (test-skeletons)"
             fi
         fi
@@ -865,7 +867,7 @@ if [ -n "${PROMPT:-}" ] && [ "${CURRENT_MODE:-}" != "review" ] && [ "${REMAINING
         REVIEW_PUSH=$(writ_action_push "$SESSION_ID" "review-feedback" || true)
         if [ -n "$REVIEW_PUSH" ]; then
             echo ""
-            echo "[Writ: methodology -- review-feedback]"
+            echo "[Writ: methodology, review-feedback]"
             echo "$REVIEW_PUSH"
         fi
     fi

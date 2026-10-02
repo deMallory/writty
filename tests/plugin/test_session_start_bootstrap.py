@@ -65,8 +65,11 @@ class TestSessionStartBootstrapContent:
         The script lives at hooks/scripts/ (two levels deep), so a dirname walk
         would resolve to hooks/scripts rather than the repo root.
         """
-        assert 'WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"' in content or \
-               "WRIT_DIR=${CLAUDE_PLUGIN_ROOT}" in content, (
+        assert (
+            'WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"' in content
+            or "WRIT_DIR=${CLAUDE_PLUGIN_ROOT}" in content
+            or 'WRIT_DIR="${CLAUDE_PLUGIN_ROOT:-' in content
+        ), (
             "session-start-bootstrap.sh must set WRIT_DIR from ${CLAUDE_PLUGIN_ROOT} explicitly"
         )
         # Should NOT use dirname-based resolution for WRIT_DIR
@@ -75,12 +78,12 @@ class TestSessionStartBootstrapContent:
         )
 
     def test_session_start_probes_venv(self, content: str) -> None:
-        """Script must check for ${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv/bin/python3."""
-        assert "${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv" in content, (
-            "session-start-bootstrap.sh must probe ${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}/.venv"
+        """The venv comes from the shared resolver and its python3 is probed before use."""
+        assert 'writ_resolve_venv "${WRIT_DIR}"' in content, (
+            "session-start-bootstrap.sh must take VENV_DIR from writ_resolve_venv"
         )
-        assert "python3" in content, (
-            "session-start-bootstrap.sh venv probe must check for python3 binary"
+        assert '"${VENV_DIR}/bin/python3"' in content, (
+            "session-start-bootstrap.sh venv probe must check for the python3 binary"
         )
 
     def test_session_start_probes_neo4j(self, content: str) -> None:
@@ -160,6 +163,9 @@ class TestNeo4jProbeWithoutGnuTimeout:
             "WRIT_NEO4J_HOST": host,
             "WRIT_NEO4J_PORT": str(port),
         }
+        # The suite sets this so a hook cannot spawn a real daemon. This test stubs
+        # writ_ensure_server and is checking that the start is reached.
+        env.pop("WRIT_NO_AUTOSTART", None)
         return subprocess.run(
             ["bash", str(SESSION_START_BOOTSTRAP)], input="{}",
             capture_output=True, text=True, env=env, timeout=30,

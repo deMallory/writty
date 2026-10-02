@@ -111,8 +111,25 @@ def _run_jq(envelope: str) -> str:
 
 
 def _split(out: str) -> tuple[str, str, str]:
-    """Mirror the hook's own head -1 / sed -n 2p / tail -n +3 split."""
-    lines = out.split("\n")
+    """Mirror the hook's own split of the parse output into its three fields.
+
+    THE MIRROR HAS TO TRACK THE HOOK or this file's parity claim becomes a claim
+    about a splitter nothing runs. The hook used to split with
+    `head`/`sed`/`tail` external processes; the write-path spawn-reduction cycle
+    replaced that with `mapfile -t` plus `printf -v` over the array slice, and
+    the two spellings are held byte-identical over a shaped corpus by
+    tests/test_pre_write_dispatch_line_split.py. What this mirror reproduces:
+
+      * the hook captures the parse output with `$( )`, which strips ALL
+        trailing newlines, before the split ever sees it -- hence the rstrip
+        here, which the old mirror did not do and which is why its third field
+        carried a trailing newline the hook's CHECK_BODY never has;
+      * field 3 is elements 2 ONWARD joined by newlines (the old `tail -n +3`
+        semantics), not element 2 alone;
+      * a field the output does not have reads as the empty string, matching
+        the hook's explicit `${ARR[n]:-}` defaults.
+    """
+    lines = out.rstrip("\n").split("\n")
     return lines[0], (lines[1] if len(lines) > 1 else ""), "\n".join(lines[2:])
 
 
@@ -230,3 +247,18 @@ class TestBothArmsAreReachable:
             assert proc.returncode in (0, 2), (
                 f"hook exited {proc.returncode} with {env_prefix}: {proc.stderr[:300]}"
             )
+
+
+def _body(out: str) -> dict:
+    return json.loads(out.splitlines()[-1])
+
+
+@pytest.mark.parametrize("run", [_run_python, _run_jq], ids=["python", "jq"])
+def test_the_body_carries_the_dispatching_session_for_a_subagent(run):
+    """A sub-agent's payload names its dispatcher in session_id; the gate needs it to send
+    the sub-agent back there instead of printing a command for the agent's own id."""
+    sub = run(json.dumps({"session_id": "main-1", "agent_id": "a-9",
+                          "tool_input": {"file_path": "/tmp/c.py"}}))
+    main = run(json.dumps({"session_id": "main-1", "tool_input": {"file_path": "/tmp/c.py"}}))
+    assert _body(sub)["parent_session_id"] == "main-1"
+    assert _body(main)["parent_session_id"] == ""

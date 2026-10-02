@@ -110,12 +110,13 @@ class TestNodesValid:
     @pytest.mark.parametrize("name", sorted(ROLE_SPECS))
     def test_node_parses_as_subagent_role(self, name: str) -> None:
         node = _parse_role(name)
-        _, role_id, model = ROLE_SPECS[name]
+        _, role_id, model, effort = ROLE_SPECS[name]
         assert node["node_type"] == "SubagentRole"
         assert node["role_id"] == role_id
         assert node["name"] == name
         assert node.get("prompt_template", "").strip(), f"{name}: empty prompt_template"
         assert node.get("model_preference") == model
+        assert node.get("effort_preference") == effort
         assert node.get("tools", "").strip(), f"{name}: missing tools (render needs it)"
         assert node.get("description", "").strip(), f"{name}: missing description"
 

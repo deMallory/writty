@@ -41,9 +41,30 @@ FLUSH = os.path.abspath(
 )
 
 
+def _home(cache_dir):
+    """The hermetic HOME for this test: under the tmp dir, empty unless _install_agents ran.
+
+    A developer machine that ran bootstrap.sh has real ~/.claude/agents/writ-*.md links, and
+    the hook picks the bare or the "writ:" form by whether those files exist.
+    """
+    home = os.path.join(str(cache_dir), "home")
+    os.makedirs(home, exist_ok=True)
+    return home
+
+
+def _install_agents(cache_dir, roles):
+    """Create $HOME/.claude/agents/<role>.md for each role (the bootstrap.sh layout)."""
+    agents = os.path.join(_home(cache_dir), ".claude", "agents")
+    os.makedirs(agents, exist_ok=True)
+    for role in roles:
+        with open(os.path.join(agents, f"{role}.md"), "w") as handle:
+            handle.write(f"---\nname: {role}\n---\n")
+
+
 def _hook_env(cache_dir):
-    """A throwaway cache dir and log destination, so no test reads or writes live state."""
+    """A throwaway cache dir, log destination and HOME, so no test reads or writes live state."""
     env = os.environ.copy()
+    env["HOME"] = _home(cache_dir)
     env["WRIT_CACHE_DIR"] = str(cache_dir)
     env["WRIT_FRICTION_LOG"] = os.path.join(str(cache_dir), "friction.log")
     env["WRIT_LOG_ROOT"] = os.path.join(str(cache_dir), "logs")
@@ -52,8 +73,7 @@ def _hook_env(cache_dir):
 
 def _seed_mode(cache_dir, sid, mode):
     """Set the master session's mode via the file-direct CLI (how production sets it)."""
-    env = os.environ.copy()
-    env["WRIT_CACHE_DIR"] = str(cache_dir)
+    env = _hook_env(cache_dir)
     subprocess.run(
         [sys.executable, HELPER, "mode", "set", mode, sid],
         env=env,
@@ -122,6 +142,14 @@ def _decision(stdout):
     return hso.get("permissionDecision"), hso.get("permissionDecisionReason", "")
 
 
+def _rewrite_context(stdout):
+    """The additionalContext the hook attached to a rewrite (or '')."""
+    out = stdout.strip()
+    if not out:
+        return ""
+    return json.loads(out).get("hookSpecificOutput", {}).get("additionalContext", "")
+
+
 def _rewrite_target(stdout):
     """The subagent_type the hook rewrote the dispatch to via updatedInput (or None)."""
     out = stdout.strip()
@@ -140,7 +168,7 @@ class TestDispatchDiscipline:
             prompt="explore the codebase structure and find where auth is handled",
         )
         assert _decision(out)[0] == "allow"
-        assert _rewrite_target(out) == "writ-explorer"
+        assert _rewrite_target(out) == "writ:writ-explorer"
 
     def test_work_named_role_allowed(self, tmp_path):
         """A named writ-* role is the correct dispatch -> pass through (no deny)."""
@@ -186,7 +214,7 @@ class TestDispatchDiscipline:
             prompt="audit the codebase for security issues and find where input is validated",
         )
         assert _decision(out)[0] == "allow"
-        assert _rewrite_target(out) == "writ-explorer"
+        assert _rewrite_target(out) == "writ:writ-explorer"
 
     def test_work_generic_research_routes_to_explorer(self, tmp_path):
         """'research ...' must route to writ-explorer (investigation engine)."""
@@ -197,7 +225,7 @@ class TestDispatchDiscipline:
             prompt="research how the session cache is keyed and what TTL is applied",
         )
         assert _decision(out)[0] == "allow"
-        assert _rewrite_target(out) == "writ-explorer"
+        assert _rewrite_target(out) == "writ:writ-explorer"
 
     def test_work_generic_implement_routes_to_implementer(self, tmp_path):
         """'implement the approved plan' routes to writ-implementer, not writ-planner."""
@@ -208,7 +236,7 @@ class TestDispatchDiscipline:
             prompt="implement the approved plan in the orders module",
         )
         assert _decision(out)[0] == "allow"
-        assert _rewrite_target(out) == "writ-implementer"
+        assert _rewrite_target(out) == "writ:writ-implementer"
 
     def test_work_builtin_explore_type_routes_to_explorer(self, tmp_path):
         """The built-in 'Explore' subagent_type is generic and is rewritten too."""
@@ -219,7 +247,7 @@ class TestDispatchDiscipline:
             prompt="investigate how the session cache is keyed",
         )
         assert _decision(out)[0] == "allow"
-        assert _rewrite_target(out) == "writ-explorer"
+        assert _rewrite_target(out) == "writ:writ-explorer"
 
     def test_empty_subagent_type_in_work_routes_to_planner(self, tmp_path):
         """An empty subagent_type (defaults to generic) is rewritten in work mode."""
@@ -230,7 +258,7 @@ class TestDispatchDiscipline:
             prompt="plan the implementation of the new export endpoint",
         )
         assert _decision(out)[0] == "allow"
-        assert _rewrite_target(out) == "writ-planner"
+        assert _rewrite_target(out) == "writ:writ-planner"
 
     def test_work_generic_ambiguous_denied(self, tmp_path):
         """A generic dispatch whose prompt maps to no specific role is DENIED (we ask rather
@@ -260,7 +288,7 @@ class TestDispatchDiscipline:
             prompt="explore the codebase and find where auth is handled",
         )
         assert _decision(out)[0] == "allow"
-        assert _rewrite_target(out) == "writ-explorer"
+        assert _rewrite_target(out) == "writ:writ-explorer"
 
     def test_unset_mode_named_role_allowed(self, tmp_path):
         """A named writ-* role is correct even with no mode set -> pass through."""
@@ -339,11 +367,11 @@ class TestTheAuditRowMatchesTheDecisionEmitted:
 
         emitted, _ = _decision(out)
         assert emitted == "allow"
-        assert _rewrite_target(out) == "writ-explorer", (
+        assert _rewrite_target(out) == "writ:writ-explorer", (
             "this case must be the reroute branch, or the assertion below proves nothing"
         )
         assert row["decision"] == emitted, (
-            f"the dispatch was allowed and rerouted to writ-explorer, but the audit "
+            f"the dispatch was allowed and rerouted to writ:writ-explorer, but the audit "
             f"stream recorded decision={row['decision']!r}"
         )
 
@@ -428,7 +456,7 @@ class TestTheAuditRowNamesTheAgentTypeDispatched:
         _seed_mode(tmp_path, "target-allow", "work")
         out = _run_hook(tmp_path, "target-allow", subagent_type="general-purpose",
                         prompt=self.EXPLORE_PROMPT)
-        assert _rewrite_target(out) == "writ-explorer", "must be the reroute branch"
+        assert _rewrite_target(out) == "writ:writ-explorer", "must be the reroute branch"
 
         rows = _audit_rows(tmp_path, "target-allow")
         assert [r["target"] for r in rows] == ["general-purpose"], (
@@ -477,3 +505,154 @@ class TestTheAuditRowNamesTheAgentTypeDispatched:
                             ("target-z", "writ-reviewer")}, (
             f"the audit target does not track the dispatched type: {recorded}"
         )
+
+
+ROLES = ("writ-explorer", "writ-test-writer", "writ-reviewer", "writ-planner", "writ-implementer")
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+COMMON = os.path.join(REPO, "bin", "lib", "common.sh")
+ROLE_PROMPTS = {
+    "writ-explorer": "explore the codebase structure and find where auth is handled",
+    "writ-test-writer": "write tests for the export endpoint",
+    "writ-reviewer": "review the diff for correctness",
+    "writ-planner": "create a plan for the export endpoint",
+    "writ-implementer": "implement the approved plan in the orders module",
+}
+
+
+def _dispatch_name(home, agent):
+    """Call the common.sh helper under an explicit HOME; return what it prints."""
+    res = subprocess.run(
+        ["bash", "-c", f'source "{COMMON}" && writ_agent_dispatch_name "{agent}"'],
+        env={**os.environ, "HOME": str(home)}, capture_output=True, text=True, timeout=20,
+    )
+    assert res.returncode == 0, res.stderr
+    return res.stdout.strip()
+
+
+class TestDispatchNameHelper:
+    """writ_agent_dispatch_name: bare when registered in ~/.claude/agents, else writ:<name>."""
+
+    def test_prints_the_prefixed_name_when_the_agent_file_is_absent(self, tmp_path):
+        assert _dispatch_name(_home(tmp_path), "writ-explorer") == "writ:writ-explorer"
+
+    def test_prints_the_bare_name_when_the_agent_file_exists(self, tmp_path):
+        _install_agents(tmp_path, ["writ-explorer"])
+        assert _dispatch_name(_home(tmp_path), "writ-explorer") == "writ-explorer"
+
+    def test_a_symlink_to_a_file_counts_as_registered(self, tmp_path):
+        agents = os.path.join(_home(tmp_path), ".claude", "agents")
+        os.makedirs(agents)
+        os.symlink(os.path.join(REPO, "agents", "writ-explorer.md"),
+                   os.path.join(agents, "writ-explorer.md"))
+        assert _dispatch_name(_home(tmp_path), "writ-explorer") == "writ-explorer"
+
+    def test_a_dangling_symlink_reads_as_not_registered(self, tmp_path):
+        agents = os.path.join(_home(tmp_path), ".claude", "agents")
+        os.makedirs(agents)
+        os.symlink(os.path.join(str(tmp_path), "missing.md"),
+                   os.path.join(agents, "writ-explorer.md"))
+        assert _dispatch_name(_home(tmp_path), "writ-explorer") == "writ:writ-explorer"
+
+    def test_another_roles_file_does_not_register_this_one(self, tmp_path):
+        _install_agents(tmp_path, ["writ-planner"])
+        assert _dispatch_name(_home(tmp_path), "writ-explorer") == "writ:writ-explorer"
+
+    def test_unset_home_under_set_u_prints_the_prefixed_name(self):
+        env = {k: v for k, v in os.environ.items() if k != "HOME"}
+        res = subprocess.run(
+            ["bash", "-c",
+             f'set -euo pipefail; source "{COMMON}"; writ_agent_dispatch_name writ-explorer'],
+            env=env, capture_output=True, text=True, timeout=20,
+        )
+        assert res.returncode == 0, res.stderr
+        assert res.stdout.strip() == "writ:writ-explorer"
+
+
+class TestRewriteTargetsTheInstalledName:
+    @pytest.mark.parametrize("role", ROLES)
+    def test_empty_home_rewrites_every_role_to_the_prefixed_form(self, tmp_path, role):
+        _seed_mode(tmp_path, "pfx", "work")
+        out = _run_hook(tmp_path, "pfx", subagent_type="general-purpose",
+                        prompt=ROLE_PROMPTS[role])
+        assert _decision(out)[0] == "allow"
+        assert _rewrite_target(out) == f"writ:{role}"
+
+    def test_a_home_with_the_explorer_file_rewrites_to_the_bare_name(self, tmp_path):
+        _install_agents(tmp_path, ["writ-explorer"])
+        _seed_mode(tmp_path, "bare", "work")
+        out = _run_hook(tmp_path, "bare", subagent_type="general-purpose",
+                        prompt=ROLE_PROMPTS["writ-explorer"])
+        assert _rewrite_target(out) == "writ-explorer"
+
+    def test_the_bare_explorer_file_does_not_bare_the_other_roles(self, tmp_path):
+        _install_agents(tmp_path, ["writ-explorer"])
+        _seed_mode(tmp_path, "mixed", "work")
+        out = _run_hook(tmp_path, "mixed", subagent_type="general-purpose",
+                        prompt=ROLE_PROMPTS["writ-implementer"])
+        assert _rewrite_target(out) == "writ:writ-implementer"
+
+    @pytest.mark.parametrize("installed", [False, True])
+    def test_the_context_names_the_same_name_updated_input_carries(self, tmp_path, installed):
+        if installed:
+            _install_agents(tmp_path, ["writ-explorer"])
+        _seed_mode(tmp_path, "ctx", "work")
+        out = _run_hook(tmp_path, "ctx", subagent_type="general-purpose",
+                        prompt=ROLE_PROMPTS["writ-explorer"])
+        target = _rewrite_target(out)
+        assert target == ("writ-explorer" if installed else "writ:writ-explorer")
+        assert f"governed Writ role '{target}'" in _rewrite_context(out)
+
+    def test_the_deny_reason_names_the_prefixed_roles_on_a_plugin_install(self, tmp_path):
+        _seed_mode(tmp_path, "deny-pfx", "work")
+        out = _run_hook(tmp_path, "deny-pfx", subagent_type="general-purpose",
+                        prompt="handle this one-off miscellaneous chore")
+        decision, reason = _decision(out)
+        assert decision == "deny"
+        assert "writ:writ-explorer (read-only)" in reason
+        assert "writ:writ-implementer" in reason
+
+    def test_the_deny_reason_names_the_bare_roles_when_both_are_installed(self, tmp_path):
+        _install_agents(tmp_path, ["writ-explorer", "writ-implementer"])
+        _seed_mode(tmp_path, "deny-bare", "work")
+        out = _run_hook(tmp_path, "deny-bare", subagent_type="general-purpose",
+                        prompt="handle this one-off miscellaneous chore")
+        decision, reason = _decision(out)
+        assert decision == "deny"
+        assert "writ:writ-" not in reason
+        assert "with writ-explorer (read-only) or writ-implementer" in reason
+
+    def test_an_incoming_prefixed_type_passes_through_untouched(self, tmp_path):
+        _seed_mode(tmp_path, "pass-pfx", "work")
+        out = _run_hook(tmp_path, "pass-pfx", subagent_type="writ:writ-explorer",
+                        prompt=ROLE_PROMPTS["writ-explorer"])
+        assert out.strip() == ""
+        rows = _audit_rows(tmp_path, "pass-pfx")
+        assert [(r["decision"], r["target"]) for r in rows] == [("allow", "writ:writ-explorer")]
+
+    @pytest.mark.parametrize("mode", ["conversation", "debug", "review"])
+    def test_ungoverned_modes_emit_nothing(self, tmp_path, mode):
+        _seed_mode(tmp_path, "ungov", mode)
+        out = _run_hook(tmp_path, "ungov", subagent_type="general-purpose",
+                        prompt=ROLE_PROMPTS["writ-explorer"])
+        assert out.strip() == ""
+
+    def test_every_rewrite_target_is_a_registered_form(self, tmp_path):
+        """Frontmatter name of agents/*.md, or plugin.json name + ':' + that name."""
+        with open(os.path.join(REPO, ".claude-plugin", "plugin.json")) as handle:
+            plugin = json.load(handle)["name"]
+        registered = set()
+        agents_dir = os.path.join(REPO, "agents")
+        for fname in os.listdir(agents_dir):
+            if not fname.endswith(".md"):
+                continue
+            with open(os.path.join(agents_dir, fname)) as handle:
+                front = handle.read().split("---")[1]
+            name = next(line.split(":", 1)[1].strip()
+                        for line in front.splitlines() if line.startswith("name:"))
+            registered |= {name, f"{plugin}:{name}"}
+        for i, (role, prompt) in enumerate(ROLE_PROMPTS.items()):
+            sid = f"reg{i}"
+            _seed_mode(tmp_path, sid, "work")
+            out = _run_hook(tmp_path, sid, subagent_type="general-purpose", prompt=prompt)
+            target = _rewrite_target(out)
+            assert target in registered, f"{role} rewrote to unregistered {target!r}"

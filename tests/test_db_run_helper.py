@@ -113,7 +113,9 @@ _GET_SUBAGENT_ROLE_QUERY = (
     "            RETURN r.role_id AS role_id, r.name AS name,\n"
     "                   r.prompt_template AS prompt_template,\n"
     "                   r.model_preference AS model_preference,\n"
-    "                   r.dispatched_by AS dispatched_by\n"
+    "                   r.effort_preference AS effort_preference,\n"
+    "                   r.dispatched_by AS dispatched_by,\n"
+    "                   r.write_scope AS write_scope\n"
     "            LIMIT 1\n        "
 )
 _GET_ALL_EDGES_CROSS_TYPE_QUERY = (
@@ -334,6 +336,17 @@ class _FakeSession:
         if self._results:
             return self._results.pop(0)
         return _FakeResult()
+
+    async def execute_write(self, work, *args, **kwargs):
+        """Managed-write entry point, mirroring AsyncSession.execute_write.
+
+        Invokes the unit of work with this session standing in for the
+        transaction, so a query routed through `_write_single` lands in the same
+        `calls` list as a `_run_single` one and every query/params assertion in
+        this file keeps holding. The real driver re-invokes the work on a
+        transient error; nothing here raises one, so it runs exactly once.
+        """
+        return await work(self, *args, **kwargs)
 
 
 class _FakeDriver:
@@ -562,7 +575,12 @@ class TestGetSubagentRole:
             "name": "writ-explorer",
             "prompt_template": "explore the codebase",
             "model_preference": "sonnet",
+            "effort_preference": "medium",
             "dispatched_by": "orchestrator",
+            # Cycle M: the role's declared write scope, projected by the same clause.
+            # A list here, not None, so the projection assertion below distinguishes a
+            # declared scope from the absent case rather than agreeing on two omissions.
+            "write_scope": ["plan.md", "capabilities.md"],
         }
         return _FakeRecord({**defaults, **overrides})
 
@@ -573,6 +591,23 @@ class TestGetSubagentRole:
             {"query": _GET_SUBAGENT_ROLE_QUERY, "params": {"name": "writ-explorer"}}
         ]
 
+    def test_plugin_prefixed_name_is_stripped_before_the_query(self) -> None:
+        conn, calls = _make_conn(_FakeResult(single=self._row()))
+        asyncio.run(conn.get_subagent_role("writ:writ-explorer"))
+        assert calls == [
+            {"query": _GET_SUBAGENT_ROLE_QUERY, "params": {"name": "writ-explorer"}}
+        ]
+
+    def test_only_one_plugin_prefix_is_stripped(self) -> None:
+        conn, calls = _make_conn(_FakeResult(single=None))
+        asyncio.run(conn.get_subagent_role("writ:writ:writ-explorer"))
+        assert calls[0]["params"] == {"name": "writ:writ-explorer"}
+
+    def test_another_namespace_is_not_stripped(self) -> None:
+        conn, calls = _make_conn(_FakeResult(single=None))
+        asyncio.run(conn.get_subagent_role("other:writ-explorer"))
+        assert calls[0]["params"] == {"name": "other:writ-explorer"}
+
     def test_returns_the_projection_dict(self) -> None:
         conn, _calls = _make_conn(_FakeResult(single=self._row()))
         result = asyncio.run(conn.get_subagent_role("writ-explorer"))
@@ -581,7 +616,9 @@ class TestGetSubagentRole:
             "name": "writ-explorer",
             "prompt_template": "explore the codebase",
             "model_preference": "sonnet",
+            "effort_preference": "medium",
             "dispatched_by": "orchestrator",
+            "write_scope": ["plan.md", "capabilities.md"],
         }
 
     def test_returns_none_when_no_role_matches(self) -> None:
@@ -983,8 +1020,11 @@ class TestWritesAdoptRunSingle:
     def test_method_calls_self_run_single_not_inline_session(self, name: str) -> None:
         method = getattr(Neo4jConnection, name)
         source = inspect.getsource(method)
-        assert "self._run_single(" in source, (
-            f"{name} has not been migrated to self._run_single(...) yet "
+        # Either shared runner satisfies this: the point is that the method does
+        # not hand-roll a session. Record writes use the _write_single variant,
+        # which adds the driver's managed retry on top of the same one-query shape.
+        assert "self._run_single(" in source or "self._write_single(" in source, (
+            f"{name} has not been migrated to a shared runner yet "
             "(Wave-3 Cycle B2)"
         )
         assert "await session.run(" not in source, (

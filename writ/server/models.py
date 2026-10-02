@@ -1,16 +1,23 @@
 """Writ HTTP API -- Pydantic request models (PY-PYDANTIC-001).
 
-All 23 request-body models for the FastAPI service live here, moved verbatim
+The request-body models for the FastAPI service live here, moved verbatim
 from the pre-split writ/server.py. This module imports NOTHING from writ.server,
 so it cannot participate in an import cycle; writ/server/__init__.py re-exports
 these names so `from writ.server import QueryRequest` keeps working.
+
+NO MODEL HERE MAY DECLARE EXACTLY A STRING `key` AND A STRING `value`. That is the
+arbitrary-key setter shape, and the one that existed (SessionUpdateRequest, for a
+route with no callers) let any local process write any string-valued key of the
+session cache, including the gate inputs `mode` and `current_phase`. A permitted
+operation is a named route with a typed body; see tests/test_daemon_authorization.py,
+which fails on the shape rather than on the name.
 """
 
 # writ-auth-scan: internal-service
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -67,8 +74,12 @@ class PromptBundleRequest(BaseModel):
     session_id: str
     mode: str = ""
     prompt: str = ""          # keyword-extracted prompt: query text + companion prompt + always-on context
-    effort: str = ""
     always_on_filter: bool = True
+    # Channel 1 (the ranked /query pool) only. An orchestrator master turns it off so
+    # the shared path still delivers the always-on floor and the methodology companion,
+    # which is why this is a per-channel field on the existing request rather than a
+    # second endpoint or a second render path.
+    include_ranked: bool = True
     # The per-prompt hot path. Forwarded to the internal channel-1 QueryRequest,
     # which dropped the project entirely before this cycle: a fix that stopped at
     # /query would have tested green and left the route that runs on every prompt
@@ -99,6 +110,28 @@ class FeedbackRequest(BaseModel):
 
     rule_id: str
     signal: str
+
+
+class FeedbackSignal(BaseModel):
+    """One item of a POST /feedback/batch body."""
+
+    rule_id: str
+    signal: Literal["positive", "negative"]
+
+
+class FeedbackBatchRequest(BaseModel):
+    """Request body for POST /feedback/batch.
+
+    `signal` is a Literal, so one invalid item fails the whole request with 422 and
+    nothing is applied. The cap bounds one SessionEnd's queue, which is the loaded
+    rules of one session.
+    """
+
+    signals: list[FeedbackSignal] = Field(default_factory=list, max_length=1000)
+    # Content-addressed id of this batch (the client's sha256 over session and signals).
+    # When given, the server records it in the same transaction as the increments, so a
+    # resend of a batch whose answer was lost is answered from the record, not applied.
+    batch_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class ConflictsRequest(BaseModel):
@@ -163,15 +196,6 @@ class MemoryRecordRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class SessionUpdateRequest(BaseModel):
-    """Request body for POST /session/{session_id}/update."""
-
-    model_config = {"strict": True}
-
-    key: str
-    value: str
-
-
 class SessionModeSetRequest(BaseModel):
     """Request body for POST /session/{session_id}/mode."""
 
@@ -192,6 +216,18 @@ class SessionFormatRequest(BaseModel):
     """Request body for POST /session/format."""
 
     query_response: dict[str, Any]
+
+
+class SubagentStartContextRequest(BaseModel):
+    """Request body for POST /subagent/start-context (writ-subagent-start.sh).
+
+    An empty `role` means the hook did not observe one, so no role lookup is spent.
+    """
+
+    query: str
+    budget_tokens: int = 2000
+    project_root: str = ""
+    role: str = ""
 
 
 class SessionAutoFeedbackRequest(BaseModel):
@@ -242,6 +278,8 @@ class PreWriteCheckRequest(BaseModel):
     skill_dir: str = ""
     file_path: str = ""
     prefer_rule_ids: list[str] | None = None
+    # The dispatching session when the writer is a sub-agent, else "".
+    parent_session_id: str = ""
 
 
 class SessionAdvancePhaseRequest(BaseModel):
@@ -260,6 +298,17 @@ class SessionAdvancePhaseRequest(BaseModel):
     # which refused every advance). The daemon cannot substitute its own cwd: that is
     # Writ's install dir. Optional, so existing callers keep today's behavior.
     cwd: str = ""
+
+
+class SessionPromotionReviewRequest(BaseModel):
+    """Request body for POST /session/{session_id}/promotion-review.
+
+    Surfacing a candidate is what makes the human its approver rather than a veto switch
+    reacting to an id, and it is also what records the candidate the next approval binds
+    to. One field: the route derives everything else from the graph.
+    """
+
+    candidate_id: str | None = None
 
 
 class SessionPromoteCandidateRequest(BaseModel):
@@ -341,14 +390,16 @@ __all__ = [
     "PromptBundleRequest",
     "ProposeRequest",
     "FeedbackRequest",
+    "FeedbackSignal",
+    "FeedbackBatchRequest",
     "ConflictsRequest",
     "CommitCaptureRequest",
     "GitHooksAutoInstallRequest",
     "RecallRequest",
-    "SessionUpdateRequest",
     "SessionModeSetRequest",
     "SessionCanWriteRequest",
     "SessionFormatRequest",
+    "SubagentStartContextRequest",
     "SessionAutoFeedbackRequest",
     "SessionAddViolationRequest",
     "SessionInvalidateGateRequest",

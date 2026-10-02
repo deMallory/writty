@@ -39,30 +39,33 @@ import time
 # Grant lives for one focused stretch of work, not the whole session.
 GRANT_TTL_SECONDS = 1800
 
-# Exact clauses only. Each names BOTH the manual nature and the concession, so
-# none of them can appear by accident in ordinary conversation.
+# ONE phrase, and it must be the WHOLE prompt. By user directive.
+#
+# This list held twelve clauses and was tested with `in`, i.e. substring containment. The
+# comment here used to claim they "cannot appear by accident in ordinary conversation",
+# which was false in the way that matters: exact strings matched as substrings of an
+# arbitrary prompt appear by accident easily. It happened. A message ASKING for this
+# change quoted the phrase as an example and minted a real thirty-minute grant.
+#
+# The fix is the match, not the list: equality against the normalized whole prompt, so a
+# sentence that merely discusses the phrase cannot concede anything. The list stays a
+# tuple so a future addition is a one-line change, but every entry must stay a complete
+# utterance a user would type alone and mean.
 GRANT_PHRASES = (
-    'manual testing approved',
     'manual test approved',
-    'manual tests approved',
-    'manual verification approved',
-    'approve manual testing',
-    'approved for manual testing',
-    'i will test manually',
-    "i'll test manually",
-    'i will test it manually',
-    "i'll test it manually",
-    'i will test this manually',
-    "i'll test this manually",
 )
 
-# Same default as writ/session/cache.py: one user-level store, never install-relative.
-_DEFAULT_CACHE_DIR = os.path.join(os.path.expanduser('~'), '.cache', 'writ', 'session')
+_SKILL_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _SKILL_ROOT not in sys.path:
+    sys.path.insert(0, _SKILL_ROOT)
+# Imports nothing but os, so this module stays stdlib-only.
+from writ.shared.state_root import session_dir  # noqa: E402
 
 
 def cache_dir():
-    """Resolved at call time so WRIT_CACHE_DIR overrides work in tests."""
-    return os.environ.get('WRIT_CACHE_DIR', _DEFAULT_CACHE_DIR)
+    """Resolved at call time so WRIT_CACHE_DIR overrides work in tests. The one definition is
+    writ/shared/state_root.py::session_dir (WRIT_CACHE_DIR, else the XDG state root)."""
+    return session_dir()
 
 
 def grant_path(session_id):
@@ -74,12 +77,17 @@ def is_grant_phrase(prompt):
 
     Pure, fail-closed: any internal error returns False, so a defect here
     degrades to "no grant", which keeps the gate shut.
+
+    EQUALITY, NOT CONTAINMENT. This compared with `in` and so fired from inside any
+    sentence, including the one that asked for this change. Whitespace collapsing and
+    lowercasing stay, because they normalize how a user types rather than what they said;
+    the containment test is what let a discussion of the phrase become a concession.
     """
     try:
         text = (prompt or '').lower()
-        # Collapse whitespace so a line-wrapped sentence still matches.
+        # Collapse whitespace so a line-wrapped utterance still matches.
         text = re.sub(r'\s+', ' ', text).strip()
-        return any(phrase in text for phrase in GRANT_PHRASES)
+        return text in GRANT_PHRASES
     except Exception:
         return False
 
