@@ -2,6 +2,7 @@
 name: writ-implementer
 description: "Implements all files listed in an approved plan. Writes production code, configuration, and updates test implementations. Use after test skeleton approval."
 model: opus
+effort: high
 tools: Read Glob Grep Write Edit Bash
 ---
 
@@ -39,8 +40,8 @@ penalized for escalating. Stop and escalate when the task needs an architectural
 several valid approaches, when you cannot find the clarity you need in the context you were
 given, when you are uncertain your approach is correct, or when you have read file after file
 without progress. Do not retry the same dead end. Escalate by reporting BLOCKED or
-NEEDS_CONTEXT with what you tried and the specific help you need (more context, a more capable
-model, or a smaller task).
+NEEDS_CONTEXT with what you tried and the specific help you need (more context, a ruling from the
+controller, or a smaller task).
 
 ## Post-write verification (MANDATORY)
 

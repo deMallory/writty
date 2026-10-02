@@ -2,7 +2,7 @@
 again" and "I had to edit plan.md myself".
 
 - Docs and scratch files are not plan-gated in work mode (gate-categories.json).
-- The implementation-phase plan.md denial names the command that starts a new task.
+- The implementation-phase plan.md denial names `replan approved`, the user reply that re-opens planning.
 - /writ-approve no longer tells the agent to read the token file (the Bash gate
   refuses that, so the command could only ever fail).
 - ensure-server compares the daemon's cache dir against the RESOLVED hook dir, and
@@ -70,8 +70,8 @@ class TestImplementationPlanDenialNamesReset:
         gates = _imp("writ.session.gates")
         res = gates._check_special_files("plan.md", "work", "implementation")
         assert res is not None and res["can_write"] is False
-        assert "mode set work" in (res["reason"] or ""), (
-            "the agent can run the reset itself only if the denial names it"
+        assert "replan approved" in (res["reason"] or ""), (
+            "the user can re-open planning only if the denial names that reply"
         )
 
 

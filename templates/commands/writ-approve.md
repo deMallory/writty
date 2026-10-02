@@ -25,6 +25,12 @@ The detector has three tiers (`bin/lib/approval_match.py`):
   "approved", that turn is an exact approval and the hook advances the gate.
 - **none**: not approval-related. Nothing happens.
 
+On Grok Build, pressing `a` only leaves plan mode. Typing `/writ-approve` is the exact
+approval. `auto-approve-gate.sh` copies `~/.grok/sessions/.../plan.md` onto repo-root
+`plan.md` before it reads the fingerprint and advances the gate. Do not run
+`writ grok materialize-plan` from this command: a copy after that read changes the plan
+the token was bound to, and the advance is refused.
+
 ## Procedure
 
 1. Check the current phase via `GET /session/$SESSION_ID/current-phase`. The response also

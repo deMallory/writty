@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.fixtures.token_audit_helpers import load_token_audit
+from tests.fixtures.token_audit_helpers import isolate_log_env, load_token_audit
 from tests.fixtures.token_audit_helpers import usage as _usage
 from tests.fixtures.token_audit_helpers import write_transcript as _write_transcript
 
@@ -23,6 +23,12 @@ SKILL_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 def _ta():
     return load_token_audit(force_reimport=False)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_log_env(tmp_path, monkeypatch):
+    """token-audit CLI runs load subagent_usage summaries; never from the real stream."""
+    return isolate_log_env(monkeypatch, tmp_path)
 
 
 class TestTokenAudit:
@@ -143,3 +149,8 @@ class TestTokenAudit:
         except (ValueError, Exception):  # old Click mixes stderr into output
             err = ""
         assert "SCHEMA CANARY FAILED" in (result.output + err)
+
+    def test_cli_log_env_is_sandboxed_under_tmp(self, tmp_path: Path):
+        assert Path(os.environ["WRIT_LOG_ROOT"]).is_relative_to(tmp_path)
+        assert os.environ["WRIT_LOG_PROJECT"] == "token-audit-test"
+        assert "WRIT_FRICTION_LOG" not in os.environ

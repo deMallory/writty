@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Shared, singleton-safe Writ server start. Sourced by scripts/ensure-server.sh and
-# hooks/scripts/session-start-bootstrap.sh -- this file defines functions only, no top-level
+# Shared, singleton-safe Writ server start, plus the Neo4j container start. Sourced by
+# scripts/ensure-server.sh, both bootstraps and hooks/scripts/session-start-bootstrap.sh; this file defines functions only, no top-level
 # side effects. writ_ensure_server() guards the check-then-start critical section with flock so
 # concurrent SessionStarts (two Claude windows opening together, or both callers firing close in
 # time) launch the daemon EXACTLY once. Port-bind remains the final backstop.
@@ -29,13 +29,34 @@ fi
 # purpose: with curl absent this probe was ALWAYS false, which is not daemon-down
 # equivalent. It means "daemon down while actually up", so every SessionStart fired a
 # doomed second `writ serve` against an already-bound port.
+#
+# The body is kept in _WRIT_LAST_HEALTH (empty for an injected probe or a failed fetch) so
+# the already-running branch below reads cache_dir from it instead of fetching /health
+# again. The status is the assignment's, which is writ_http_get's.
 writ_server_health() {
     : "${WRIT_HOST:=localhost}" "${WRIT_PORT:=8765}"
+    _WRIT_LAST_HEALTH=""
     if [ -n "${WRIT_HEALTH_CMD:-}" ]; then
         ${WRIT_HEALTH_CMD} >/dev/null 2>&1
     else
-        WRIT_HTTP_CONNECT_TIMEOUT=0.1 WRIT_HTTP_TIMEOUT=1 \
-            writ_http_get "http://${WRIT_HOST}:${WRIT_PORT}/health" >/dev/null 2>&1
+        _WRIT_LAST_HEALTH=$(WRIT_HTTP_CONNECT_TIMEOUT=0.1 WRIT_HTTP_TIMEOUT=1 \
+            writ_http_get "http://${WRIT_HOST}:${WRIT_PORT}/health" 2>/dev/null)
+    fi
+}
+
+# Start the production Neo4j container, surfacing docker's error instead of swallowing it.
+#
+# Container first, compose second. container_name is fixed (writ-neo4j), and until
+# docker-compose.yml declared `name: writ` the Compose project came from the install directory
+# (1.8.0 gave "180"), so `compose up` from any other version dir failed on the name conflict and
+# an `|| true` hid it. `docker start` needs no project and is a no-op on a running container, so a
+# container created under any project keeps working. Compose runs only when there is no
+# container at all. Returns docker's status; stdout is dropped, stderr passes through.
+writ_neo4j_start() {
+    if docker container inspect writ-neo4j >/dev/null 2>&1; then
+        docker start writ-neo4j >/dev/null
+    else
+        docker compose -f "$1" up -d neo4j >/dev/null
     fi
 }
 
@@ -72,6 +93,16 @@ _writ_start_locked() {
             WRIT_PORT="$WRIT_PORT" WRIT_HOST="$WRIT_HOST" bash "${WRIT_DIR}/scripts/stop-server.sh" >/dev/null 2>&1 || true
             # fall through to start a correctly-pinned daemon
         else
+            # Not restarting: systemd owns restarts (tests/test_fix2_cache_alignment.py pins
+            # this off by default). But a daemon reading a different session directory serves
+            # every gate from the wrong caches, which is exactly what a daemon started before an
+            # upgrade does, so say so once, with the command that fixes it. The body is the
+            # one writ_server_health just fetched, in this same subshell.
+            local running_nr
+            running_nr=$(printf '%s' "${_WRIT_LAST_HEALTH:-}" | json_transform '.cache_dir // ""' "d.get('cache_dir') or ''" || true)
+            if [ -n "$running_nr" ] && [ -n "${WRIT_CACHE_DIR:-}" ] && [ "$running_nr" != "$WRIT_CACHE_DIR" ]; then
+                echo "[Writ] Warning: the daemon on port $WRIT_PORT reads session state from $running_nr, but this install uses $WRIT_CACHE_DIR. Restart it (systemctl --user restart writ-server, or scripts/stop-server.sh then scripts/ensure-server.sh) so gate decisions see this session's mode." >&2
+            fi
             echo "[Writ] Server already running on port $WRIT_PORT" >&2
             return 0
         fi
@@ -133,14 +164,13 @@ writ_default_server_log() {
     #   2. $WRIT_LOG_ROOT/server.log       -- the same override the Python router honors
     #   3. $CLAUDE_PLUGIN_DATA/server.log  -- plugin install: survives an upgrade that
     #                                         rewrites CLAUDE_PLUGIN_ROOT
-    #   4. $HOME/.cache/writ/logs/server.log -- standalone: the same user-level root the
-    #                                         Python router defaults to, never install-relative
+    #   4. <state_root>/logs/server.log    (standalone; the root comes from bin/lib/common.sh)
     #
     # Off /tmp deliberately. systemd's tmpfiles.d declares `D /tmp`, which EMPTIES it at
     # boot; that is exactly how the session caches were lost (see the mode-wipe root
     # cause), and a daemon log destroyed on every reboot is the one you want after a
-    # reboot-triggered failure. Resolved in bash from WRIT_DIR rather than by asking
-    # writ.shared.logging, because this runs on the per-prompt hook path via
+    # reboot-triggered failure. Resolved in bash from the state root common.sh computed
+    # rather than by asking writ.shared.logging, because this runs on the per-prompt hook path via
     # writ-rag-inject.sh and a python spawn there costs ~26ms.
     if [ -n "${WRIT_LOG:-}" ]; then
         printf '%s' "$WRIT_LOG"
@@ -149,7 +179,7 @@ writ_default_server_log() {
     elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
         printf '%s/server.log' "${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}"
     else
-        printf '%s/.cache/writ/logs/server.log' "$HOME"
+        printf '%s/logs/server.log' "${_WRIT_STATE_ROOT:-${HOME:-}/.local/state/writ}"
     fi
 }
 

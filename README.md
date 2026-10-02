@@ -3,53 +3,46 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-**Governance for coding agents.**
+**Claude Code can forget your rules. Writ can refuse the action.**
 
-Writ is a governance runtime for Claude Code. It moves important engineering controls outside the model, where they can be enforced, retrieved, and remembered independently of what the model happens to keep in context.
+Writ is a local governance, context, and continuity runtime for Claude Code. It enforces selected boundaries when tools run, delivers the rules and methodology relevant to the work happening now, and preserves project memory and decision history across sessions.
 
-**Enforce. Inform. Remember.**
+| Writ provides | What that means |
+|---|---|
+| **Action** | Tool-time controls can allow, pause, confirm, or refuse an attempted action. |
+| **Context** | Relevant rules, skills, and methodology arrive when the current task, file, tool, or workflow phase requires them. |
+| **Continuity** | Decisions and project memory persist across sessions, while best-effort handoffs preserve active workflow state across context compaction. |
 
-**Enforce.** Selected workflow boundaries run as code at tool time. A Work-mode implementation can be stopped until a human has approved its plan and its tests, and credential writes and other protected actions have their own guards in every mode.
+Ready to try it? Jump to [Install](#install), or read [how enforcement works](#how-enforcement-works).
 
-**Inform.** Rules reach the agent when they apply, based on the task, file, tool, and workflow phase in front of it. Seven universal process and gate rules form a small always-on floor. Other mandatory rules are scoped to the actions they protect, while the rest of the rulebook is retrieved by relevance. Rules that do not apply stay out of context.
+## Why it exists
 
-**Remember.** Approved plans, the rule IDs that governed them, changed files, and commits become connected provenance: recorded in the graph, pushed onto pull requests and git notes, and compiled into a briefing for future sessions. The record answers a governance question: under what approved plan and governing rules did this change occur, and which files and commit resulted?
+An instruction and an enforcement point are different things. A system prompt, a `CLAUDE.md`, a methodology document: all of them ask the model to remember. That works until context fills, a session compacts, or the model decides the rule does not apply this time.
 
-Most coding-agent systems ask the model to remember the process. Writ puts selected parts of the process around the model instead.
+Writ does not replace instructions. It adds the second primitive for the parts of your process you choose to gate, so those parts hold whether or not the model is still paying attention.
+
+## How enforcement works
+
+You tell Writ what kind of work you are doing. That is the mode. Conversation and review remain lightweight. Investigate and debug add evidence tracking and activity-specific controls. In Work mode, source writes are blocked until a human opens the plan and test gates.
+
+Claude tries to write code before a plan has been approved:
 
 ```text
-                         W R I T
-
-  User request
-      |
-      v
-  Engineering rules -----+
-  Human approvals -------+
-  Prior decisions -------+--> Writ --> Claude Code
-                                         |
-                                         | tries an action
-                                         v
-                                  Writ checks the action
-                                         |
-                                 allow / ask / refuse
-                                         |
-                                         v
-                                     Repository
-                                         |
-                                         v
-                                 decision provenance
+[ENF-GATE-PLAN] ALL writes blocked -- plan not yet approved. DO NOT attempt more writes.
+Present your plan to the user and say: "Say approved to proceed."
+Wait for the user to say "approved" before attempting ANY file writes.
 ```
 
-Writ governs three things. **Action**: what the agent is permitted to do. **Context**: which engineering rules govern the current action. **Continuity**: why the action was approved and what future sessions should know. Hooks and gates are the Action mechanism, retrieval over the rule graph is the Context mechanism, and decision provenance is the Continuity mechanism.
+You read the plan and type `approved`. That opens the first gate. The second gate requires at least one assertion-bearing test. You review the tests and approve them too. After both gates open, implementation writes are allowed while the remaining safeguards continue to operate.
 
-Already convinced? [Jump to install](#install). Already installed? [`HANDBOOK.md`](HANDBOOK.md) is the operator manual.
+The same boundary layer also covers credential paths, writes made through the shell, recognized external-data transfers, debugging, review findings, and sub-agent authorization.
 
 ## What using it feels like
 
 You tell Writ what kind of work you are doing. That is the mode. In the read-only modes (conversation, review, investigate) Writ hands over relevant rules and otherwise stays quiet. In **Work mode**, writes to your source code are blocked until two gates open:
 
 ```text
-[ENF-GATE-PLAN] Write blocked. Approve plan.md first.
+[ENF-GATE-PLAN] ALL writes blocked -- plan not yet approved.
 ```
 
 You read the plan. You type "approved." The gate opens. The next gate wants a test file that actually asserts something. Same pattern: write it, approve it, and the gate opens. After both gates clear, the AI writes implementation code freely.
@@ -100,101 +93,159 @@ The main claim is not proven yet. Everything measured so far shows what the sear
 ---
 
 **Everything below this point assumes you write code.** The rest of this document is written for engineers evaluating whether to run it, and stops rationing vocabulary.
+**The agent cannot approve itself.** Opening a gate spends a one-time secret, and that secret is created only when *your own typed message* matches an approval phrase. An agent that tries finds nothing to spend, is refused, and the attempt is written to the audit log. Editing the plan after approving it re-arms both gates, so an approval covers the plan you actually read.
 
 ## Install
 
-**You do not have to install this yourself.** If you are reading this you already use Claude Code, which means you already have something that reads instructions and runs commands. Point it at this page and ask it to install Writ. It handles the setup; the one piece you may need to do by hand is installing Docker, the same way you would install any other application.
+**You will need Claude Code, Python 3.11 or newer, and Docker.** Python is a real requirement, not a packaging convenience: the enforcement logic runs in it. Docker runs the graph database that stores Writ's rules, methodology, project memory, and decision records.
 
-**You will need:** Python 3.11 or newer and Docker (the graph database runs in a container). That is the whole list. `jq` and `curl` are used when present and fall back to Python when absent, so a machine without them installs fine.
+### Let Claude Code do it
+
+You already have an agent that reads instructions and runs commands. Point it at this page:
+
+> Install Writ from https://github.com/infinri/Writ. Verify that Python 3.11+ and Docker are available, follow the plugin installation instructions, run the bootstrap command Writ prints after Claude Code starts, restart Claude Code, and verify that the Writ service is healthy. Stop and explain anything that requires me to install or approve it manually.
+
+Claude Code can do the project setup. It cannot install Docker or Python for you, so if either is missing you will be asked to handle that part yourself.
+
+### Or run it yourself
 
 ```shell
 claude plugin marketplace add infinri/Writ
 claude plugin install writ@writ
 ```
 
-Open Claude Code once. It detects the un-bootstrapped install and prints one absolute command on its own line, ready to paste:
+Open Claude Code once. It notices the un-bootstrapped install and prints a single absolute command on its own line, ready to paste. Run it, then restart Claude Code.
+
+That one script does the rest: environment, database, rules, background service, permissions. It is idempotent, so re-running it after an update is the whole update procedure.
+
+### Check it worked
 
 ```shell
-bash /path/it/prints/scripts/bootstrap-plugin.sh
+writ status
 ```
 
-Run it and restart Claude Code. That one script does everything: environment, database, rules, background service, permissions, and workflow instructions. It is idempotent, and re-running it after an update is the whole update procedure. Check it worked with `curl http://localhost:8765/health`.
+Nothing breaks while you are partway through setup. Hooks stay out of the way until the install finishes, sessions are never blocked, and the startup hook prints what is still missing. Both install paths and troubleshooting are in [`docs/install.md`](docs/install.md).
 
-Nothing breaks while you are partway through setup. Hooks stay out of the way until the install finishes, sessions are never blocked, and the startup hook prints exactly what is still missing. Full install detail, the manual path, and troubleshooting live in [`docs/install.md`](docs/install.md). Once it is running, [`HANDBOOK.md`](HANDBOOK.md) is the operator manual: modes, gates, helper AIs, the rulebook, and the command line.
+## What Writ controls
 
-## Enforcement
+### Action
 
-You have probably watched this happen. You tell the AI how you want things done: write the test first, follow the pattern already in the file, ask before touching the database. It agrees. It works that way for a while. Then somewhere in a long session it stops, and nothing announces that it stopped. You find out in review, or you find out in production, or you do not find out.
+| | |
+|---|---|
+| **Plan and test gates** | Work mode requires an approved plan, then approved tests, before implementation writes are allowed. |
+| **Human-only approval** | The approval token is minted only from your typed words. The agent has no path to creating one, and the attempt is recorded when it tries. |
+| **Credential protection** | Writes to keys, `.env` files, and SSH material are refused in every mode. The path is classified without the file ever being opened. |
+| **Shell writes** | Writes made through redirection, `tee`, `cp`, or `sed -i` go through the same check as tool writes, not a separate weaker one. |
+| **External data** | Outbound commands carrying a payload to a host outside your allowlist ask for confirmation. Writ cannot tell what a payload contains, so it asks rather than guessing. |
+| **Debug gate** | In debug mode, source edits are refused until a root cause is written down. The refusal names the file and section that lifts it. |
+| **Review escalation** | A serious review finding turns the next commit into a confirmation naming the unresolved findings. The agent cannot clear its own verdict. |
+| **Sub-agent authorization** | A helper agent is refused any path its orchestrator would be refused at that moment, and each role carries its own write scope. |
+| **Completion checks** | Pending tests, unresolved rule violations, and failed quality verification can stop a turn before the agent declares the work complete. |
+| **Audit records** | What was allowed, what was refused, and why, in a stream kept separate from operational logs. |
 
-That is not the AI being careless. An instruction in context is still an instruction: it can be compacted away, diluted by newer context, misapplied, or simply ignored, and nothing about putting a rule in the prompt makes violating it mechanically impossible. Instructions and enforcement are different primitives, and only one of them can refuse.
+### Context
 
-Writ supplies the second primitive for the parts of the process you choose to gate. It sits between the AI and your files. In Work mode, a write attempted before you have approved a plan is refused. Not discouraged, refused, by code that runs whether or not the AI is still paying attention to what you said an hour ago.
+Writ delivers both engineering rules and reusable methodology, including skills, playbooks, techniques, and known failure patterns. Delivery is driven by what is happening now: the prompt, the file being written, the tool running, and the workflow phase.
 
-**Enforcement solves only half the problem.** A large rulebook cannot simply be pasted into every turn, so Writ also moves rule selection outside the model. It looks at the work happening now and delivers only the rules that apply. Tool-time checks do not depend on the model remembering the process, and contextual delivery lets the rulebook grow without the cost of every turn growing with it.
+| | |
+|---|---|
+| **Selective delivery** | Rules arrive when they apply, so the rulebook can grow without every turn growing with it. |
+| **A floor that cannot be ranked away** | Mandatory content is held out of the relevance ranking entirely and delivered on its own channel, so no retuning can drop it. |
+| **Hybrid retrieval** | Combines exact-term and semantic search, then uses graph relationships to bring in connected guidance. |
+| **Abstention** | When nothing is relevant enough, Writ delivers nothing rather than filling the turn with noise. |
+| **Tool-output compression** | Large Write and Edit responses are stripped of redundant full-file echoes while preserving the patch and fields Claude still needs. |
+| **Budgets** | Per-session and per-channel limits, so context is spent rather than flooded. |
 
 Two boundaries hold no matter what, including when the background service is down and inside subagents. Writes to credential files (keys, `.env`, SSH material) are refused in every mode with no server involved, and so are reads: whatever the AI reads leaves your machine. Templates such as `.env.example` stay readable. And the approval token cannot be created or spent without a human keystroke, so **advancing the workflow and writing new rules into the rulebook halt even when raw file writes do not.**
+### Continuity
 
-**What a review finding does.** A recorded CRITICAL verdict turns the next `git commit` into a confirmation prompt naming the unresolved findings. It is a stop and ask, not an absolute block: you can confirm and commit anyway, and that choice is recorded in the audit log. The part that carries the weight is that the AI cannot clear its own verdict. Writing a review record directly is refused outright; verdicts are written only from the reviewer's own output, and the only route an AI has to lifting a block is to fix the findings and earn a fresh clean verdict. An unreadable verdict blocks the same way a critical one does. So the AI can be overruled by you, and cannot overrule you.
+Three different mechanisms, answering three different questions.
 
-## How the rules reach the AI
+| Question | Mechanism |
+|---|---|
+| *Why was this code changed?* | **Decision memory.** Approved plan, governing rules, changed files, and the resulting commit are linked mechanically, not inferred from the conversation. The record replays as a new-session briefing, as git notes, and on supported pull requests. `writ recall` reads it back. |
+| *What project knowledge did Claude save?* | **Auto-memory mirror.** Claude Code's own memory files are mirrored into the graph as they are written, scoped per project. `writ memory backfill`, `writ memory list`, and `writ memory audit` cover existing files, inspection, and scope errors. Deletions are tombstoned rather than destroyed. |
+| *Where was the agent when its context disappeared?* | **Best-effort compaction handoff.** When the conversation is compacted, Writ writes a derived record of mode, phase, approvals, the files the plan declared, the files actually written, unfinished items, and the rules that were loaded. The next prompt points the agent at it. |
 
 **The floor: rules that can never be dropped.** Thirty-two of the 297 shipped engineering rules are marked mandatory. (This fork also ships 39 editorial design rules, four of them mandatory; the counts below cover the engineering 32.) These are deliberately kept **out of the search index entirely** and delivered through a separate channel with its own budget. Seven of them carry universal scope and inject on every turn; the other 25 are scoped to writes and keyword-gated, so they arrive the moment a write matches them rather than every turn. That means no change to search ranking, no swap of the underlying model, and no retuning of anything can cause a mandatory rule to fall out of delivery because of ranking. A single definition in one file decides what belongs to the floor, and both the delivery code and the validation code read that same definition, so the two cannot drift apart. This closed a real bug where two parts of the system checked different fields and left 29 of 32 mandatory rules unreachable by either path.
+Writ keys these records by project and scopes its normal recall, memory, and retrieval paths accordingly. The shared rules and methodology corpus remains available across projects, by design.
 
-**Everything else is searched for.** Writ currently uses a five-stage retrieval pipeline over a Neo4j knowledge graph: narrow the candidates, keyword search, meaning-based search (so a rule about "SQL" surfaces for a question about "database queries"), a walk across the graph to pull in related rules, then weighted ranking. Those five stages are the ones listed at the top of [`writ/retrieval/pipeline.py`](writ/retrieval/pipeline.py), and each is designed to cover a different retrieval failure mode: keyword search catches exact terms, meaning-based search catches paraphrase, and the graph walk reaches rules that share no words with the query at all but are linked to a match. Keyword and meaning-based retrieval are measured as part of the full system; the incremental contribution of the graph traversal stage has not yet been isolated, and it is listed under Not measured below. If nothing matches well enough, the pipeline **returns nothing** rather than injecting noise.
+**The auto-memory mirror is not version history.** A memory record reflects its latest contents. `writ memory audit` reports scope and disk drift but intentionally performs no automatic repair.
 
-**The search fires on what is happening, not just what you typed.** Writ's hooks observe the session across the twelve Claude Code events they register for: prompts, file reads, writes, shell commands, subagent start and stop, compaction, and session lifecycle. They attach real context to the query: which file is being written, what is inside it, which tool is running, and what phase the workflow is in. A rule about SQL injection surfaces when the AI writes a file containing a query, not only when someone happens to type the word SQL.
+## Modes
 
-## Why not just use Agent Skills?
+| Mode | Purpose | Governance behavior |
+|---|---|---|
+| `conversation` | Discussion and brainstorming | No workflow gates |
+| `review` | Evaluate code against applicable rules | Adds no workflow gates and supplies relevant review guidance |
+| `investigate` | Research and codebase exploration | Captures web citations and command evidence, and reports whether sources span independent domains |
+| `debug` | Diagnose a specific failure | Blocks source edits until a root cause is written down; evidence and narrowing are recorded alongside it, but do not themselves gate the write |
+| `work` | Build or modify code | Requires an approved plan, then approved tests, before implementation |
 
-For a small number of behaviors, you probably should. [Anthropic's Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills) are simple, portable, and useful. If all you need is a handful of reusable instructions, Writ is unnecessary.
+**Dedicated reviewer.** Writ also ships a separate read-only reviewer that examines the actual diff from a fresh context and has no tool capable of editing the code.
 
-But Skills and governance are not the same mechanism, and the distinction is not something Anthropic's own engineering material leaves obscure.
+Modes can be suggested automatically, set explicitly, or switched temporarily. Switching out of Work and back restores your paused phase and approvals if the plan is unchanged, and re-arms both gates if it changed while you were away.
 
-Anthropic documents that every installed skill contributes metadata to the system prompt, then **Claude decides whether the skill is relevant** before loading its full `SKILL.md` into context. Anthropic also documents the cost of that design in its own [context-engineering guidance](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents): context is finite, recall degrades as context grows, every added token consumes part of the model's attention budget, and good context engineering means finding the smallest high-signal set of tokens that produces the desired behavior.
+## How rules evolve
 
-Anthropic documents the other half of the distinction too. In the Agent Skills article, it notes that some operations need the deterministic reliability of code rather than model generation. Claude Code's own [hooks documentation](https://code.claude.com/docs/en/hooks-guide) exposes `PreToolUse`, which runs before a tool executes and can deny the action outright. A denying hook still blocks the action even when Claude Code is running in a permission-bypass mode.
+Writ can record feedback and accept agent-proposed rules, but a proposal does not silently become policy. A candidate stays provisional until a human promotes it, and promotion spends the same one-time approval secret as everything else. The agent may propose. It cannot promote its own proposal.
 
-So the primitives already exist, and the tradeoff is already understood.
+This is a control that exists, not evidence that automatically proposed rules are effective.
 
-A Skill can say:
+## Day-to-day use
 
-> Write the test first.
+For a typical Work-mode change, two approvals: you read the plan and type `approved`, then you read the tests and type `approved`. After that the agent works without interrupting you, with one exception, which is a serious review finding adding a confirmation before the commit lands.
 
-A tool-time gate can say:
+The non-Work modes add no approval steps.
 
-> No. This write does not run until the test gate is open.
+Writ's rule corpus, project records, session state, and logs remain local. Optional Bitbucket Cloud synchronization sends per-file decision context only when configured. Installation downloads Python dependencies and the local embedding model. [`SECURITY.md`](SECURITY.md) documents the complete trust model.
 
-Those are different guarantees.
+For operators: `writ doctor` diagnoses a live install, `writ trust-ledger` records the skills, agents, and local MCP configuration you have accepted and reports when they change, and typed log streams separate governance decisions from operational noise.
 
-### "Mandatory" is not a property an instruction can give itself
+## Who it is for
 
-A skill can contain `MUST`, `REQUIRED`, `NEVER`, or `MANDATORY` as many times as its author wants. The model still has to discover the skill, load it, retain the relevant instruction, interpret it correctly, and choose the expected action.
+Engineers and engineering leads who need parts of a coding-agent workflow governed outside the model rather than left as instructions, and who can answer for the code afterward. Writ ships opinionated plan-first and test-driven defaults, with the mode and gate machinery underneath them.
 
-That is an instruction with forceful wording. It is not external enforcement.
+**Who it is not for.** If you need enforcement against an agent that is actively adversarial, this is not that tool. Writ constrains a cooperative agent. [`SECURITY.md`](SECURITY.md) writes the gaps down rather than glossing them.
 
-[Superpowers](https://github.com/obra/superpowers) makes the distinction unusually easy to see. It describes its workflows as mandatory, yet its own [porting guide](https://github.com/obra/superpowers/blob/main/docs/porting-to-a-new-harness.md) says the full bootstrap is injected into model context at the start of every session, calls that bootstrap "the entire integration," and states that without it the skill files are inert. The same guide treats automatic session-start injection as a non-negotiable requirement for a supported harness.
+The shipped rulebook is opinionated and reflects where its author has worked. Treat it as a working example rather than a universal standard; commands exist for adding and editing your own.
 
-That is not a criticism of the quality of its methodology. It is the architectural boundary of an instruction-driven methodology.
+## Limits
 
-A workflow does not become mandatory because the instructions describing it say that it is mandatory.
+These change what a block means, so they are stated here rather than buried.
 
-Writ draws the boundary somewhere else. If a checkpoint is important enough to call mandatory, Writ's position is that the model should not be the final authority over whether it happened. Selected checkpoints run outside the model and can refuse the action.
+- **When the background service is unreachable, hooks allow rather than block.** This is the specification, not a bug: an infrastructure outage must never lock you out of your own repository. Setting `WRIT_STRICT=1` inverts that for the write path.
+- **The gate can tell that a plan exists. It cannot tell whether the plan is any good.** The validators check shape, not thought. A plausible plan and a careful one look identical to a machine. Writ relocates oversight; it does not remove it.
+- **Some controls report rather than refuse.** The investigate-mode source check and the trust ledger record what they find and leave the judgment to you. The debug gate and the write gates refuse.
+- **The egress guard asks, it does not block.** It cannot tell whether an outbound payload carries repository material, so it surfaces the decision instead of guessing.
+- **Shell inspection is pattern-based, not a sandbox.** Writ recognizes common redirections, copy destinations, and interpreter one-liners, but it cannot detect every write assembled through wrappers, variables, modules, or `eval`. The known gaps are documented in [`SECURITY.md`](SECURITY.md).
 
-### The token incentive is worth saying out loud
+Two boundaries hold regardless, including when the service is down and inside sub-agents. Writes to credential files are refused in every mode with no server involved. And the approval token cannot be created or spent without a human keystroke, so advancing the workflow and writing new rules into the rulebook halt even when raw file writes do not.
 
-Anthropic's own engineering guidance says context is a finite resource, additional tokens consume attention, and unnecessary context should be reduced. Its Skills design uses progressive disclosure specifically to avoid loading everything at once.
+Pull request comments currently support Bitbucket Cloud only. The session briefing and git notes work anywhere.
 
-Anthropic's [API pricing](https://platform.claude.com/docs/en/about-claude/pricing) also bills input tokens.
+## Evidence
 
-That does **not** prove why Anthropic chose the product boundary it chose, and Writ makes no claim about anyone's private motive. It does create an incentive tension that users are allowed to notice: users benefit when governance requires less model context, while a token-priced API vendor earns revenue from inference usage.
+Writ distinguishes three kinds of claim, and so should you when reading anything here.
 
-Maybe the boundary exists because Skills prioritize simplicity and portability. Maybe it reflects product philosophy. Maybe economics are part of the picture. The public evidence cannot tell us which.
+- **Mechanisms that are implemented and testable.** The gates, the approval binding, the credential classifier, the handoff. You can read these in the source and trigger them yourself.
+- **Measured outcomes.** Retrieval quality, retrieval cost, and how rule text per turn behaves as the rulebook grows. Method, figures, and corrections live in [`SCALE_BENCHMARK_RESULTS.md`](SCALE_BENCHMARK_RESULTS.md), which owns those numbers so this page does not go stale carrying copies.
+- **Claims not yet demonstrated.** That an agent handed the right rule complies more often than one handed nothing. This is not demonstrated, and Writ runs no headless experiments to demonstrate it.
 
-What the public evidence *can* tell us is harder to dismiss: Anthropic knows context is costly, knows model-side instruction following is not the same thing as deterministic code, and already ships a tool-time mechanism capable of hard denial. Writ therefore does not treat the instruction-versus-enforcement distinction as an obscure limitation nobody could have seen.
+Two things are independently checkable before you install anything. [`docs/pressure-runs/`](docs/pressure-runs/) holds adversarial runs against real Claude Code sessions, each with the prompt, the full transcript, every enforcement decision as raw log lines, and a graded analysis of which rules held and which were bypassed, with the failures written up as failures. [`docs/monthly-reviews/`](docs/monthly-reviews/) holds operational reviews built from the system's own audit log.
 
-Readers can decide for themselves why the product boundary remains where it is.
+## Documentation
 
-### The trigger problem is larger than wording
+| | |
+|---|---|
+| [`HANDBOOK.md`](HANDBOOK.md) | The operator manual. Modes, gates, helper agents, the rulebook, the command line. |
+| [`docs/install.md`](docs/install.md) | Both install paths, background service, troubleshooting. |
+| [`docs/instructions-vs-enforcement.md`](docs/instructions-vs-enforcement.md) | Why an instruction and an enforcement point are different primitives. |
+| [`docs/reference/`](docs/reference/) | Precise contracts: architecture, schema, retrieval, sessions and gates, configuration, logging, decision memory, testing. |
+| [`SECURITY.md`](SECURITY.md) | The trust model, what leaves the machine, and how to report a vulnerability. |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Authoring rules, review cadence, triaging agent proposals. |
+| [`CHANGELOG.md`](CHANGELOG.md) | Release history. |
+| [`ERRATA.md`](ERRATA.md) | Corrections to figures this project has published. |
 
 Skills are discovered from context and selected by the model. Writ can also react to what the agent is actually doing.
 
@@ -284,7 +335,9 @@ It is useful whether or not you use Writ. It is the reference this project wishe
 ### Architecture, in your browser
 
 Six self-contained pages with interactive diagrams and a live explorer for the graph itself:
+[`docs/reference/claude-code-blackbox.md`](docs/reference/claude-code-blackbox.md) is reference material that stands on its own: an empirical map of what Claude Code hands a hook and what a hook can hand back, with an evidence tag on every field. Useful whether or not you use Writ.
 
+**Architecture in your browser:**
 [overview](https://infinri.github.io/Writ/docs/architecture/index.html) |
 [data model](https://infinri.github.io/Writ/docs/architecture/data-model.html) |
 [retrieval](https://infinri.github.io/Writ/docs/architecture/retrieval-pipeline.html) |
@@ -292,7 +345,7 @@ Six self-contained pages with interactive diagrams and a live explorer for the g
 [graph explorer](https://infinri.github.io/Writ/docs/architecture/knowledge-graph.html) |
 [corpus round trip](https://infinri.github.io/Writ/docs/architecture/corpus-roundtrip.html)
 
-## Where to go next
+## Contributing and support
 
 * [`openwiki/index.md`](openwiki/index.md): the wiki. A reading order for newcomers, a quickstart, and one section per area.
 * [`HANDBOOK.md`](HANDBOOK.md): the operator manual. Modes, gates, helper AIs, the rulebook, the command line, day-to-day use.
@@ -302,29 +355,18 @@ Six self-contained pages with interactive diagrams and a live explorer for the g
 * [`CHANGELOG.md`](CHANGELOG.md): release history through v1.7.0.
 * [`SECURITY.md`](SECURITY.md): the trust model stated plainly, how to report a vulnerability, and why auditing what you install stays your job.
 * [`ERRATA.md`](ERRATA.md): corrections to figures this project has published, including the ones with no consumer that are deliberately kept out of this file.
+Found a bypass, or a case where a rule you relied on did not hold? That is the most valuable thing you can send. Open an issue with the transcript. For anything exploitable, report privately through [GitHub Security Advisories](https://github.com/infinri/Writ/security/advisories/new) rather than in public.
 
-## Status
+Want to contribute rules or code? [`CONTRIBUTING.md`](CONTRIBUTING.md) covers authoring, the review cadence, and how agent-proposed rules are triaged.
 
-**v1.7.0, released 2026-08-08.** Installs end to end as a Claude Code plugin. The hook system was audited and hardened: two gates that were failing open now hold, session identity is never guessed, destructive database operations need explicit permission, and the test suite's isolation is enforced rather than assumed. Search numbers were re-measured on 08-05 and 08-06 after a nondeterminism defect was found and fixed.
-
-Every number in this file is either measured and dated, or derived from the current source tree. Where this file and the code disagree, the code wins.
+Writ is free and developed in my own time. If it saves you some of yours, you can optionally support its continued development with [a coffee](https://buymeacoffee.com/infinri).
 
 ## Acknowledgements
 
-**[Superpowers](https://github.com/obra/superpowers), by Jesse Vincent.** Superpowers is a polished methodology built on the exact architectural contradiction discussed in [Why not just use Agent Skills?](#why-not-just-use-agent-skills): it calls workflows mandatory while leaving the final enforcement authority inside the model.
+**[Superpowers](https://github.com/obra/superpowers), by Jesse Vincent**, for formalizing the discipline Writ builds enforcement around. The architectural disagreement is argued in [`docs/instructions-vs-enforcement.md`](docs/instructions-vs-enforcement.md#superpowers-and-the-definition-of-mandatory).
 
-Its own [porting guide](https://github.com/obra/superpowers/blob/main/docs/porting-to-a-new-harness.md) makes the dependency explicit. The model must receive a bootstrap, discover the relevant skill, load its instructions, retain them through the session, and follow them. The guide calls that bootstrap the entire integration, says the skills are inert without it, and treats automatic session-start injection as a hard requirement.
+**[Jolli](https://www.jolli.ai/), by [JolliAI](https://github.com/jolliai/jolliai)**, for work on preserving development reasoning after a session ends. Writ's digest eviction policy is adapted from Jolli's ContextCompiler, the policy rather than the code, and `writ/session/recall.py` documents the adaptation.
 
-That is a useful methodology. It is not the definition of mandatory Writ accepts.
-
-If planning, TDD, review, and verification matter enough to be mandatory, selected checkpoints should be able to refuse the action without asking the model whether it remembers the rule. Superpowers formalized the discipline. Writ was built around the part that formalization still leaves optional.
-
-**[Jolli](https://www.jolli.ai/), by [JolliAI](https://github.com/jolliai/jolliai).** Jolli has done thoughtful work on preserving the reasoning behind AI-assisted development after a coding session ends. That work helped inform parts of Writ's own [decision-provenance system](#decision-provenance-why-each-file-changed), particularly the idea that useful development context should survive the conversation instead of disappearing with it.
-
-Writ's digest eviction policy is adapted from Jolli's ContextCompiler. The policy, not the code, and `writ/session/recall.py` documents the adaptation.
-
-Writ uses that idea inside its own governance model by connecting approved plans, governing rule IDs, changed files, and commits so later sessions can recover the governance context surrounding a change.
-
-If preserving development reasoning is your main problem and you do not need Writ's workflow gates, Jolli is worth a look. It is focused on that problem, and it is good at it.
+---
 
 License: MIT. Authored by Lucio Saldivar.

@@ -57,16 +57,6 @@ PY
 )
 
 if [ -n "$DENY" ]; then
-    # Same env-var pattern as above: avoid heredoc substitution that
-    # breaks on quotes/specials in $DENY.
-    WRIT_DENY_REASON="$DENY" python3 -c "
-import json, os
-print(json.dumps({
-    'hookSpecificOutput': {
-        'hookEventName': 'PreToolUse',
-        'permissionDecision': 'deny',
-        'permissionDecisionReason': os.environ.get('WRIT_DENY_REASON', ''),
-    }
-}))"
+    emit_deny "$DENY"
 fi
 exit 0

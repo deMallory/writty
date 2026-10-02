@@ -89,8 +89,7 @@ class TestCallersUseReadJsonl:
         assert "read_jsonl" in src, "friction.py must use read_jsonl"
         assert "json.loads(line)" not in src, "the inline skip-malformed loop must be gone"
 
-    def test_token_audit_and_efficacy_use_read_jsonl(self) -> None:
-        for mod in ("token_audit.py", "efficacy_ab.py"):
-            src = (ANALYSIS / mod).read_text()
-            assert "read_jsonl" in src, f"{mod} must use read_jsonl"
-            assert "json.loads(line)" not in src, f"{mod} inline skip-malformed loop must be gone"
+    def test_token_audit_uses_read_jsonl(self) -> None:
+        src = (ANALYSIS / "token_audit.py").read_text()
+        assert "read_jsonl" in src, "token_audit.py must use read_jsonl"
+        assert "json.loads(line)" not in src, "token_audit.py inline skip-malformed loop must be gone"

@@ -1,8 +1,11 @@
 """Prompt parser + mode-hint classifier for writ-rag-inject.sh (UserPromptSubmit).
 
 Extracted VERBATIM from the hook's inline `python3 -c` block (was lines 86-206).
-Reads the Claude Code envelope JSON on stdin; prints 5 lines:
-  session_id\nprompt\nagent_id\nmode_hint\neffort  (or 5 empty lines on any error).
+Reads the Claude Code envelope JSON on stdin; prints 4 newline-separated fields:
+  session_id\nagent_id\nmode_hint\nprompt  (or 4 empty lines on any error).
+The PROMPT IS LAST because it is the only field that may legitimately contain the
+delimiter; the consumer reads it as the remainder of the record, so a multi-line prompt
+arrives whole instead of truncating and shifting every field after it.
 Lives in bin/lib next to writ_mode_hint.py, so its own dir resolves the classifier
 import with no $WRIT_DIR interpolation. stdlib-only; fail-open."""
 import os, sys, json, re
@@ -67,27 +70,44 @@ def extract_keywords(raw: str) -> str:
     # Cap and join
     return ' '.join(keywords[:MAX_KEYWORDS])
 
+def _one_line(v, _flat=str.maketrans('\r\n', '  ')):
+    # Delimiter-freedom for the three scalars, enforced at the PRODUCER rather than assumed
+    # at the consumer: a pathological value is mangled inside its OWN field and can never
+    # move another. Mangled, not truncated, because a truncated session id could collide
+    # with a real session while a mangled one simply matches nothing. str() keeps a
+    # non-string envelope value (an int agent_id) out of the exception arm. The table is a
+    # default arg so a call site is the only place this name is followed by an argument,
+    # which is what makes "delete the sanitizer" a runnable mutation in the suite.
+    return str(v).translate(_flat)
+
 try:
     data = json.load(sys.stdin)
-    sid = data.get('agent_id', '') or data.get('session_id', '')
-    agent_id = data.get('agent_id', '')
+    sid = (data.get('agent_id') or data.get('agentId')
+           or data.get('session_id') or data.get('sessionId') or '')
+    agent_id = data.get('agent_id') or data.get('agentId') or ''
     raw = data.get('prompt', data.get('message', data.get('content', '')))
     prompt = extract_keywords(raw) if len(raw) > 300 else raw
     # Mode auto-routing: classify the RAW prompt (the keyword-extracted form scrambles the
     # phrases the classifier needs) for an audit/explore/research shape. Guarded so a
     # classifier failure never breaks prompt parsing -- emit empty hint on any error.
+    # A non-user turn (sub-agent hand-back, peer message, task notification) never
+    # auto-routes: no hint, no transcript fallback, no permission_mode upgrade. Unknown on an
+    # import failure, which already yields an empty hint.
     hint = ''
+    non_user = False
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from writ_mode_hint import classify_mode_hint  # standalone, stdlib-only (load-robust)
-        hint = classify_mode_hint(raw) or ''
+        from writ_mode_hint import classify_mode_hint, is_non_user_turn  # standalone, stdlib-only (load-robust)
+        non_user = is_non_user_turn(raw)
+        if not non_user:
+            hint = classify_mode_hint(raw) or ''
     except Exception:
         hint = ''
     # Transcript classification (recall): when the single prompt does not classify, the recent
     # conversation often does (e.g. 'ok go ahead' / 'now build it' after a planning exchange).
     # Read only the TAIL of the transcript, take the last few USER text messages, re-classify.
     # Bounded (64KB tail) + fully guarded so the per-prompt hot path stays cheap and never breaks.
-    if not hint:
+    if not hint and not non_user:
         try:
             tp = data.get('transcript_path', '')
             if tp:
@@ -95,6 +115,7 @@ try:
                     f.seek(0, 2)
                     f.seek(max(0, f.tell() - 65536))
                     tail = f.read().decode('utf-8', 'ignore')
+                from writ_mode_hint import is_local_command_echo
                 users = []
                 for line in tail.splitlines():
                     try:
@@ -103,12 +124,24 @@ try:
                         continue
                     if ev.get('type') != 'user':
                         continue
+                    # Hand-backs and notifications are 'user' entries too. Skip them; an
+                    # entry with no origin field (older transcripts) is kept.
+                    if ev.get('isMeta'):
+                        continue
+                    kind = (ev.get('origin') or {}).get('kind')
+                    if kind and kind != 'human':
+                        continue
                     c = (ev.get('message') or {}).get('content')
                     if isinstance(c, str):
-                        users.append(c)
+                        texts = [c]
                     elif isinstance(c, list):
-                        users += [it.get('text', '') for it in c
-                                  if isinstance(it, dict) and it.get('type') == 'text']
+                        texts = [it.get('text', '') for it in c
+                                 if isinstance(it, dict) and it.get('type') == 'text']
+                    else:
+                        texts = []
+                    # Local-command and shell echoes carry command output, not user intent.
+                    users += [t for t in texts
+                              if not is_non_user_turn(t) and not is_local_command_echo(t)]
                 recent = ' '.join(u for u in users[-5:] if u)
                 if recent:
                     hint = classify_mode_hint(recent) or ''
@@ -117,10 +150,11 @@ try:
     # permission_mode is a high-precision native CC signal: 'plan' = the user is in CC plan
     # mode (about to implement) -> work. Upgrades an empty/weak keyword hint; never overrides
     # an investigate classification (audit-while-planning stays the gate-light investigate).
-    if data.get('permission_mode', '') == 'plan' and hint != 'investigate':
+    if data.get('permission_mode', '') == 'plan' and hint != 'investigate' and not non_user:
         hint = 'work'
-    eff = data.get('effort')
-    effort = eff.get('level', '') if isinstance(eff, dict) else (eff or '')
-    print(f'{sid}\n{prompt}\n{agent_id}\n{hint}\n{effort}')
+    sid = _one_line(sid)
+    agent_id = _one_line(agent_id)
+    hint = _one_line(hint)
+    print(f'{sid}\n{agent_id}\n{hint}\n{prompt}')
 except Exception as e:
-    print('\n\n\n\n')
+    print('\n\n\n')

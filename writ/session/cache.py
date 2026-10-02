@@ -23,75 +23,83 @@ from writ.session.config import (
     DEFAULT_SESSION_BUDGET,
     _CITATION_LOG_MAX,
 )
+from writ.shared.state_root import session_dir, state_root
 
 
-# Default session-state root: `$HOME/.cache/writ/session`, one per user, NOT derived
-# from this module's own location. Identical derivation to
-# writ/shared/logging.py::_DEFAULT_LOG_ROOT and bin/lib/common.sh::writ_session_cache_dir.
-#
-# NOT `<skill>/var/session` (the previous default). Three copies of this code run on
-# one machine: the daemon from a repo checkout, the hooks from the plugin cache under
-# ~/.claude/plugins/cache/, and the agent's Bash tool with WRIT_CACHE_DIR exported. An
-# install-relative default gave each copy its own store, so the approval hook read the
-# plugin store, found no mode, and never POSTed the advance the daemon was waiting for
-# (2026-09-14: three typed "approved" in a row did nothing, with nothing logged). Any
-# install-relative or env-dependent default recreates that split, which is also why
-# this is not XDG_CACHE_HOME. WRIT_CACHE_DIR still wins, checked at call time.
+# Default session-state root: `<state_root>/session`, resolved by writ/shared/state_root.py
+# ($XDG_STATE_HOME/writ, else ~/.local/state/writ) at CALL time. It used to be this install's
+# own `var/session`, derived from this module's __file__, and a plugin install path carries the
+# version, so every upgrade started from an empty directory and orphaned every live session's
+# mode and approvals. bin/lib/writ_state_migrate.py carries those old caches over at
+# SessionStart. The bash mirror is writ_session_cache_dir in bin/lib/common.sh.
 #
 # NOT tempfile.gettempdir(). /usr/lib/tmpfiles.d/tmp.conf declares `D /tmp`, and the
-# capital D means systemd EMPTIES the directory at boot -- so every session cache was
+# capital D means systemd EMPTIES the directory at boot, so every session cache was
 # destroyed on reboot and a resumed conversation silently lost its mode, gates, and
 # loaded_rule_ids (the "mode=None" wipe). Measured 2026-07-23: 341 session caches
 # existed, every one postdating the boot, zero predating it. The loss was invisible
 # because a MISSING cache is not an error: _read_cache returns _default_cache()
 # before its try block, so nothing raised and nothing logged.
-# Built with os.path, not pathlib: this module is on the per-hook hot path and
-# importing pathlib here costs ~5.6ms per spawn (it pulls urllib.parse + ipaddress),
-# which would undo the import-cost fix made for exactly this reason.
-_DEFAULT_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "writ", "session")
+
+
+def _default_cache_dir() -> str:
+    """The shipped default with WRIT_CACHE_DIR ignored: `<state_root>/session`."""
+    return os.path.join(state_root(), "session")
 
 
 def _cache_dir() -> str:
-    """Resolve the session-cache directory from WRIT_CACHE_DIR at call time."""
-    return os.environ.get("WRIT_CACHE_DIR", _DEFAULT_CACHE_DIR)
+    """Resolve the session-cache directory (WRIT_CACHE_DIR, else the default) at call time."""
+    return session_dir()
 
 
 def resolve_current_session_id() -> str | None:
     """Resolve the CURRENT session id from the process's own environment, or None.
 
     Order (first non-empty wins):
-      1. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
-      2. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
-    Returns None when neither resolves. Each signal is individually guarded so a bad
+      1. $GROK_SESSION_ID            (Grok Build; wins over Claude so a dual-harness
+                                      machine does not attach a Grok turn to a stale
+                                      Claude id)
+      2. $CLAUDE_SESSION_ID          (per-process; authoritative if CC sets it)
+      3. basename($CLAUDE_JOB_DIR)   (per-job; concurrency-safe; trailing / stripped)
+    Returns None when none of them resolves. Each signal is individually guarded so a bad
     value never propagates: the resolver NEVER raises, and it never guesses.
 
-    THERE IS NO THIRD TIER, and the two that were here were wrong in the same way. Tier 3
-    read /tmp/writ-current-session, ONE file per machine that every Claude Code session's
-    UserPromptSubmit hook overwrites, so it named whichever session took a turn most
-    recently. Tier 4 took the newest writ-session-*.json by mtime out of a cache directory
-    every project shares. Both answered "which session am I" with "whichever one moved
-    last", and both did so live: the user's magento project reported `work` mode it had
-    never set, and a stray test run left the pointer naming
+    THERE IS NO POINTER TIER AND NO MTIME TIER. The two that were here were wrong in the
+    same way. The pointer read /tmp/writ-current-session, ONE file per machine that every
+    session's UserPromptSubmit hook overwrites, so it named whichever session took a turn
+    most recently. The mtime tier took the newest writ-session-*.json out of a cache
+    directory every project shares. Both answered "which session am I" with "whichever one
+    moved last", and both did so live: the user's magento project reported `work` mode it
+    had never set, and a stray test run left the pointer naming
     `tier-embed-directive-597898df`, a session with no cache anywhere, which the mtime
     glob could not tell apart from a real id. A wrong answer here is not a failed read, it
     is a mode, an approval or an audit coverage scope written into somebody else's
     session, and nothing in any log shows it happened. Callers get None and fail loud
-    instead (the CLI exits 2 naming the two env vars; the doctor reports no session).
+    instead (the CLI exits 2 naming the env vars; the doctor reports no session).
     """
-    # BOTH TIERS BELOW ARE UNREACHABLE FROM A BASH TOOL CALL, and the variable that WOULD
-    # answer is the one you must not read. Measured 2026-08-11 against Claude Code 2.1.227:
-    # CLAUDE_SESSION_ID and CLAUDE_JOB_DIR are NEVER exported, so this resolver returns
-    # None in practice and callers fail loud. CLAUDE_CODE_SESSION_ID *is* exported, and in
-    # a main session it equals the id hooks write state under, which makes it look like the
-    # fix. It is not: probed from inside a real sub-agent it still holds the PARENT's id,
-    # while Writ keys a sub-agent by its agent_id. Reading it would let a sub-agent resolve
-    # to its parent and approve or clear the PARENT's gates -- the same class of
-    # cross-session write that deleting tiers 3 and 4 closed. CLAUDE_CODE_CHILD_SESSION=1
-    # is a flag, not an id, and is set in the main session too, so it cannot tell parent
-    # from child either. The refusal therefore stands: the remedy is the explicit session
-    # argument at the call site, NOT another environment read.
+    # THE CLAUDE TIERS BELOW ARE UNREACHABLE FROM A BASH TOOL CALL, and the variable that
+    # WOULD answer is the one you must not read. Measured 2026-08-11 against Claude Code
+    # 2.1.227: CLAUDE_SESSION_ID and CLAUDE_JOB_DIR are NEVER exported, so those two tiers
+    # return None in practice and callers fail loud. CLAUDE_CODE_SESSION_ID *is* exported,
+    # and in a main session it equals the id hooks write state under, which makes it look
+    # like the fix. It is not: probed from inside a real sub-agent it still holds the
+    # PARENT's id, while Writ keys a sub-agent by its agent_id. Reading it would let a
+    # sub-agent resolve to its parent and approve or clear the PARENT's gates -- the same
+    # class of cross-session write that deleting the pointer and mtime tiers closed.
+    # CLAUDE_CODE_CHILD_SESSION=1 is a flag, not an id, and is set in the main session too,
+    # so it cannot tell parent from child either. The refusal therefore stands: the remedy
+    # is the explicit session argument at the call site, NOT another environment read.
+    # $GROK_SESSION_ID is the exception: the Grok runner injects it into every hook.
     #
-    # 1. per-process env id (empty string is treated as unset)
+    # 1. Grok runner id (empty string is treated as unset)
+    try:
+        grok_sid = os.environ.get("GROK_SESSION_ID", "")
+        if grok_sid:
+            return grok_sid
+    except Exception:
+        pass
+
+    # 2. per-process Claude env id (empty string is treated as unset)
     try:
         env_sid = os.environ.get("CLAUDE_SESSION_ID", "")
         if env_sid:
@@ -99,7 +107,7 @@ def resolve_current_session_id() -> str | None:
     except Exception:
         pass
 
-    # 2. basename of the per-job dir (trailing slash stripped first)
+    # 3. basename of the per-job dir (trailing slash stripped first)
     try:
         job_dir = os.environ.get("CLAUDE_JOB_DIR", "")
         if job_dir:
@@ -121,8 +129,8 @@ def _ensure_cache_dir() -> str:
     """Return the cache dir, creating it if absent.
 
     /tmp always existed, so nothing on the write path ever had to create this. The
-    default now lives under the skill install, which does NOT exist on a fresh
-    checkout -- and a failed write would land right back in the silent-blank-session
+    default lives under the XDG state root, which does NOT exist on a fresh
+    machine, and a failed write would land right back in the silent-blank-session
     behavior this move exists to remove. Read paths deliberately do not call this: a
     missing dir there is just "no cache yet".
     """
@@ -182,6 +190,12 @@ def _default_cache() -> dict:
         # cited rule IDs, which is what stops the gate calling its own injected rules
         # hallucinated.
         "always_on_rule_ids": [],
+        # Rule ids shown to this session's sub-agents, unioned in at each child's
+        # SubagentStop by subagent_rollup. Separate from loaded_rule_ids for the same
+        # reason as always_on_rule_ids: this session never retrieved them, so they must
+        # not land in its ranked-query exclude list. _validate_phase_a unions them too, so
+        # a plan written by a dispatched planner can cite the rules the planner was shown.
+        "subagent_rule_ids": [],
         "loaded_rules": [],
         "remaining_budget": DEFAULT_SESSION_BUDGET,
         "context_percent": 0,
@@ -252,9 +266,43 @@ def _default_cache() -> dict:
         "queried_rules_by_file": {},
         "parent_session_id": "",
         "agent_type": "",
+        # How this cache came to exist: `subagent_start` (the event fired), `lazy_seed`
+        # (a hook running inside the sub-agent seeded it), or "" for a main session. The
+        # write gate reads it: a lazily seeded cache confers no write authority, because
+        # creating one where none existed would otherwise loosen the gate.
+        "cache_source": "",
+        # Where agent_type came from: envelope, sidecar, cache, or unresolved. Declared
+        # here so a sub-agent cache written by writ-subagent-start.sh keeps the same keyset
+        # as a fresh one (test_cache_schema_single_source). An empty string means no
+        # resolution has been attempted, which is NOT the same as `unresolved`.
+        "role_source": "",
+        # The paths this sub-agent's ROLE declares it may write, stamped once at dispatch
+        # from the role's graph node (writ/session/subagent_seed.py) and read by the write
+        # gate. None IS NOT [], and the difference is the whole feature: None means no
+        # declared scope, so the sub-agent keeps the write authority it has always had,
+        # while [] means the role says it writes nothing and every path is refused.
+        # Defaulting this to [] would deny every write by every sub-agent whose cache
+        # predates the field, because _read_cache fills missing keys from here.
+        "role_write_scope": None,
+        # Where that scope came from ("graph" when the role node answered, "" when
+        # nothing was stamped: the lazy path, an unresolved role, or a daemon that did not
+        # answer at dispatch time). "" plus a None scope is the unenforced case, and it is
+        # recorded rather than inferred so the gap is countable instead of invisible.
+        "role_scope_source": "",
         # Project where the mode was declared (stamped at mode-set). Enables the
         # rotation carry's same-project guard; "" means "unknown project".
         "project_root": "",
+        # The OS scratch zone the write gate judges against, stamped at mode-set beside
+        # project_root by mode_engine._apply_mode_set as
+        # os.path.realpath(tempfile.gettempdir()). It lives HERE rather than being resolved
+        # at write time because the write gate runs in TWO processes (the daemon and the CLI
+        # fallback) and tempfile.gettempdir() is a per-process answer, so a zone resolved at
+        # call time let the two doors allow and deny the same path (measured). "" means NO
+        # EXEMPTION, never "resolve it yourself": _read_cache's backfill gives a cache
+        # written before this field existed that same "", and project_boundary.scratch_zone
+        # turns it into a fail-closed abstain instead of a live fallback that would
+        # reinstate the divergence in the one state nobody inspects.
+        "scratch_zone": "",
     }
 
 
@@ -300,7 +348,7 @@ def _write_cache(session_id: str, data: dict) -> None:
     enumeration glob.
     """
     path = _cache_path(session_id)
-    _ensure_cache_dir()  # fresh install: the default var/session tree may not exist yet
+    _ensure_cache_dir()  # fresh machine: the state-root tree may not exist yet
     dir_ = os.path.dirname(path) or "."
     fd, tmp_path = tempfile.mkstemp(
         dir=dir_, prefix=f"writ-session-{session_id}.json.", suffix=".tmp"

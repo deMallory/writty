@@ -58,7 +58,8 @@ _ALLOWLIST: frozenset[str] = frozenset()
 
 def _resolve_script(command: str, plugin_root: Path) -> Path | None:
     """Resolve a hooks.json command string to a script path under plugin_root."""
-    m = re.search(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"']+)", command)
+    command = command.replace('"', "")  # the manifest quotes the path; see test_hooks_quote_the_plugin_root
+    m = re.search(r"\$\{CLAUDE_PLUGIN_ROOT\}/(\S+)", command)
     if m:
         return plugin_root / m.group(1)
     for tok in reversed(command.split()):

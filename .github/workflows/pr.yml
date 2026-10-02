@@ -19,16 +19,31 @@ concurrency:
   group: pr-checks-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
+# The number of test shards. The test-shard matrix below lists 0 to TEST_SHARDS - 1
+# by hand; its first step fails if the two ever disagree, and the aggregating `test`
+# job checks the partition with this same count.
+env:
+  TEST_SHARDS: "4"
+
 jobs:
-  test:
-    name: test
+  # The suite, split by whole file into TEST_SHARDS parallel jobs. Each runner has its
+  # own two Neo4j services, so every shard carries the full topology and its own
+  # witness steps. scripts/ci_shard.py assigns files by the seconds recorded in
+  # scripts/ci_timings.json; a new or renamed file still lands in exactly one shard.
+  test-shard:
+    name: test shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    # Timeout re-sized 2026-08-14: the suite is ~7,900 collected tests now and the
-    # whole job measures 13 to 15 minutes on shared runners (a 15-minute limit
-    # cancelled two green-tree runs at 15m04s and 15m15s that day). Twenty minutes
-    # gives the measured runtime real headroom without letting a stuck job hold a
-    # runner indefinitely.
-    timeout-minutes: 20
+    strategy:
+      # One run names every failing shard, rather than cancelling the rest at the first.
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    # Sized 2026-09-24 for sharding. Run 35812359333 took about 26 minutes as one job:
+    # about 3.5 minutes of setup and 1355 s of pytest. Split four ways each shard pays
+    # the full setup plus about 6.5 minutes of pytest, so about 10 minutes is the
+    # target; 25 covers runner variance and a first run balanced from progress-line
+    # timings. Correct this comment to the first green sharded run's figure.
+    timeout-minutes: 25
     env:
       # The suite runs isolated: tests/conftest.py points every Neo4j resolution
       # at this instance and marks it disposable. The service is published on
@@ -70,13 +85,189 @@ jobs:
           --health-timeout 5s
           --health-retries 30
           --health-start-period 30s
+      # A SECOND instance, on the PRODUCTION address. This makes the CI topology
+      # match a developer machine: production on 7687, disposable on 7688. The
+      # suite is pointed at 7688 by WRIT_NEO4J_URI above and nothing here changes
+      # that, so adding this service cannot move a single test onto it.
+      #
+      # What it is for: tests/test_post_commit_isolation.py counts `Commit`
+      # records at bolt://localhost:7687 deliberately, because the post-commit
+      # hook talks to the daemon and the daemon owns the production graph, so a
+      # leaked record lands there and not in the suite's instance. With nothing
+      # answering on 7687 its reader returns None, which that module converts
+      # into a pytest.fail rather than a skip, on purpose: a skip there is
+      # indistinguishable from isolation that works.
+      #
+      # Why 7687 is still safe from a wipe: the destructive-graph guard is
+      # `marker_present() and not is_production_instance(uri)`
+      # (writ/graph/db/_safety.py). There is no writ.toml in CI, so
+      # get_production_neo4j_uri() falls back to DEFAULT_NEO4J_URI, which IS
+      # bolt://localhost:7687 (writ/config.py), and the production address is
+      # precisely the one the guard refuses. The only code in the suite that
+      # names 7687 at all is that module's read-only counter.
+      #
+      # NEO4J_AUTH must stay neo4j/writdevpass. That counter runs in a
+      # subprocess with every NEO4J variable stripped, so it resolves
+      # get_neo4j_user()/get_neo4j_password() defaults; wrong credentials would
+      # read as "production unreachable", which is the pytest.fail above and not
+      # a skip.
+      #
+      # Only 7687 is published. The 7474 HTTP port is deliberately NOT mapped:
+      # the disposable service above already holds host 7474, and two services
+      # in one job cannot publish the same host port. The healthcheck runs
+      # inside the container against its own fixed 7687, so it needs no
+      # published port.
+      neo4j-production-address:
+        image: neo4j:5
+        env:
+          NEO4J_AUTH: neo4j/writdevpass
+        ports:
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p writdevpass 'RETURN 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 30s
     steps:
+      # fetch-depth: 0, matching .github/workflows/publish.yml. A depth-1 clone
+      # has no history, and tests/test_bash_irreversible_gate.py reads the
+      # pre-cycle hook it compares the current per-call process cost against with
+      # `git show ad01ca5:hooks/scripts/writ-bash-write-gate.sh`, which fails with
+      # `fatal: invalid object name 'ad01ca5'` without it. The bench job's
+      # checkout is left shallow: benchmarks/bench_targets.py reads no history.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check the matrix lists every shard
+        run: |
+          if [ "${{ strategy.job-total }}" != "$TEST_SHARDS" ]; then
+            echo "the matrix runs ${{ strategy.job-total }} shards but TEST_SHARDS is $TEST_SHARDS" >&2
+            exit 1
+          fi
       # Resolves Neo4j through writ.config, so its migrate and verify steps read
       # the job env above and warm the same instance the tests then use.
       - uses: ./.github/actions/setup-writ
+      # With two instances up, WHICH ONE the suite resolves stops being obvious from
+      # reading the env block, so it is printed rather than reasoned about. This must
+      # read bolt://localhost:7688, the disposable instance; if it ever reads 7687 the
+      # suite is pointed at the production address and the wipe guard is the only thing
+      # left between a `make test` and an emptied graph.
+      - name: Print the instance the suite resolves
+        run: |
+          .venv/bin/python -c '
+          from writ.config import get_neo4j_uri, get_production_neo4j_uri
+          print("suite resolves:     ", get_neo4j_uri())
+          print("production resolves:", get_production_neo4j_uri())
+          '
+      # The sensitivity control in tests/test_post_commit_isolation.py
+      # (test_the_counter_reports_real_commits_for_this_project) asserts the
+      # counter returns non-zero for this project, because every other assertion
+      # in that file expects zero and a counter that always read zero would
+      # satisfy all of them. On a developer machine the witness is the project's
+      # real commit history; a fresh container has none, so CI seeds one.
+      #
+      # The test file is NOT changed to create its own witness. It is read-only
+      # against production by design, and a create-then-delete that died in
+      # between would write the exact stray record the file exists to catch.
+      #
+      # Label and property names come from that module's own _commit_count_for:
+      # `MATCH (c:Commit) WHERE c.project CONTAINS $s`. The URI and credentials
+      # are passed explicitly so this step reaches 7687 rather than the 7688 the
+      # job env resolves to.
+      - name: Seed the production-address witness commit
+        run: |
+          .venv/bin/python -c '
+          import asyncio
+          from writ.graph.db import Neo4jConnection
+          async def main():
+              db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+              try:
+                  await db._run(
+                      "MERGE (c:Commit {commit_hash: $h, project: $p}) "
+                      "ON CREATE SET c.subject = $s, c.author = $a, "
+                      "c.branch = $b, c.ts = $t",
+                      h="ci-witness-0000000", p="github.com/infinri/Writ",
+                      s="CI witness for the post-commit isolation pin",
+                      a="ci@github", b="ci", t="1970-01-01T00:00:00Z",
+                  )
+                  rows = await db._run(
+                      "MATCH (c:Commit) WHERE c.project CONTAINS $s RETURN count(c) AS n",
+                      s="github.com/infinri/Writ",
+                  )
+                  n = rows[0]["n"] if rows else 0
+                  print(f"witness commits at 7687: {n}")
+                  if n < 1:
+                      raise SystemExit("the witness did not land; the pin below cannot run")
+              finally:
+                  await db.close()
+          asyncio.run(main())
+          '
       - name: Run tests
-        run: make test
+        run: make test SHARD=${{ matrix.shard }} SHARDS=$TEST_SHARDS JUNIT_XML=junit-shard-${{ matrix.shard }}.xml
+      # THE NO-WIPE PROOF, and the reason seeding a witness is worth doing rather
+      # than relaxing the assertion. A run that emptied the production-address
+      # instance is reported here instead of inferred from a green suite.
+      # if: always() so a failing suite still gets checked, because a wipe and a
+      # test failure are exactly the pair that must not be confused.
+      - name: Verify the witness survived the suite
+        if: always()
+        run: |
+          .venv/bin/python -c '
+          import asyncio
+          from writ.graph.db import Neo4jConnection
+          async def main():
+              db = Neo4jConnection("bolt://localhost:7687", "neo4j", "writdevpass")
+              try:
+                  rows = await db._run(
+                      "MATCH (c:Commit {commit_hash: $h}) RETURN count(c) AS n",
+                      h="ci-witness-0000000",
+                  )
+                  n = rows[0]["n"] if rows else 0
+                  print(f"witness commits at 7687 after the suite: {n}")
+                  if n < 1:
+                      raise SystemExit(
+                          "the seeded witness is GONE from bolt://localhost:7687: "
+                          "something in the suite wiped the production-address instance"
+                      )
+              finally:
+                  await db.close()
+          asyncio.run(main())
+          '
+      # Per-file test times for `scripts/ci_shard.py --rebuild-timings`; see
+      # docs/reference/testing.md for regenerating the timings from these.
+      - name: Upload the shard's junit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-shard-${{ matrix.shard }}
+          path: junit-shard-${{ matrix.shard }}.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+  # The one check that means the whole suite passed: every shard succeeded and the
+  # shards together covered every test file exactly once. always() rather than
+  # !cancelled(), because a skipped job counts as passing and a cancelled or failed
+  # shard must not leave a passing `test` behind.
+  test:
+    name: test
+    needs: [test-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # The runner's system python3, no venv: the script is stdlib only.
+      - name: Check every test file is in exactly one shard
+        run: python3 scripts/ci_shard.py --check --shards "$TEST_SHARDS"
+      - name: Require every shard to have passed
+        env:
+          SHARDS_RESULT: ${{ needs.test-shard.result }}
+        run: |
+          if [ "$SHARDS_RESULT" != "success" ]; then
+            echo "test-shard result is '$SHARDS_RESULT', not 'success'" >&2
+            exit 1
+          fi
 
   bench:
     name: bench
@@ -113,3 +304,24 @@ jobs:
         env:
           WRIT_BENCH_BUDGET_SCALE: "5"
         run: make bench
+
+  # The rendered reference pages (docs/reference/*.md) against the code they are rendered
+  # from. Its own job because it needs no graph: only the python half of the shared setup
+  # action, a venv with the package installed editable, so `writ` imports with no
+  # PYTHONPATH and the Makefile's default .venv/bin/python3 passes check-venv.
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the package into .venv
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e '.[dev]'
+      - name: Check the rendered docs are current
+        run: make docs-check

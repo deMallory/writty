@@ -2,8 +2,8 @@
 
 Static, read-only. Measures the Rule corpus's token FOOTPRINT per rule + per component (bytes/4 floor
 estimate -- there is no local Claude tokenizer), surfaces bloat, and RANKS waste cut-candidates.
-PROPOSES cuts; never applies them (a content cut changes coverage = efficacy = API A/B-gated = a
-separate runbook). Reuses the ingest loader so the parse cannot drift from what ingests to the graph.
+PROPOSES cuts; never applies them (a content cut changes coverage = efficacy, judged from real-session
+evidence before any edit). Reuses the ingest loader so the parse cannot drift from what ingests to the graph.
 """
 from __future__ import annotations
 
@@ -175,8 +175,8 @@ def scorecard(bible_dir: str, top: int = 20, domain: str | None = None,
         "cut_candidates": rank_cut_candidates(measured, top),
         "basis": LABEL,
         "measure_only": "Cut candidates are PROPOSALS. Cutting rule content is efficacy-affecting -> "
-                        "must be validated by the API efficacy-ab A/B harness in a separate runbook "
-                        "before any edit. Reach fields are never candidates.",
+                        "judge it from real-session evidence before any edit. "
+                        "Reach fields are never candidates.",
     }
 
 

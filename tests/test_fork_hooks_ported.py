@@ -22,10 +22,10 @@ HOOKS_JSON = REPO / "hooks" / "hooks.json"
 SCRIPTS = REPO / "hooks" / "scripts"
 
 PORTED = {
-    "writ-agent-hotswap.sh": ("PreToolUse", "Task"),
-    "writ-sdd-review-order.sh": ("PreToolUse", "Task"),
-    "writ-output-rewrite.sh": ("PostToolUse", "Bash"),
-    "writ-bash-failure.sh": ("PostToolUseFailure", "Bash"),
+    "writ-agent-hotswap.sh": ("PreToolUse", "Task|spawn_subagent"),
+    "writ-sdd-review-order.sh": ("PreToolUse", "Task|spawn_subagent"),
+    "writ-output-rewrite.sh": ("PostToolUse", "Bash|run_terminal_command"),
+    "writ-bash-failure.sh": ("PostToolUseFailure", "Bash|run_terminal_command"),
 }
 
 
@@ -36,7 +36,7 @@ def _registrations() -> dict[str, list[tuple[str, str]]]:
     for event, groups in data["hooks"].items():
         for group in groups:
             for hook in group.get("hooks", []):
-                name = os.path.basename(hook["command"].split()[-1].strip('"'))
+                name = os.path.basename(hook["command"].split()[-1].strip("\"'"))
                 out.setdefault(name, []).append((event, group.get("matcher", "")))
     return out
 
@@ -66,7 +66,7 @@ class TestRegistrations:
             f"{script} not registered as {expected}"
         )
 
-    def test_manifest_has_49_registrations_across_12_events(self) -> None:
+    def test_manifest_has_50_registrations_across_12_events(self) -> None:
         data = json.loads(HOOKS_JSON.read_text())
         assert len(data["hooks"]) == 12
         total = sum(
@@ -74,7 +74,7 @@ class TestRegistrations:
             for groups in data["hooks"].values()
             for group in groups
         )
-        assert total == 49
+        assert total == 50
 
     def test_settings_template_regenerates_byte_identically(self) -> None:
         result = subprocess.run(

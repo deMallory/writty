@@ -139,7 +139,7 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|run_terminal_command",
         "hooks": [
           {
             "type": "command",
@@ -221,7 +221,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Read|Grep|Bash",
+        "matcher": "Read|Grep|Bash|read_file|grep|run_terminal_command",
         "hooks": [
           {
             "type": "command",
@@ -230,7 +230,7 @@
         ]
       },
       {
-        "matcher": "ExitPlanMode",
+        "matcher": "ExitPlanMode|exit_plan_mode",
         "hooks": [
           {
             "type": "command",
@@ -239,7 +239,7 @@
         ]
       },
       {
-        "matcher": "Read",
+        "matcher": "Read|read_file",
         "hooks": [
           {
             "type": "command",
@@ -248,7 +248,7 @@
         ]
       },
       {
-        "matcher": "Read",
+        "matcher": "Read|read_file",
         "hooks": [
           {
             "type": "command",
@@ -257,7 +257,7 @@
         ]
       },
       {
-        "matcher": "Grep|Read|Glob",
+        "matcher": "Grep|Read|Glob|grep|read_file",
         "hooks": [
           {
             "type": "command",
@@ -266,7 +266,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|NotebookEdit",
+        "matcher": "Write|Edit|NotebookEdit|write|search_replace",
         "hooks": [
           {
             "type": "command",
@@ -275,7 +275,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|NotebookEdit",
+        "matcher": "Write|Edit|NotebookEdit|write|search_replace",
         "hooks": [
           {
             "type": "command",
@@ -284,7 +284,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|write|search_replace",
         "hooks": [
           {
             "type": "command",
@@ -293,7 +293,7 @@
         ]
       },
       {
-        "matcher": "Task",
+        "matcher": "Task|Agent|spawn_subagent",
         "hooks": [
           {
             "type": "command",
@@ -302,7 +302,7 @@
         ]
       },
       {
-        "matcher": "Task",
+        "matcher": "Task|spawn_subagent",
         "hooks": [
           {
             "type": "command",
@@ -311,7 +311,7 @@
         ]
       },
       {
-        "matcher": "Task",
+        "matcher": "Task|spawn_subagent",
         "hooks": [
           {
             "type": "command",
@@ -320,7 +320,7 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|run_terminal_command",
         "hooks": [
           {
             "type": "command",
@@ -329,7 +329,7 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|run_terminal_command",
         "hooks": [
           {
             "type": "command",
@@ -338,7 +338,7 @@
         ]
       },
       {
-        "matcher": "Write",
+        "matcher": "Write|write",
         "hooks": [
           {
             "type": "command",
@@ -347,7 +347,7 @@
         ]
       },
       {
-        "matcher": "Write",
+        "matcher": "Write|write",
         "hooks": [
           {
             "type": "command",
@@ -356,7 +356,7 @@
         ]
       },
       {
-        "matcher": "Write",
+        "matcher": "Write|write",
         "hooks": [
           {
             "type": "command",
@@ -367,7 +367,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|run_terminal_command",
         "hooks": [
           {
             "type": "command",
@@ -376,7 +376,7 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|run_terminal_command",
         "hooks": [
           {
             "type": "command",
@@ -385,7 +385,7 @@
         ]
       },
       {
-        "matcher": "WebFetch|WebSearch",
+        "matcher": "WebFetch|WebSearch|web_search|web_fetch",
         "hooks": [
           {
             "type": "command",
@@ -394,16 +394,20 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|write|search_replace",
         "hooks": [
           {
             "type": "command",
             "command": "bash \"${WRIT_DIR}/hooks/scripts/validate-file.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-output-compress.sh\""
           }
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|write|search_replace",
         "hooks": [
           {
             "type": "command",
@@ -412,7 +416,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|write|search_replace",
         "hooks": [
           {
             "type": "command",
@@ -421,7 +425,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|write|search_replace",
         "hooks": [
           {
             "type": "command",
@@ -430,7 +434,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|NotebookEdit",
+        "matcher": "Write|Edit|NotebookEdit|write|search_replace",
         "hooks": [
           {
             "type": "command",
@@ -439,7 +443,7 @@
         ]
       },
       {
-        "matcher": "Write",
+        "matcher": "Write|write",
         "hooks": [
           {
             "type": "command",
@@ -448,7 +452,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|write|search_replace",
         "hooks": [
           {
             "type": "command",
@@ -457,7 +461,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|write|search_replace",
         "hooks": [
           {
             "type": "command",

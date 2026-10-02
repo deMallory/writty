@@ -1,10 +1,11 @@
 # writ-auth-scan: internal-service
 """Retrieval + rule-metadata routes for the Writ session daemon.
 
-11 routes: /query, /methodology-companion, /prompt-bundle, /analyze,
-/rule/{rule_id}, /propose, /feedback, /conflicts, /health, /always-on,
-/subagent-role/{name}. Plus the /health helpers (_health_status,
-_count_categories, _route_distribution) and the _ALWAYS_ON_PROCESS_MODES const.
+13 routes: /query, /methodology-companion, /prompt-bundle, /analyze,
+/rule/{rule_id}, /propose, /feedback, /feedback/batch, /conflicts, /health,
+/always-on, /subagent-role/{name}, /subagent/start-context. Plus the /health helpers (_health_status,
+_count_categories, _route_distribution, _log_destinations) and the
+_ALWAYS_ON_PROCESS_MODES const.
 
 Mutable/monkeypatched daemon state (_db, _pipeline, _trigger_index, _llm_client,
 _instrumentation, _startup_time, writ_session, _run_cmd_format_locked) is read
@@ -23,19 +24,21 @@ from fastapi import APIRouter
 import writ.server as server
 from writ.analysis import AnalyzeRequest, AnalyzeResponse
 from writ.analysis.analyzer import run_analysis
-from writ.analysis.friction import resolve_log_path
 from writ.graph.db import Neo4jConnection
 from writ.graph.predicates import INJECTION_RULE_WHERE
 from writ.server.models import (
     CompanionRequest,
     ConflictsRequest,
+    FeedbackBatchRequest,
     FeedbackRequest,
     ProposeRequest,
     PromptBundleRequest,
     QueryRequest,
+    SubagentStartContextRequest,
 )
-from writ.shared.logging import emit, emit_exception
-from writ.shared.tokens import estimate_tokens
+from writ.server.routes.session_state import _format_query_response
+from writ.shared.logging import emit, emit_destination, emit_exception
+from writ.shared.tokens import cost_for, estimate_tokens
 
 router = APIRouter()
 
@@ -155,7 +158,7 @@ def _emit_retrieval_result(
 
 @router.post("/methodology-companion")
 async def methodology_companion(request: CompanionRequest) -> dict[str, Any]:
-    """Methodology by workflow-state (floor u push u pull) -- CHANNEL 2 (1.5).
+    """Methodology by workflow-state (floor u push u pull): CHANNEL 2 (1.5).
 
     DETERMINISTIC, not semantic: the trigger index matches mode floors, action
     pushes, and curated trigger_keywords (no embeddings). The response reuses
@@ -214,7 +217,7 @@ async def prompt_bundle(request: PromptBundleRequest) -> dict[str, Any]:
     import json as _json
     from writ.retrieval.prompt_bundle import (
         always_on_rule_ids, compute_nudge, extract_rule_objects, render_always_on,
-        split_format,
+        split_format, tag_overlap,
     )
 
     if server._pipeline is None:
@@ -223,7 +226,6 @@ async def prompt_bundle(request: PromptBundleRequest) -> dict[str, Any]:
     sid = request.session_id
     mode = request.mode or ""
     prompt = request.prompt or ""
-    effort = request.effort or ""
 
     cache = await asyncio.to_thread(server.writ_session._read_cache, sid)
     by_phase = cache.get("loaded_rule_ids_by_phase", {})
@@ -249,30 +251,69 @@ async def prompt_bundle(request: PromptBundleRequest) -> dict[str, Any]:
     }
 
     # --- Channel 1: broad /query ---
-    qresp = await query_rules(QueryRequest(
-        query=prompt,
-        budget_tokens=remaining_budget,
-        exclude_rule_ids=exclude_ids,
-        prefer_rule_ids=(prefer_ids or None),
-        domain=(detected_domain if detected_domain and detected_domain != "universal" else None),
-        # This is the hot per-prompt retrieval and the session is right here, so its
-        # retrieval_result row is session-correlated even though the four hooks that POST
-        # /query directly do not send one yet.
-        session_id=sid,
-        # The project scope, which this internal request used to DROP: the field
-        # existed on QueryRequest and /query forwarded it, but the constructor here
-        # never set it, so the one route that runs on every prompt was unscoped no
-        # matter what the hook sent. Passed as a root, resolved once inside query_rules.
-        project_root=request.project_root,
-    ))
-    if "error" in qresp:
-        # Match the legacy hook: a /query error aborted the whole injection (the
-        # always-on + methodology channels ran AFTER it), so return early.
-        out["error"] = True
-        return out
-    else:
+    # include_ranked=False skips the RETRIEVAL, not just the render: suppression is a
+    # request-time decision, so the Neo4j read is never paid for and the "error" early
+    # return below cannot abort channels 2 and 3 either. exclude_ids is still computed
+    # above because channel 3 uses it.
+    qresp: dict[str, Any] = {}
+    if request.include_ranked:
+        qresp = await query_rules(QueryRequest(
+            query=prompt,
+            budget_tokens=remaining_budget,
+            exclude_rule_ids=exclude_ids,
+            prefer_rule_ids=(prefer_ids or None),
+            domain=(detected_domain if detected_domain and detected_domain != "universal" else None),
+            # This is the hot per-prompt retrieval and the session is right here, so its
+            # retrieval_result row is session-correlated even though the four hooks that POST
+            # /query directly do not send one yet.
+            session_id=sid,
+            # The project scope, which this internal request used to DROP: the field
+            # existed on QueryRequest and /query forwarded it, but the constructor here
+            # never set it, so the one route that runs on every prompt was unscoped no
+            # matter what the hook sent. Passed as a root, resolved once inside query_rules.
+            project_root=request.project_root,
+        ))
+        if "error" in qresp:
+            # Match the legacy hook: a /query error aborted the whole injection (the
+            # always-on + methodology channels ran AFTER it), so return early. This return
+            # is why channel 2 is RESOLVED below rather than above: the ranked channel's
+            # RENDER needs the always-on ids, but its RETRIEVAL does not, so the always-on
+            # Neo4j reads stay skipped on the error path exactly as they were, and the
+            # response shape here is unchanged (no always_on_block, no always-on cache
+            # update, no ao_meta).
+            out["error"] = True
+            return out
+
+    # --- Channel 2 data, resolved early (the ranked channel's render needs it) ---
+    # Ordering, not new work. always_on_bundle depends on nothing from channel 1 (two
+    # read-only Neo4j queries plus pure filtering), and the ranked render needs to know
+    # which of its hits the always-on block already delivered this turn. Resolved here;
+    # EMITTED after channel 1, so the pieces of `out` are still filled in channel order.
+    aoresp = await always_on_bundle(
+        mode=(mode or "universal"),
+        at=("prompt" if request.always_on_filter else None),
+        context=prompt,
+    )
+    ao_json = aoresp if isinstance(aoresp, dict) else {}
+    block, ao_tokens, ao_count = render_always_on(ao_json)
+    # The RENDERED ids, never the eligible ones. _renderable_always_on drops a rule
+    # missing its trigger or statement, and both consumers below depend on that filter:
+    # the citation record must not name a rule the agent never saw, and the field dedup
+    # must not point the reader at a block that does not contain the rule.
+    ao_ids = always_on_rule_ids(ao_json)
+
+    # --- Channel 1 (render) ---
+    if request.include_ranked:
         out["nudge"] = compute_nudge(qresp)
-        text, meta = split_format(await asyncio.to_thread(server._run_cmd_format_locked, qresp))
+        # Field-level dedup: a ranked hit already in this turn's always-on block renders a
+        # pointer instead of repeating its trigger and statement. tag_overlap COPIES, so
+        # `qresp` below still carries every field for the --add-rule-objects cache the
+        # compliance-matching path reads.
+        render_payload = dict(qresp)
+        render_payload["rules"] = tag_overlap(qresp.get("rules") or [], ao_ids)
+        text, meta = split_format(
+            await asyncio.to_thread(server._run_cmd_format_locked, render_payload)
+        )
         out["rules_text"] = text
         rule_ids = meta.get("rule_ids", []) or []
         cost = meta.get("cost", 0) or 0
@@ -284,22 +325,22 @@ async def prompt_bundle(request: PromptBundleRequest) -> dict[str, Any]:
             "--add-rule-objects", _json.dumps(extract_rule_objects(qresp)),
         ])
         out["broad_meta"] = {"rule_ids": rule_ids, "cost": cost}
+    else:
+        # A SENTINEL, never an empty result. A zero-rule broad_meta is the abstention
+        # signal (retrieval ran and found nothing), so recording a configuration choice
+        # that way would corrupt every census that counts retrievals by source. `nudge`
+        # stays "" for the same reason: compute_nudge on a skipped channel reads
+        # "NO_RULES", which would tell the caller to propose a rule for an absence it
+        # asked for.
+        out["broad_meta"] = {"suppressed": True}
 
-    # --- Channel 2: always-on ---
-    aoresp = await always_on_bundle(
-        mode=(mode or "universal"),
-        at=("prompt" if request.always_on_filter else None),
-        context=prompt,
-    )
-    ao_json = aoresp if isinstance(aoresp, dict) else {}
-    block, ao_tokens, ao_count = render_always_on(ao_json)
+    # --- Channel 2: always-on (emit) ---
     out["always_on_block"] = block
     if block and ao_tokens > 0:
         # Record the IDs, not just the token count. This channel injects rules into the
         # prompt; recording only tokens left _validate_phase_a validating citations
         # against a set with no always-on rule in it, so the gate reported the agent's
         # correct citations as hallucinated and spent the user's approval token.
-        ao_ids = always_on_rule_ids(ao_json)
         await asyncio.to_thread(server.writ_session.cmd_update, sid, [
             "--add-always-on-tokens", str(ao_tokens),
             "--add-always-on-rules", _json.dumps(ao_ids),
@@ -312,9 +353,18 @@ async def prompt_bundle(request: PromptBundleRequest) -> dict[str, Any]:
         "investigate": "investigation-doctrine",
         "conversation": "methodology-conversation", "review": "methodology-review",
     }.get(mode, "")
-    if qsource and remaining_budget > 600:
+    # The mode's floor comes back EVERY turn. exclude_ids is session-wide, while the index
+    # reads its exclude list as "already injected this turn", so passing it unchanged
+    # delivered a floor once per session (once per phase in work). The floor is exempt
+    # from the rule budget the way the always-on channel is: charging it would drain the
+    # budget turn by turn until the 600-token gate below shut the floor off. Pull keeps
+    # both its session dedup and its budget.
+    if qsource:
+        floor_ids = server._trigger_index.floor_ids(mode) if server._trigger_index else set()
         cresp = await methodology_companion(CompanionRequest(
-            mode=mode, prompt=prompt, exclude_rule_ids=exclude_ids, budget_tokens=2000,
+            mode=mode, prompt=prompt,
+            exclude_rule_ids=[i for i in exclude_ids if i not in floor_ids],
+            budget_tokens=2000 if remaining_budget > 600 else 0,
             project_root=request.project_root,
         ))
         if "error" not in cresp:
@@ -322,7 +372,9 @@ async def prompt_bundle(request: PromptBundleRequest) -> dict[str, Any]:
             if ctext:
                 out["methodology_block"] = "[Writ: methodology companion]\n" + ctext
             crule_ids = cmeta.get("rule_ids", []) or []
-            ccost = cmeta.get("cost", 0) or 0
+            ccost = cost_for(
+                [r for r in cresp.get("rules") or [] if r.get("channel") != "floor"], "summary",
+            )
             if crule_ids:
                 await asyncio.to_thread(server.writ_session.cmd_update, sid, [
                     "--add-rules", _json.dumps(crule_ids),
@@ -431,6 +483,24 @@ async def record_feedback(request: FeedbackRequest) -> dict[str, Any]:
     }
 
 
+@router.post("/feedback/batch")
+async def record_feedback_batch(request: FeedbackBatchRequest) -> dict[str, Any]:
+    """Record a batch of feedback signals in one db transaction (SessionEnd).
+
+    The batched form of /feedback: every signal is applied atomically, and graduation
+    is evaluated for the touched rules inside the same transaction. /feedback stays for
+    single-signal callers and old clients.
+    """
+    if not request.signals:
+        return {"recorded": [], "not_found": [], "graduation_pending": [], "applied": 0}
+    if server._db is None:
+        return {"error": "Database not connected."}
+    return await server._db.apply_feedback_batch(
+        [(item.rule_id, item.signal) for item in request.signals],
+        batch_id=request.batch_id,
+    )
+
+
 @router.post("/conflicts")
 async def check_conflicts(request: ConflictsRequest) -> dict[str, Any]:
     """CONFLICTS_WITH edges between provided rules."""
@@ -509,6 +579,33 @@ async def _route_distribution(db: Neo4jConnection) -> dict[str, int]:
     return distribution
 
 
+def _log_destinations() -> dict[str, str]:
+    """The files THIS daemon's rows actually land in, keyed as /health reports them.
+
+    ONE copy, spread into BOTH /health returns. A two-branch payload is exactly where
+    the next copy would drift, and a reporter that was fixed for one caller and left
+    wrong for another is the defect this cycle exists to close.
+
+    Both values come from `writ.shared.logging.emit_destination`, the same function
+    `emit` uses to choose a file, so the report cannot drift from the write. With
+    `WRIT_FRICTION_LOG` set the two values are EQUAL and equal to that variable, which
+    is the truth (every stream collapses into it) and is also the alignment value
+    `tests/_daemon.py` and `scripts/lib/writ-server-lib.sh` compare against.
+
+    `audit_log` is a SECOND field rather than a rename because `write_attempt`,
+    `gate_decision` and every other gate verdict are AUDIT-classified by design
+    (STREAM_MAP), so "the friction log" is the wrong place to send the reader who is
+    looking for a write decision. That reader is why this exists: with the variable
+    unset, this endpoint used to publish `resolve_log_path()`'s bare cwd-relative
+    `workflow-friction.log`, a file this repo last wrote to on 2026-07-01, while all
+    780 `write_attempt` rows sat in `audit.jsonl`.
+    """
+    return {
+        "audit_log": str(emit_destination("audit")),
+        "friction_log": str(emit_destination("friction")),
+    }
+
+
 @router.get("/health")
 async def health() -> dict[str, Any]:
     """Service status, rule count, index state, last ingestion timestamp.
@@ -516,10 +613,35 @@ async def health() -> dict[str, Any]:
     Includes `cache_dir` (FIX-2): the session-cache directory this daemon resolved.
     ensure-server.sh compares it against the caller's expected dir to detect and realign
     a server-cache desync (a daemon started under a divergent TMPDIR).
+
+    Includes `audit_log` and `friction_log` (cycle S): the files a row of each stream
+    would actually land in, from `writ.shared.logging.emit_destination`. `audit_log` is
+    where every gate decision goes. `friction_log` is unchanged for its existing
+    readers, which compare it against their own `WRIT_FRICTION_LOG`, and is no longer
+    the friction-log RESOLVER's answer, which with that variable unset is a bare
+    cwd-relative `workflow-friction.log` that nothing writes to.
     """
+    from writ.server.transport import tcp_readonly_enabled
+
     cache_dir = getattr(server.writ_session, "CACHE_DIR", None) if server.writ_session else None
     if server._db is None:
-        return {"status": "not_ready", "error": "Database not connected.", "cache_dir": cache_dir}
+        # tcp_readonly is reported on THIS branch too. The enforcement state does not
+        # depend on the graph being up, and a doctor asking a not-ready daemon still
+        # needs a true answer about which transports can write to it.
+        return {
+            "status": "not_ready",
+            "error": "Database not connected.",
+            "cache_dir": cache_dir,
+            "tcp_readonly": tcp_readonly_enabled(),
+            # The log destinations are reported on THIS branch too, for the same reason
+            # tcp_readonly is: where this daemon's rows land does not depend on the
+            # graph being up, and "where are the gate decisions" is exactly the question
+            # asked of a daemon that is not answering. It also stops the two alignment
+            # readers seeing a not_ready daemon as PERMANENTLY diverged: they compare
+            # /health's friction_log against their own WRIT_FRICTION_LOG, and a missing
+            # key read as None, which never equals a set variable.
+            **_log_destinations(),
+        }
 
     rule_count = await server._db.count_rules()
 
@@ -546,9 +668,17 @@ async def health() -> dict[str, Any]:
         "index_state": "warm" if index_warm else "cold",
         "startup_time": server._startup_time.isoformat() if server._startup_time else None,
         "cache_dir": cache_dir,
-        # The friction-log path this daemon writes to. The test suite aligns on
-        # this (like cache_dir) so daemon-emitted events don't pollute the repo log.
-        "friction_log": str(resolve_log_path()),
+        # Where this daemon's rows actually land, one field per stream an operator asks
+        # about. See _log_destinations: both come from the router's own destination
+        # function, so the report cannot drift from the write, and `friction_log` keeps
+        # its name because two readers compare it against their own WRIT_FRICTION_LOG.
+        **_log_destinations(),
+        # Whether THIS daemon bounds its TCP port to reads plus the named POST reads.
+        # Reported for the same reason cache_dir is: the caller cannot know it. The
+        # flag lives in the service's environment (a systemd drop-in), so `writ
+        # doctor` read its OWN environment and printed "TCP still serves every route"
+        # at a daemon that was returning 403 to every TCP write.
+        "tcp_readonly": tcp_readonly_enabled(),
     }
     if status == "degraded":
         payload["warning"] = (
@@ -698,7 +828,7 @@ async def always_on_bundle(
 
 @router.get("/subagent-role/{name}")
 async def subagent_role_get(name: str) -> dict[str, Any]:
-    """Return a SubagentRole node's canonical prompt template from the graph.
+    """Return a SubagentRole node's canonical prompt template and its declared `write_scope` from the graph (`write_scope` is null when the role declares none and `[]` when it declares it writes nothing; the two are not coalesced). Read once per dispatch by the sub-agent seeder.
 
     Phase 3 Section 8 deliverable 2: graph is canonical for subagent prompts;
     .claude/agents/*.md files are exported from the graph. This endpoint
@@ -714,5 +844,76 @@ async def subagent_role_get(name: str) -> dict[str, Any]:
         "name": rec["name"],
         "prompt_template": rec["prompt_template"],
         "model_preference": rec["model_preference"],
+        "effort_preference": rec["effort_preference"],
         "dispatched_by": rec["dispatched_by"] or [],
+        # NOT `or []` like dispatched_by above: absence and emptiness are different
+        # answers here. None means the role declares no write scope, which the write gate
+        # reads as "keep today's decision"; [] means the role declares it writes nothing,
+        # which refuses every path. Coalescing would turn every undeclared role into a
+        # role that may write nothing, i.e. deny every sub-agent write in the population.
+        "write_scope": rec["write_scope"],
     }
+
+
+@router.post("/subagent/start-context")
+async def subagent_start_context(request: SubagentStartContextRequest) -> dict[str, Any]:
+    """Everything writ-subagent-start.sh needs from the daemon, in one request.
+
+    Replaces /health, /query, /session/format and GET /subagent-role/{role} on the
+    hook's healthy path: the retrieval (through the query_rules handler, so project
+    resolution and the retrieval_result row are identical), the formatted text and
+    injected ids (through the same formatter /session/format uses), the raw query's
+    rule ids for the rules-injected row, and the role's declared write scope, with
+    null and [] kept distinct as /subagent-role does.
+
+    The parent's mode, phase and gates are deliberately NOT returned: the hook reads
+    the parent cache file-direct because the daemon's view can diverge and answer
+    mode=None. Each part fails open on its own and every key is always present, so
+    the hook can tell "retrieval down" from "role lookup down".
+    """
+    body: dict[str, Any] = {
+        "retrieval": "unavailable", "text": "", "rule_ids": [], "query_rule_ids": [],
+        "rule_count": 0, "role_lookup": "skipped", "write_scope": None,
+    }
+    if server._pipeline is not None:
+        try:
+            result = await query_rules(QueryRequest(
+                query=request.query[:500], budget_tokens=request.budget_tokens,
+                exclude_rule_ids=[], project_root=request.project_root,
+            ))
+            if result.get("error"):
+                body["retrieval"] = "error"
+            else:
+                rules = result.get("rules")
+                rules = rules if isinstance(rules, list) else []
+                formatted = await asyncio.to_thread(_format_query_response, result)
+                body.update({
+                    "retrieval": "ok", "text": formatted["text"],
+                    "rule_ids": formatted["meta"]["rule_ids"],
+                    "query_rule_ids": [
+                        r.get("rule_id", "") if isinstance(r, dict) else "" for r in rules
+                    ],
+                    "rule_count": len(rules),
+                })
+        except Exception as exc:
+            emit_exception("server.subagent_start_context.retrieval", exc, "", None)
+            body["retrieval"] = "error"
+
+    if request.role:
+        if server._db is None:
+            body["role_lookup"] = "unavailable"
+        else:
+            try:
+                rec = await server._db.get_subagent_role(request.role)
+            except Exception as exc:
+                emit_exception("server.subagent_start_context.role", exc, "", None)
+                rec = None
+                body["role_lookup"] = "unavailable"
+            else:
+                if rec is None:
+                    body["role_lookup"] = "not_found"
+                else:
+                    body["role_lookup"] = "ok"
+                    scope = rec.get("write_scope")
+                    body["write_scope"] = list(scope) if isinstance(scope, list) else None
+    return body

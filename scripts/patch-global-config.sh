@@ -3,7 +3,7 @@
 #
 # Hooks are owned by the plugin (hooks/hooks.json, the single source of truth);
 # the standalone settings.json hook seeder was sunset. This script delivers the
-# two things a plugin manifest cannot ship, plus the global instructions:
+# three things a plugin manifest cannot ship, plus the global instructions:
 #   1. Merges the Writ-specific cross-mode allow/deny entries into
 #      ~/.claude/settings.json (idempotent, ordering preserved). Does NOT touch
 #      the hooks block -- the plugin registers hooks.
@@ -17,6 +17,15 @@
 #      Text outside the block is never changed; a block the user edited is replaced
 #      only under a boxed warning that names the backup. A missing settings.json is
 #      CREATED, not an error.
+#   3. Writes the plain top-level settings keys Writ ships a default for
+#      (bin/lib/writ_install.py's MANAGED_SETTINGS declaration; outputStyle and
+#      effortLevel today). No plugin field carries these VALUES: a plugin can ship
+#      output-style DEFINITIONS but not the SELECTED style, and no manifest field
+#      sets a reasoning effort level at all, so this patch is the delivery path.
+#      Policy: write when absent, and never clobber a value you already set,
+#      because this runs on every bootstrap and on every `writ doctor --fix`.
+#   4. Renders templates/CLAUDE.md into ~/.claude/CLAUDE.md (backup-if-exists,
+#      skip-if-identical). A missing settings.json is CREATED, not an error.
 #
 # Why this exists. The plugin manifest schema has no permissions field,
 # hooks/hooks.json only registers hook events, and the plugin lifecycle does not
