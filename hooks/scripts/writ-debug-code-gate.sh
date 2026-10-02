@@ -20,14 +20,55 @@ type hook_instrument >/dev/null 2>&1 && hook_instrument "writ-debug-code-gate"
 
 STDIN_DATA=$(cat)
 
-SID=$(printf '%s' "$STDIN_DATA" | python3 -c "
+# THREE LINES FROM THE PARSE THIS GATE ALREADY PAID FOR, and the widening is what lets the
+# seeder be reached at all from here: Grep and Glob fire only this hook, which cannot call
+# load_hook_env because $STDIN_DATA has already consumed stdin. Net process change: zero.
+#
+# EACH VALUE IS COERCED AND STRIPPED OF LINE BREAKS. A non-string becomes the empty string,
+# and a value carrying a newline or carriage return would otherwise forge a fourth line and
+# shift the positional split below, which is the same hazard writ_runtime_lens_check_required
+# documents for its unit-separated line.
+PAYLOAD_FIELDS=$(printf '%s' "$STDIN_DATA" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
 except Exception:
-    print(''); sys.exit(0)
-print((d.get('agent_id') or d.get('agentId') or d.get('session_id') or d.get('sessionId') or '').strip())
+    d = {}
+if not isinstance(d, dict):
+    d = {}
+def one(key):
+    v = d.get(key)
+    if not isinstance(v, str):
+        return ''
+    return v.replace('\n', '').replace('\r', '').strip()
+print(one('agent_id'))
+print(one('session_id'))
+print(one('agent_type'))
 " 2>/dev/null || echo "")
+
+# mapfile is a builtin, so the split costs no process. The `:-` defaults are explicit
+# because an unparseable payload prints nothing at all and `set -u` would abort on an
+# unset array element.
+PARSED_LINES=()
+mapfile -t PARSED_LINES <<<"$PAYLOAD_FIELDS"
+AGENT_ID="${PARSED_LINES[0]:-}"
+RAW_SESSION_ID="${PARSED_LINES[1]:-}"
+AGENT_TYPE="${PARSED_LINES[2]:-}"
+
+# Byte for byte the identity rule this gate already used: agent first, session only when the
+# payload carried no agent, never synthesized.
+SID="${AGENT_ID:-$RAW_SESSION_ID}"
+
+# GOVERN THE AGENT BEFORE THE EARLY EXIT, not after. This sits above `[ -n "$SID" ] || exit 0`
+# so a future edit to that guard cannot silently drop seeding, and the `type` guard is the
+# same one the predicate call below uses: this file sources common.sh with `|| true`, and an
+# undefined function under `set -e` would abort the gate before it could refuse anything.
+# The RAW session id is passed as the parent, never $SID, because seeding needs both halves
+# of the pair. Seeding grants nothing: the cache is marked lazy_seed and the write gate
+# resolves that mode as absent.
+if type writ_seed_subagent_from_fields >/dev/null 2>&1; then
+    writ_seed_subagent_from_fields "$AGENT_ID" "$RAW_SESSION_ID" "$AGENT_TYPE"
+fi
 
 # THIS GATE'S OWN TELEMETRY IS KEYED HERE.
 #
@@ -45,11 +86,53 @@ SESSION_ID="$SID"
 
 [ -n "$SID" ] || exit 0
 
+# THE EXPENSIVE CHECK IS SKIPPED WHEN THE LENS PROVABLY CANNOT DENY.
+#
+# `can-read-code` pays a python interpreter start plus a `writ` package import on EVERY
+# Read, Grep and Glob, and the runtime lens can only deny when the session's effective
+# source type is "runtime". writ_runtime_lens_check_required answers that question from
+# the session cache in one jq process, and answers "required" for every state it cannot
+# resolve, so uncertainty pays the full cost and never grants a read.
+#
+# THE `type` GUARD IS NOT DECORATION. An undefined function means common.sh did not
+# source, and without the guard `set -e` would abort the hook here, before it could
+# refuse anything. With it, a missing library falls through to the expensive path and
+# to today's behaviour, including today's ability to deny.
+#
+# THE ALLOW ROW IS STILL WRITTEN HERE. A gate that gets faster by disappearing from the
+# audit stream is exactly the regression the decision record below exists to prevent,
+# so this arm logs the same gate name, decision and target the un-skipped allow arm
+# logs (tests/test_debug_lens_predicate.py pins the two rows equal).
+if type writ_runtime_lens_check_required >/dev/null 2>&1 \
+    && ! writ_runtime_lens_check_required "$SID"; then
+    log_gate_decision "debug-code-read" "allow" "" "${SID}"
+    exit 0
+fi
+
 DECISION_JSON=$(printf '%s' "$STDIN_DATA" \
     | python3 "$SESSION_HELPER" can-read-code "$SID" --skill-dir "$SKILL_DIR" 2>/dev/null || echo "")
 [ -n "$DECISION_JSON" ] || exit 0
 
-printf '%s' "$DECISION_JSON" | python3 -c "
+# ONE PARSE FOR BOTH FIELDS, and it happens BEFORE the emitter below so the emitter's
+# interpreter start is paid only when the gate actually refuses. Two inline `python3 -c`
+# parses of the same small document became one `parsed_fields` call, whose semantics are
+# parsed_field's field for field: absent and null both give "", which is what the
+# `.get('decision')` / `.get('reason') or ''` arms they replaced produced.
+#
+# BOTH VARIABLES ARE INITIALIZED FIRST. An unparseable document makes parsed_fields
+# print nothing at all, and `set -u` would then abort the hook on an unset variable.
+GATE_DECISION=""
+GATE_REASON=""
+eval "$(parsed_fields "$DECISION_JSON" GATE_DECISION=decision GATE_REASON=reason)"
+
+# The emitter below runs unless the parse positively said "allow". Testing for "not
+# allow" rather than "is deny" holds the refusal to the same fail direction the
+# predicate above uses: if common.sh never sourced, or the document did not parse,
+# GATE_DECISION is "" and the emitter still runs and still decides for itself from the
+# same JSON, exactly as it did when it ran unconditionally. The block itself is
+# unchanged; it is only reached less often.
+if [ "$GATE_DECISION" != "allow" ]; then
+DENY_REPLY=$(printf '%s' "$DECISION_JSON" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -65,25 +148,17 @@ print(json.dumps({
         'additionalContext': 'Runtime (debug) lens: read debug.md / logs / non-code and gather runtime evidence via Bash first, record Evidence + Narrowing in debug.md, then read code.',
     }
 }))
-" 2>/dev/null || true
+" 2>/dev/null) || DENY_REPLY=""
+# The arm above exits without printing on anything that is not a deny, which is why the
+# funnel no-ops on an empty payload rather than emitting a blank line.
+emit_hook_reply "$DENY_REPLY"
+fi
 
-# Decision record on BOTH branches. The `decision` field is read back out of the
-# same DECISION_JSON the block above acted on, so the record can never disagree
-# with what the gate actually did.
-GATE_DECISION=$(printf '%s' "$DECISION_JSON" | python3 -c "
-import sys, json
-try:
-    print('deny' if json.load(sys.stdin).get('decision') == 'deny' else 'allow')
-except Exception:
-    print('allow')
-" 2>/dev/null || echo "allow")
-GATE_REASON=$(printf '%s' "$DECISION_JSON" | python3 -c "
-import sys, json
-try:
-    print(json.load(sys.stdin).get('reason') or '')
-except Exception:
-    print('')
-" 2>/dev/null || echo "")
+# Decision record on BOTH branches, including the skip arm above. The `decision` field
+# is read back out of the same DECISION_JSON the block above acted on, so the record can
+# never disagree with what the gate actually did. Anything that is not exactly `deny` is
+# an allow, which reproduces the `except: print('allow')` arm this replaced.
+[ "$GATE_DECISION" = "deny" ] || GATE_DECISION="allow"
 log_gate_decision "debug-code-read" "$GATE_DECISION" "$GATE_REASON" "${SID}"
 
 exit 0

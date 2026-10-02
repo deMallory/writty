@@ -1,4 +1,4 @@
-"""Shared JSONL reader for writ/analysis (friction, token_audit, efficacy_ab).
+"""Shared JSONL reader for writ/analysis (friction, token_audit).
 
 A dependency-free leaf module (stdlib only) so the analysis modules share one
 skip-malformed reader without an import cycle.

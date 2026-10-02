@@ -21,23 +21,14 @@ directly. The non-work and all-approved no-op cases are reframed at the level
 where the no-advance decision actually lives: _next_pending_gate returning None
 is the signal both callers use to skip apply_phase_advance entirely.
 
-TestAdvancePopulatesGatesApproved is an end-to-end check against the live daemon
-(skips if unreachable; needs a restart to pick up the server.py change) proving
-_advance actually calls apply_phase_advance and persists gates_approved.
+The end-to-end check against the live daemon (TestAdvancePopulatesGatesApproved)
+was retired 2026-09-09 because it skipped unconditionally on a server-reachability
+probe and so never asserted anything; its property is covered in process by
+tests/test_phase_advance_unified.py::TestCrossPathParity, which drives the real
+route and asserts gates_approved == ["phase-a", "test-skeletons"].
 """
 
 from __future__ import annotations
-
-import json
-import os
-import tempfile
-import urllib.error
-import urllib.request
-import uuid
-
-import pytest
-
-from tests._daemon import _port
 
 
 # ---------------------------------------------------------------------------

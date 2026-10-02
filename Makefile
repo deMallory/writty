@@ -1,4 +1,4 @@
-.PHONY: test perf bench check check-venv validate test-graph-up test-graph-down
+.PHONY: test perf firedrill bench check check-venv validate test-graph-up test-graph-down
 
 # Pin the Python interpreter to the project venv. The system python3 on many
 # machines lacks onnxruntime (and other optional bench dependencies), which
@@ -35,11 +35,36 @@ test-graph-down:
 # a test runner that silently creates containers on your machine is the kind of
 # helpfulness that later gets blamed for something unrelated. That refusal lives
 # in tests/conftest.py, so there is no guard here to drift from it.
+# The failure budget for `test`, overridable from the environment. The default is
+# unchanged, so `make test` with no arguments behaves exactly as HANDBOOK.md and
+# docs/reference/testing.md document it. PYTEST_ADDOPTS cannot do this job: pytest
+# PREPENDS its contents to the command line, so the recipe's own explicit
+# --maxfail below would win over anything set there. A knob the recipe itself
+# reads is the only way one run can report every failure without editing the
+# recipe. pytest reads 0 as "no limit".
+PYTEST_MAXFAIL ?= 10
+
+# One shard of the suite, as CI runs it: `make test SHARD=k SHARDS=n` runs only the
+# files scripts/ci_shard.py assigns to shard k of n. With SHARDS unset the recipe is
+# the whole-suite line, unchanged. Shards on one machine run one after another, never
+# at once: each session start wipes and rebuilds the same disposable graph.
+# JUNIT_XML, when set, writes xunit1 junit (the flavour that records each test's
+# file) for `ci_shard.py --rebuild-timings`. It is a recipe argument and not
+# PYTEST_ADDOPTS because the suite's nested pytest runs inherit the environment.
+SHARDS ?=
+SHARD ?= 0
+JUNIT_XML ?=
+PYTEST_JUNIT = $(if $(JUNIT_XML), -o junit_family=xunit1 --junitxml=$(JUNIT_XML))
+
 test: check-venv test-graph-up
 	# --maxfail=10, not -x. On a 7,000-test suite -x means one CI run reports exactly
 	# one failure, so reaching green costs N pushes at ~8 minutes each. Ten gives the
 	# whole picture in one run and still refuses to grind through a broken suite.
-	$(PYTHON) -m pytest tests/ --maxfail=10 -q
+ifeq ($(strip $(SHARDS)),)
+	$(PYTHON) -m pytest tests/ --maxfail=$(PYTEST_MAXFAIL) -q$(PYTEST_JUNIT)
+else
+	files="$$($(PYTHON) scripts/ci_shard.py --shard $(SHARD) --shards $(SHARDS))" && $(PYTHON) -m pytest $$files --maxfail=$(PYTEST_MAXFAIL) -q$(PYTEST_JUNIT)
+endif
 
 # The timing gates, alone. `make test` deselects them (addopts in pyproject) because
 # p95 inside the loaded suite measures the machine, not the hook: ~30ms of drift on
@@ -49,6 +74,16 @@ test: check-venv test-graph-up
 perf: check-venv
 	$(PYTHON) -m pytest -m perf -o addopts= -p no:randomly -q \
 	  tests/test_hook_perf_floors.py tests/test_retrieval.py
+
+# The negative-controls fire drill, alone. Every case triggers a real refusing
+# surface (a hook subprocess, or a real call into writ/session/gates.py) and asserts
+# the refusal was returned in its declared form AND recorded in the right typed
+# stream. It runs in `make test` too; this target exists so a person can run it
+# without remembering the marker, and so the drill's own exit status is the whole
+# exit status. `-m firedrill` rather than a path so it keeps selecting the drill if
+# the files move.
+firedrill: check-venv
+	$(PYTHON) -m pytest -m firedrill -q
 
 bench: check-venv
 	$(PYTHON) -m pytest benchmarks/bench_targets.py -x -q

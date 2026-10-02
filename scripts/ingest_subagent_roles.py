@@ -4,7 +4,7 @@ Phase 3 deliverable 2: the graph becomes the canonical source of subagent
 definitions. scripts/export_subagent_roles.py regenerates the .md files
 from the graph (the reverse direction).
 
-Each .md has YAML front-matter (name, description, model, tools) plus a
+Each .md has YAML front-matter (name, description, model, effort, tools) plus a
 markdown body containing the system prompt. This script parses both and
 creates a SubagentRole node per file, idempotent via MERGE.
 
@@ -63,6 +63,7 @@ def parse_agent_file(path: Path) -> dict | None:
         "name": name,
         "description": fm.get("description") or "",
         "model": fm.get("model"),
+        "effort": fm.get("effort"),
         "tools": fm.get("tools"),
         "prompt_template": body,
     }
@@ -89,6 +90,7 @@ def build_node(agent: dict) -> dict:
         "prompt_template": agent["prompt_template"],
         "dispatched_by": DISPATCHED_BY.get(agent["name"], []),
         "model_preference": agent.get("model"),
+        "effort_preference": agent.get("effort"),
         "tools": agent.get("tools"),
         "description": agent.get("description"),
     }

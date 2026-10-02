@@ -34,7 +34,8 @@ def render_agent_md(row: dict) -> str:
     """Render a SubagentRole row to the canonical .md file format.
 
     YAML front-matter fields in insertion order matching the original files:
-    name, description, model, tools. prompt_template is the body.
+    name, description, model, effort, tools. prompt_template is the body.
+    effort is emitted only when effort_preference is set.
     """
     lines = ["---", f"name: {row['name']}"]
     description = row.get("description") or row.get("statement") or ""
@@ -42,6 +43,8 @@ def render_agent_md(row: dict) -> str:
         lines.append(f"description: {json.dumps(description)}")
     if row.get("model_preference"):
         lines.append(f"model: {row['model_preference']}")
+    if row.get("effort_preference"):
+        lines.append(f"effort: {row['effort_preference']}")
     if row.get("tools"):
         lines.append(f"tools: {row['tools']}")
     lines.append("---")
@@ -62,6 +65,7 @@ async def fetch_roles(db: Neo4jConnection) -> list[dict]:
                    r.statement       AS statement,
                    r.prompt_template AS prompt_template,
                    r.model_preference AS model_preference,
+                   r.effort_preference AS effort_preference,
                    r.tools           AS tools,
                    r.dispatched_by   AS dispatched_by
             ORDER BY r.name

@@ -46,6 +46,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.test_bash_write_gate import run_extractor
+
 SKILL_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 HOOK_SH = os.path.join(SKILL_ROOT, "hooks", "scripts", "writ-bash-write-gate.sh")
 
@@ -71,11 +73,14 @@ def _extractor_src() -> str:
 
 
 def _extract(cmd: str, cwd: str, src: str | None = None) -> set[tuple[str, ...]]:
-    """Run the extractor (optionally a mutated copy) and return the rows it emits."""
-    env = dict(os.environ, WRIT_BASH_CMD=cmd, WRIT_CWD=cwd, WRIT_DIR=SKILL_ROOT)
-    p = subprocess.run([sys.executable, "-c", src if src is not None else _extractor_src()],
-                       env=env, capture_output=True, text=True, timeout=60)
-    return {tuple(line.split("\t")) for line in p.stdout.splitlines() if line}
+    """Run the extractor (optionally a mutated copy) and return the rows it emits.
+
+    REUSED, NOT DUPLICATED: `run_extractor` from tests/test_bash_write_gate.py hands the
+    command over on a FILE (`WRIT_BASH_CMD_FILE`), which is the transport the hook itself
+    uses, and strips the completion sentinel from the rows."""
+    env = dict(os.environ, WRIT_DIR=SKILL_ROOT)
+    _p, lines = run_extractor(cmd, cwd, env=env, src=src, timeout=60)
+    return {tuple(line.split("\t")) for line in lines if line}
 
 
 @pytest.fixture()
@@ -202,9 +207,12 @@ class TestReportedBypassIsClosed:
 
 
 # --------------------------------------------------------------------------- #
-# 2. the shell vector is untouched
+# 2. the shell vector, in the repo unchanged and out of it now decided
+#    The IN-REPO redirect is untouched by this file's fix and by cycle L. The
+#    OUT-OF-REPO redirect changed in cycle L: it used to be silent and is now
+#    decided by the same gate the Write door uses. See the second pin.
 # --------------------------------------------------------------------------- #
-class TestShellRedirectUnchanged:
+class TestShellRedirectVector:
     def test_redirect_still_denies_with_its_audit_row(self, gate):
         out = _run_hook(gate, REDIRECT_CMD)
         assert out is not None and out["permissionDecision"] == "deny"
@@ -212,8 +220,29 @@ class TestShellRedirectUnchanged:
         rows = [r for r in _audit_rows(gate) if r.get("decision") == "deny"]
         assert rows and rows[0]["target"] == str(gate.proj / "src" / "sneaky.py")
 
-    def test_redirect_outside_the_repo_is_still_not_work_gated(self, gate):
-        assert _run_hook(gate, "echo x > /tmp/writ-scratch-xyz") is None
+    def test_redirect_outside_the_repo_reaches_the_gate(self, gate):
+        # MEASURED after cycle L, in this PRE-APPROVAL session: `echo x > <target>`
+        # denies with [ENF-GATE-PLAN] ("Say approved to proceed") where it used to be
+        # silent, because the out-of-repo target now emits an `outside` row and takes
+        # the same can-write round trip an in-repo target takes. That pre-approval
+        # refusal is consequence C1 in the approved plan, the accepted cost of two-door
+        # parity. Its named remedy, a scratch-zone allow arm in
+        # gates._check_work_gate, has since SHIPPED, and this still denies because the
+        # fixture records no project_root: the arm routes through boundary_root, which
+        # abstains on an empty root. Real pre-approval scratch behavior is pinned in
+        # tests/test_write_door_parity.py and tests/test_scratch_zone_write_arm.py.
+        target = "/tmp/writ-scratch-xyz"
+        out = _run_hook(gate, f"echo x > {target}")
+        assert out is not None, "the out-of-repo redirect was silent; it reached no gate"
+        assert out["permissionDecision"] == "deny", out
+        assert "ENF-GATE-PLAN" in out["permissionDecisionReason"], out
+        # The refusal is not the property; the AGREEMENT is. The same target in the same
+        # session gets the same verdict from the Write door, which is the function both
+        # transports call.
+        gates = _imp("writ.session.gates")
+        write_door = gates._can_write_check(
+            gate.sid, {"tool_input": {"file_path": target}}, SKILL_ROOT)
+        assert write_door["can_write"] is False, write_door
 
 
 # --------------------------------------------------------------------------- #
@@ -231,8 +260,29 @@ class TestExemptionsAreReused:
         rows = _extract("""python3 -c "open('tests/test_x.py','w')" """, str(gate.proj))
         assert ("local", str(gate.proj / "tests" / "test_x.py")) in rows
 
-    def test_outside_the_repo_is_not_work_gated_through_an_interpreter(self, gate):
-        assert _run_hook(gate, """python3 -c "open('/tmp/scratch.py','w')" """) is None
+    def test_outside_the_repo_reaches_the_gate_through_an_interpreter(self, gate):
+        # The sibling vector, and the reason cycle L did not carve interpreter hits out:
+        # suppressing them would have re-opened the interpreter write door outside the
+        # repo while the redirect pin above stayed green.
+        # MEASURED after cycle L, in this PRE-APPROVAL session: this denies with
+        # [ENF-GATE-PLAN] ("Say approved to proceed") where it used to be silent. That
+        # refusal is consequence C1 in the approved plan, the accepted cost of two-door
+        # parity. Its named remedy, a scratch-zone allow arm in
+        # gates._check_work_gate, has since SHIPPED, and this still denies because the
+        # fixture records no project_root: the arm routes through boundary_root, which
+        # abstains on an empty root. Real pre-approval scratch behavior is pinned in
+        # tests/test_write_door_parity.py and tests/test_scratch_zone_write_arm.py.
+        target = "/tmp/scratch.py"
+        out = _run_hook(gate, f"""python3 -c "open('{target}','w')" """)
+        assert out is not None, (
+            "the out-of-repo interpreter write was silent; it reached no gate"
+        )
+        assert out["permissionDecision"] == "deny", out
+        assert "ENF-GATE-PLAN" in out["permissionDecisionReason"], out
+        gates = _imp("writ.session.gates")
+        write_door = gates._can_write_check(
+            gate.sid, {"tool_input": {"file_path": target}}, SKILL_ROOT)
+        assert write_door["can_write"] is False, write_door
 
 
 # --------------------------------------------------------------------------- #
@@ -270,22 +320,136 @@ class TestBenignOneLinersStaySilent:
 
 
 # --------------------------------------------------------------------------- #
-# 4b. the cost of the fix, stated instead of discovered
+# 4b. item A (plan f7fc2b37-9a53-4011-a69f-e6b97f5e45fe): `open(<literal>)` and
+# `open(<literal>, 'r'|'rt'|'rb')` in inline interpreter source is a READ, and is
+# no longer gated; any other mode, any keyword form, any non-literal argument, and
+# any method call spelled `X.open(...)` stays gated exactly as before. RED at HEAD:
+# READ_OPEN_MODES / READ_OPEN_CALL do not exist yet, so every one-liner below is
+# still gated like a write.
 # --------------------------------------------------------------------------- #
-class TestAcceptedFalsePositives:
-    """These commands only READ, and they are no longer silent. That is the deliberate
-    trade: telling a write from a read inside interpreter source is a parser arms race,
-    and the alternative to over-refusing is the silent write this fix exists to close.
-    Recorded as tests so the cost is visible to whoever changes this next, rather than
-    turning up as a surprise in someone's session."""
+class TestReadOnlyOpenIsNotAWrite:
+    """`open(<literal>)` and `open(<literal>, 'r'|'rt'|'rb')` are reads, and the
+    write gate must not treat them as writes: not blocked, AND the extractor must
+    yield no target for them (the allow is a genuine miss on the scan, not the
+    exemption logic reused from elsewhere)."""
 
     @pytest.mark.parametrize("cmd", [
         """python3 -c "print(open('src/x.py').read())" """,
         """python3 -c "import json; print(json.load(open('config.json')))" """,
+        """python3 -c "open('src/x.py','rb').read()" """,
+        """python3 -c 'print(open("src/x.py", "rt").read())'""",
+    ], ids=["bare-read", "load-open-config", "rb-mode", "rt-mode-mixed-quotes"])
+    def test_not_blocked(self, gate, cmd):
+        assert _run_hook(gate, cmd) is None, cmd
+
+    @pytest.mark.parametrize("cmd, path", [
+        ("""python3 -c "print(open('src/x.py').read())" """, "src/x.py"),
+        ("""python3 -c "import json; print(json.load(open('config.json')))" """, "config.json"),
+        ("""python3 -c "open('src/x.py','rb').read()" """, "src/x.py"),
+        ("""python3 -c 'print(open("src/x.py", "rt").read())'""", "src/x.py"),
+    ], ids=["bare-read", "load-open-config", "rb-mode", "rt-mode-mixed-quotes"])
+    def test_no_target_is_extracted_the_allow_is_a_genuine_miss(self, gate, cmd, path):
+        rows = _extract(cmd, str(gate.proj))
+        assert ("local", str(gate.proj / path)) not in rows, (
+            f"{cmd!r} still produced a target for {path!r}: {rows!r}"
+        )
+
+    def test_a_heredoc_body_reading_a_file_is_not_blocked(self, gate):
+        cmd = "python3 <<'PY'\nprint(open('src/x.py').read())\nPY"
+        assert _run_hook(gate, cmd) is None, cmd
+
+
+class TestStillGatedReads:
+    """Everything the read-only allow must NOT widen to: a bare pipe into stdin
+    (no `open()` call at all -- `src/x.py` is a bare literal fed to python as the
+    program, and the approved rule keeps bare literals gated), a printed literal, a
+    dict key, a keyword-form mode, a method call spelled `X.open(...)`, and the
+    WRITE half of a mixed read/write one-liner."""
+
+    @pytest.mark.parametrize("cmd", [
         """cat src/x.py | python3 -""",
-    ])
-    def test_read_only_one_liner_naming_a_project_file_is_gated(self, gate, cmd):
+        """python3 -c "print('src/x.py')" """,
+        """python3 -c "d={'src/x.py': 1}" """,
+        """python3 -c "open('src/x.py', mode='r')" """,
+        """python3 -c "shelve.open('src/x.db')" """,
+    ], ids=["cat-pipe-bare-literal", "printed-literal", "dict-key",
+            "keyword-mode-not-matched", "method-call-not-bare-open"])
+    def test_still_blocked(self, gate, cmd):
         assert _blocked(_run_hook(gate, cmd)), cmd
+
+    def test_mixed_read_and_write_one_liner_gates_only_the_write_half(self, gate):
+        cmd = """python3 -c "d=open('a.json').read(); open('src/x.py','w').write(d)" """
+        out = _run_hook(gate, cmd)
+        assert _blocked(out), f"the write half must still be gated: {out!r}"
+        assert os.path.basename("src/x.py") in out.get("permissionDecisionReason", "")
+        rows = _extract(cmd, str(gate.proj))
+        assert ("local", str(gate.proj / "a.json")) not in rows, (
+            f"the read half must not be a target: {rows!r}"
+        )
+        assert ("local", str(gate.proj / "src" / "x.py")) in rows, (
+            f"the write half must still be a target: {rows!r}"
+        )
+
+    @pytest.mark.parametrize("mode", ["w", "a", "x", "r+", "wb", "w+"])
+    def test_every_other_open_mode_stays_blocked(self, gate, mode):
+        cmd = f"""python3 -c "open('src/x.py', '{mode}')" """
+        assert _blocked(_run_hook(gate, cmd)), cmd
+
+
+class TestReadOpenMutationProofs:
+    """Same technique as TestAntiVacuity: replace one production constant in the
+    extractor's source text and prove the boundary moves for exactly the expected
+    reason. RED at HEAD: READ_OPEN_MODES / READ_OPEN_CALL do not exist yet, so the
+    signature checks below fail outright rather than merely being vacuous."""
+
+    MODES_SIGNATURE = 'READ_OPEN_MODES = frozenset({"r", "rt", "rb"})'
+    CALL_SIGNATURE = "READ_OPEN_CALL = re.compile("
+
+    def test_widening_read_open_modes_to_include_w_lets_a_write_escape(self, gate):
+        src = _extractor_src()
+        assert self.MODES_SIGNATURE in src, (
+            "READ_OPEN_MODES moved or is not spelled exactly this; this test is "
+            "now vacuous and must be re-pinned to the new spelling"
+        )
+        mutated = src.replace(
+            self.MODES_SIGNATURE,
+            'READ_OPEN_MODES = frozenset({"r", "rt", "rb", "w"})',
+        )
+        cmd = """python3 -c "open('src/x.py','w')" """
+        target = ("local", str(gate.proj / "src" / "x.py"))
+        assert target not in _extract(cmd, str(gate.proj), mutated), (
+            "widening READ_OPEN_MODES to include 'w' let a write mode escape the scan"
+        )
+        assert target in _extract(cmd, str(gate.proj)), (
+            "the real, unmutated source must still gate this write"
+        )
+
+    def test_a_read_open_call_that_never_matches_gates_the_read_only_one_liner_again(
+        self, gate
+    ):
+        src = _extractor_src()
+        assert self.CALL_SIGNATURE in src, (
+            "READ_OPEN_CALL moved or is not spelled exactly this; this test is "
+            "now vacuous and must be re-pinned to the new spelling"
+        )
+        start = src.index(self.CALL_SIGNATURE)
+        # The assignment's closing paren is the first line, after `start`, that is
+        # exactly `)` (module-level constants in this file have no continuation
+        # after the statement closes), which is robust to how the multi-line
+        # pattern literal itself is wrapped.
+        close = src.index("\n)", start)
+        end = close + len("\n)")
+        never_matches_source = 'READ_OPEN_CALL = re.compile(r"(?!)")'
+        mutated = src[:start] + never_matches_source + src[end:]
+        cmd = """python3 -c "print(open('src/x.py').read())" """
+        target = ("local", str(gate.proj / "src" / "x.py"))
+        assert target not in _extract(cmd, str(gate.proj)), (
+            "the real, unmutated source must not gate a read-only one-liner"
+        )
+        assert target in _extract(cmd, str(gate.proj), mutated), (
+            "a READ_OPEN_CALL that never matches must make the read-only one-liner "
+            "gated again -- proving the allow comes from the new strip and nothing else"
+        )
 
 
 # --------------------------------------------------------------------------- #

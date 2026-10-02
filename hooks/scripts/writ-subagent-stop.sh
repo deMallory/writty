@@ -17,6 +17,10 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 source "$WRIT_DIR/bin/lib/common.sh"
 
+# WRIT_HOOK_LOG stderr breadcrumb sink, gated by WRIT_DEBUG: /dev/null when unset,
+# ${WRIT_HOOK_LOG:-/tmp/writ-hooks.log} when WRIT_DEBUG=1 (single source: common.sh).
+WRIT_HOOK_LOG_SINK="$(hook_log_sink)"
+
 # Phase 4c: capture stderr (Python tracebacks etc.) to debug log so
 # next-occurrence diagnostics are readable. tee preserves stderr
 # propagation so behavior is unchanged. Gated behind WRIT_DEBUG (default OFF):
@@ -33,7 +37,7 @@ STDIN_JSON=$(cat)
 # compare its agent_id/agent_type against the SubagentStart capture and pinpoint why
 # built-in agents (Explore) fail to correlate to their start-created session. /tmp,
 # capped at 50, fire-and-forget -- never affects the hook outcome.
-_WRIT_STOP_CAP=/tmp/writ-subagent-stop-payloads.jsonl
+_WRIT_STOP_CAP="${WRIT_SUBAGENT_STOP_CAPTURE:-/tmp/writ-subagent-stop-payloads.jsonl}"
 if [ "$(wc -l < "$_WRIT_STOP_CAP" 2>/dev/null || echo 0)" -lt 50 ]; then
     printf '%s\n' "$STDIN_JSON" >> "$_WRIT_STOP_CAP" 2>/dev/null || true
 fi
@@ -70,7 +74,11 @@ PARENT_TRANSCRIPT=$(parsed_field "$STDIN_JSON" "transcript_path")
 # releases its rows, and `|| true` because this hook must exit 0 on every path
 # (friction-logger.sh drains under the same guarantee).
 if [ -n "$AGENT_ID" ]; then
-    writ_event_buffer_flush "$AGENT_ID" || true
+    # AT EXIT, not here: common.sh appends this hook's own row before running exit
+    # handlers, so draining at exit flushes this hook too rather than stranding its row in
+    # a buffer it had already unlinked.
+    _writ_drain_agent_buffer() { writ_event_buffer_flush "$AGENT_ID" || true; }
+    writ_on_exit _writ_drain_agent_buffer
 else
     # Recorded rather than silent. Live SubagentStop payloads always carry agent_id
     # (verified against captured envelopes), so its absence is a broken invariant, and
@@ -85,12 +93,95 @@ if [ -z "$AGENT_ID" ]; then
     exit 0
 fi
 
-# Fallback: some Claude Code versions / nested sub-agents omit agent_type.
-# Default to "general-purpose" and log the fallback so we can track frequency.
-if [ -z "$AGENT_TYPE" ]; then
-    AGENT_TYPE="general-purpose"
+# THIS HOOK'S OWN TELEMETRY ROW IS KEYED HERE, and AGENT_ID is non-empty by the guard above.
+#
+# Measured 2026-08-27: `var/session/writ-events-unknown.buf` held 22 rows from this hook,
+# because the exit trap files under `${SESSION_ID:-${HOOK_SESSION_ID:-}}` and this hook set
+# neither. The rows were not merely late: writ-flush-events.py sweeps any buffer idle past
+# ABANDONED_SESSION_SECONDS and `unknown` is an eligible name, but writ-statusline.sh shared
+# that bucket and kept its mtime perpetually young, so the sweep never fired. One non-hook
+# held the whole bucket open.
+#
+# AGENT_ID AND NEVER PARENT_SESSION, the same agent-first rule as the drain above: a
+# sub-agent's rows belong to the sub-agent. It also lands the row in exactly the buffer
+# _writ_drain_agent_buffer flushes at exit, so the row reaches a log this turn.
+#
+# ATTRIBUTION ONLY, verified rather than assumed: nothing this hook reaches keys STATE off
+# SESSION_ID. Both python blocks below receive agent_id and parent_session explicitly on
+# argv, the tripwire rows pass their session explicitly for this very reason, the drain uses
+# AGENT_ID directly, and the name is not exported so no child can see it.
+SESSION_ID="$AGENT_ID"
+
+# DID A SESSION CACHE EXIST FOR THIS AGENT AT ALL? Answered HERE, and the position is the
+# whole property.
+#
+# The row below is built from `_writ_session read`, which answers a miss with
+# `_default_cache()` rather than failing, so an agent Writ never touched produces a
+# completion row whose every field is a default. Measured 2026-09-21: 6,751 such rows, all
+# carrying files_written=0, queries=0, rules_loaded=0, agent_type="unknown". "Ran ungoverned
+# while writing files" and "no cache existed when it stopped" were the same row.
+#
+# BEFORE THE ROLE RESOLVER AND BEFORE `_writ_session read`, so nothing this hook does can
+# create the file it is measuring. Moving this line below either of them would make the
+# observation a report on this hook's own side effects.
+#
+# THE FILE, NEVER THE DAEMON. `_writ_session read` can be answered by a daemon started
+# against a different WRIT_CACHE_DIR; this test uses the same resolution of the cache
+# directory that writ_seed_subagent_from_fields writes to, so the observation and the thing
+# observed are resolved by the same code.
+#
+# A STRING, NEVER A BOOLEAN. Three states need three values: a row written before this field
+# existed carries no field at all and must read as unrecorded, which a falsy
+# `cache_present: false` could not be told apart from.
+if [ -f "$(writ_session_cache_dir)/writ-session-$AGENT_ID.json" ]; then
+    CACHE_STATE="present"
+else
+    CACHE_STATE="absent"
+fi
+
+# THE ROLE IS RESOLVED, NOT DEFAULTED. `agent_type` is in the envelope schema and arrives
+# EMPTY for the sub-agents that never receive a SubagentStart: 10 of 10 captured envelopes
+# from that population (2026-08-27), 2,219 records corpus-wide. An ordinary Agent dispatch
+# carries it populated, probe-verified the same day, so an empty value is the signature of
+# an ungoverned spawn rather than this build's normal path. The old code rewrote the empty
+# string to the literal `general-purpose`, so those records named a role nobody observed,
+# indistinguishable from a real general-purpose dispatch.
+# The resolver reads the sidecar Claude Code writes beside the agent's transcript, falls back
+# to a role this session already stored, and reports `unknown` when nothing answered.
+# ROLE_SOURCE travels with it so a defaulted role can never be read as an observed one.
+ROLE_RESOLUTION=$(AGENT_ID="$AGENT_ID" AGENT_TYPE="$AGENT_TYPE" python3 -c '
+import os, sys
+sys.path.insert(0, sys.argv[1])
+role, source = "", "unresolved"
+try:
+    from writ.session.subagent_role import resolve_role
+    from writ.session.cache import _read_cache
+    agent_id = os.environ.get("AGENT_ID", "")
+    try:
+        cache = _read_cache(agent_id)
+    except Exception:
+        cache = None
+    role, source = resolve_role(agent_id, os.environ.get("AGENT_TYPE", ""), cache=cache)
+except Exception:
+    # An unreachable module or interpreter leaves role empty, which the caller turns into
+    # UNKNOWN. Resolution failure must not fail the hook, and must not invent a role.
+    pass
+print(role)
+print(source)
+' "$WRIT_DIR" 2>/dev/null || true)
+
+if [ -n "$ROLE_RESOLUTION" ]; then
+    AGENT_TYPE=$(printf '%s' "$ROLE_RESOLUTION" | head -1)
+    ROLE_SOURCE=$(printf '%s' "$ROLE_RESOLUTION" | sed -n 2p)
+fi
+# Belt and braces: an unreachable interpreter must still leave a record that says UNKNOWN,
+# never one that names a plausible role.
+[ -z "$AGENT_TYPE" ] && AGENT_TYPE="unknown"
+[ -z "${ROLE_SOURCE:-}" ] && ROLE_SOURCE="unresolved"
+
+if [ "$ROLE_SOURCE" = "unresolved" ]; then
     log_friction_event "$AGENT_ID" "" "subagent_type_fallback" \
-        "{\"hook\":\"writ-subagent-stop\",\"parent_session\":\"$PARENT_SESSION\"}"
+        "{\"hook\":\"writ-subagent-stop\",\"parent_session\":\"$PARENT_SESSION\",\"role_source\":\"unresolved\"}"
 fi
 
 # TRANSCRIPT TRIPWIRE: refuse to let a queued-input misdelivery be invisible.
@@ -223,8 +314,62 @@ if [ "${AGENT_TYPE#writ:}" = "writ-spec-reviewer" ] && [ -n "$PARENT_SESSION" ];
     if ! python3 "$WRIT_DIR/bin/lib/review_findings.py" spec-done \
             "$PARENT_SESSION" "$AGENT_ID" >/dev/null 2>&1; then
         log_friction_event "$PARENT_SESSION" "" "review_order_record_failed" \
+# ROLL THIS CHILD UP INTO ITS PARENT: the files it examined into the parent's
+# pretool_queried_files, and the rule ids it was shown into the parent's subagent_rule_ids.
+# Without it a fan-out lead's synthesis-gate saw none of its workers' reads, and the phase-a
+# gate called the rules a dispatched planner cited hallucinated.
+#
+# AFTER THE CACHE_STATE OBSERVATION, so that measurement still reports on the file as the
+# sub-agent left it; the rollup reads the child and never writes it. Gated on a present
+# cache and a real, distinct parent id, so a never-seeded agent or a missing session_id
+# writes nothing (rollup-subagent re-checks both, plus the parent link, on its own).
+#
+# stderr goes to WRIT_HOOK_LOG_SINK, which is the hook log only when WRIT_DEBUG=1 and
+# /dev/null otherwise. Never fatal, never silent: a failure leaves a friction row on the
+# parent, the same pattern as the reviewer-verdict block.
+if [ "$CACHE_STATE" = "present" ] && [ -n "$PARENT_SESSION" ] && [ "$PARENT_SESSION" != "$AGENT_ID" ]; then
+    if ! python3 "$SESSION_HELPER" rollup-subagent "$AGENT_ID" "$PARENT_SESSION" >/dev/null 2>>"$WRIT_HOOK_LOG_SINK"; then
+        log_friction_event "$PARENT_SESSION" "" "subagent_rollup_failed" \
             "{\"hook\":\"writ-subagent-stop\",\"agent_id\":\"$AGENT_ID\"}"
     fi
+fi
+
+# DURABLE USAGE SUMMARY: this sub-agent's deduped per-model token usage, saved HERE because
+# Claude Code deletes the transcript when the session ends and token-audit would otherwise
+# lose the spend. One `subagent_usage` row on the metrics stream, tokens only (dollars are
+# priced at audit time), built by the same aggregator the audit uses.
+#
+# The path comes from resolve_subagent_transcript, so the parent-collapse refusal applies:
+# a collapsed payload yields a no_transcript row, never the parent's usage. Any failure
+# becomes a status error row, or no row at all; nothing reaches this hook's stdout (a
+# Stop-family additionalContext is a turn block). Cost: one read of one file per stop.
+# No AGENT_ID, no row: the summary is keyed by agent id and an anonymous one could never be
+# matched to its dispatch. writ.analysis resolves its pydantic models lazily, so importing
+# token_audit here loads only the stdlib.
+if [ -n "$AGENT_ID" ]; then
+    printf '%s' "$STDIN_JSON" | python3 -c '
+import json, sys
+sys.path.insert(0, sys.argv[1])
+agent_id, parent_session, role, role_source = sys.argv[2:6]
+try:
+    from writ.analysis.token_audit import SUMMARY_ERROR, usage_summary_event
+except Exception:
+    sys.exit(0)
+resolved = True
+try:
+    from writ.session.transcript_tripwire import resolve_subagent_transcript
+    path = resolve_subagent_transcript(json.load(sys.stdin))
+except Exception:
+    path, resolved = None, False
+try:
+    row = usage_summary_event(agent_id, parent_session, path, role, role_source)
+    if not resolved:
+        row["status"] = SUMMARY_ERROR
+    print(json.dumps(row, separators=(",", ":"), default=str))
+except Exception:
+    sys.exit(0)
+' "$WRIT_DIR" "$AGENT_ID" "$PARENT_SESSION" "$AGENT_TYPE" "$ROLE_SOURCE" 2>/dev/null \
+        | python3 "$FA" --stdin-json >/dev/null 2>&1 || true
 fi
 
 # Read the agent's session cache for summary metrics
@@ -238,6 +383,8 @@ cache = json.loads(sys.argv[1])
 agent_id = sys.argv[2]
 agent_type = sys.argv[3]
 parent_session = sys.argv[4]
+role_source = sys.argv[5] if len(sys.argv) > 5 else 'unresolved'
+cache_state = sys.argv[6] if len(sys.argv) > 6 else ''
 
 entry = {
     'ts': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -246,6 +393,14 @@ entry = {
     'event': 'subagent_complete',
     'agent_id': agent_id,
     'agent_type': agent_type,
+    # WHERE THE ROLE CAME FROM, beside the role itself. Without it an unresolved default
+    # and a real dispatch of the same name are the same row, which is what let 53 records
+    # claim \`general-purpose\` on 2026-08-27 with nothing observed.
+    'role_source': role_source,
+    # WHETHER A CACHE EXISTED WHEN THIS AGENT STOPPED, measured above before anything here
+    # read one. The two literals are 'present' and 'absent'; the empty string means this
+    # process had no observation, which is also what a row predating the field reads as.
+    'cache_state': cache_state,
     'parent_session': parent_session,
     'files_written': len(cache.get('files_written', [])),
     'rules_loaded': len(cache.get('loaded_rule_ids', [])),
@@ -255,6 +410,6 @@ entry = {
 }
 
 print(json.dumps(entry))
-" "$CACHE" "$AGENT_ID" "$AGENT_TYPE" "$PARENT_SESSION" 2>/dev/null | python3 "$FA" --stdin-json 2>/dev/null || true
+" "$CACHE" "$AGENT_ID" "$AGENT_TYPE" "$PARENT_SESSION" "$ROLE_SOURCE" "$CACHE_STATE" 2>/dev/null | python3 "$FA" --stdin-json 2>/dev/null || true
 
 exit 0

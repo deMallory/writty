@@ -57,25 +57,15 @@ def test_default_cache_dir_is_not_inside_the_system_temp_dir(no_override):
     assert tmp not in resolved.parents and resolved != tmp
 
 
-def test_default_cache_dir_is_the_user_level_store(no_override):
-    """REVERSED 2026-09-14. This asserted the default lived under the skill install,
-    derived from the module's __file__. Three installs of this code run on one machine
-    (checkout daemon, plugin-cache hooks, the agent's shell), so an install-relative
-    default gave each its own store and the approval hook never saw the daemon's
-    mode. One user-level path is the only default all three resolve identically."""
-    assert cache_mod._cache_dir() == str(Path.home() / ".cache" / "writ" / "session")
-
-
-def test_default_cache_dir_does_not_live_under_the_skill_install(no_override):
+def test_default_cache_dir_is_not_under_the_install(no_override):
+    """State must survive an upgrade: a plugin install path carries the version."""
     resolved = Path(cache_mod._cache_dir()).resolve()
     assert SKILL_ROOT.resolve() not in resolved.parents and resolved != SKILL_ROOT.resolve()
 
 
-def test_default_cache_dir_does_not_derive_from_the_module_location(no_override):
-    """A relocated install must NOT get its own state: that is the split."""
-    resolved = Path(cache_mod._cache_dir()).resolve()
-    module_root = Path(cache_mod.__file__).resolve().parents[2]
-    assert module_root not in resolved.parents and resolved != module_root
+def test_default_cache_dir_is_the_state_root_session_dir(no_override):
+    from writ.shared.state_root import state_root
+    assert cache_mod._cache_dir() == os.path.join(state_root(), "session")
 
 
 # --- the override must keep working -----------------------------------------

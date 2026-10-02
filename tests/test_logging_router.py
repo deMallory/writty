@@ -94,17 +94,19 @@ def test_log_root_honors_writ_log_root_env(tmp_path, monkeypatch):
     assert log_root() == custom
 
 
-def test_log_root_defaults_to_the_user_level_cache(monkeypatch):
-    """The default root is `$HOME/.cache/writ/logs`, one per user. It was
-    `<skill_root>/var/logs` (derived from `writ/shared/logging.py`'s own `__file__`)
-    until 2026-09-14, when the checkout daemon and the plugin-cache hooks turned out
-    to write three separate trees. TEST-REGRESSION-001: pins the default so it cannot
-    silently revert to an install-relative or `~/.claude/writ/logs` path."""
+def test_log_root_defaults_to_the_state_root(monkeypatch):
+    """The default root now lives under the durable XDG state root
+    (`writ/shared/state_root.py`'s `default_log_root()`), not the skill install
+    dir and not a fixed `~/.claude/writ/logs` path. A plugin install path carries
+    the version, so an install-derived default orphaned the log history on every
+    upgrade. TEST-REGRESSION-001: pins the relocated default so it cannot
+    silently revert to either the old install-relative or home-relative path."""
     monkeypatch.delenv("WRIT_LOG_ROOT", raising=False)
     import writ.shared.logging as logging_module
+    from writ.shared.state_root import state_root
 
     result = log_root()
-    assert result == Path.home() / ".cache" / "writ" / "logs"
+    assert result == Path(state_root()) / "logs"
     assert Path(logging_module.__file__).resolve().parents[2] not in result.parents
     assert result != Path.home() / ".claude" / "writ" / "logs"
 
