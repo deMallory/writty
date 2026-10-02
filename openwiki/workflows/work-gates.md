@@ -60,13 +60,13 @@ The advance only happens in `work` mode with a gate pending. Anywhere else, an a
 
 | You type | Result | Why |
 |---|---|---|
-| `approved` | advances | an approval word on its own |
-| `lgtm` | advances | on the list in `bin/lib/approval_match.py` |
-| `yes` | advances | also on the list, so type it only when you mean it |
-| `approuvé` | advances | a short message within two letters of approve, approved, proceed, accept or accepted counts |
-| `approuvé !` | nothing | the cleanup strips a trailing `!` but not the space before it, so the message is no longer within two letters. `approuvé!` advances |
-| `approved, and add a test for the empty case` | advances | an approval word first, then an instruction |
-| `ok remember we want to fix all our findings, approved` | asks | an approval word inside a longer sentence: Claude asks whether you meant to approve the pending gate, nothing advances |
+| `approved` | advances | the whole prompt is the word approved |
+| `lgtm` | asks | a strong approval word on its own is no longer enough to advance; the hook asks |
+| `yes` | nothing | ordinary acknowledgement mints nothing and asks nothing |
+| `approuvé` | nothing | near-spellings are not accepted |
+| `approuvé !` | nothing | near-spellings are not accepted |
+| `approved, and add a test for the empty case` | asks | an approval word inside a longer prompt: the hook asks, nothing advances |
+| `ok remember we want to fix all our findings, approved` | asks | an approval word inside a longer sentence: the hook asks whether you meant the pending gate |
 | `is this approved?` | nothing | a question is not an approval |
 | `not approved` | nothing | a negated approval is not an approval |
 
@@ -74,7 +74,7 @@ The advance only happens in `work` mode with a gate pending. Anywhere else, an a
 
 - Each approval mints one token, and one advance spends it. Two gates take two approvals.
 - A rejected advance spends the token too, because the artifact has to change. Fix it, then approve again. The hook says when an approval was not spent.
-- `/writ-approve` (`.claude/commands/writ-approve.md`) reaches the same route. It needs the same token, so it cannot stand in for your approval.
+- `/writ-approve` and `writ-approve` are exact approvals, the same as `approved`. The command file is `.claude/commands/writ-approve.md`.
 - When the local service is down, writes are let through but no gate can advance.
 - Approvals belong to the session that earned them. A new session approves again.
 

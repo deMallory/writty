@@ -3398,8 +3398,12 @@ for raw, unresolved in raw_targets:
     ap = t if os.path.isabs(t) else os.path.normpath(os.path.join(cwd, t))
     # A basename with no letter (`=`, `34,`, `--`) is an operator or a number the
     # scanner mistook for a file; it was denied as "Bash write to =" and then
-    # escalated as repeated denials of a file that does not exist.
-    if not any(ch.isalpha() for ch in os.path.basename(ap)):
+    # escalated as repeated denials of a file that does not exist. find's
+    # placeholder `{}` is the exception: the nested-command splice exists to name
+    # it (`tee {}`, `sed -i s/a/b/ {}`), and dropping it is the silence that splice
+    # was written to close.
+    base = os.path.basename(ap)
+    if base != "{}" and not any(ch.isalpha() for ch in base):
         continue
     # Interpreter-only exemption; see the interp_hits comment above.
     if t in interp_hits and os.path.isdir(ap):

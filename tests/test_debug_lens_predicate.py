@@ -81,10 +81,10 @@ assert len(SOURCE_TYPES) == 4, (
     f"expected 4 source types (3 declared + absent), got {sorted(SOURCE_TYPES, key=str)}"
 )
 assert TOOLS, "no matcher tools derived for writ-debug-code-gate.sh from hooks/hooks.json"
-assert len(TOOLS) == 3, f"expected 3 matcher tools (Grep|Read|Glob), got {TOOLS}"
+assert len(TOOLS) == 5, f"expected 5 matcher tools (Grep|Read|Glob plus grep|read_file), got {TOOLS}"
 
 CROSS_PRODUCT = list(itertools.product(MODES, SOURCE_TYPES, TOOLS))
-assert len(CROSS_PRODUCT) == 72, f"expected 72 cases, derived {len(CROSS_PRODUCT)}"
+assert len(CROSS_PRODUCT) == 120, f"expected 120 cases, derived {len(CROSS_PRODUCT)}"
 
 _VALID_SHAPES = list(itertools.product(MODES, SOURCE_TYPES))
 assert len(_VALID_SHAPES) == 24
@@ -158,15 +158,15 @@ def _worst_case_envelope(tool: str, proj: Path) -> dict:
 
 
 # --------------------------------------------------------------------------------- #
-# Capabilities 1 and 2: the property over the full 72-case cross product.
+# Capabilities 1 and 2: the property over the full 120-case cross product.
 # --------------------------------------------------------------------------------- #
 
 
 @pytest.fixture(scope="module")
 def matrix_results(tmp_path_factory) -> dict:
-    """One sweep over the 72-case matrix: the REAL bash predicate (subprocess) and the
+    """One sweep over the 120-case matrix: the REAL bash predicate (subprocess) and the
     REAL python gate (gates._can_read_code_check), computed once and shared by both
-    property tests below so 72 cases cost 72 bash spawns, not 144."""
+    property tests below so 120 cases cost 120 bash spawns, not 144."""
     results: dict = {}
     for i, (mode, source_type, tool) in enumerate(CROSS_PRODUCT):
         case_dir = tmp_path_factory.mktemp(f"matrix-{i}")
@@ -199,7 +199,7 @@ class TestPredicateSafetyAndExactness:
     """Capabilities 1 and 2 (plan Decision 3, properties 1 and 2)."""
 
     def test_safety_no_skipped_case_can_deny(self, matrix_results) -> None:
-        assert len(matrix_results) == 72
+        assert len(matrix_results) == 120
         unsafe = sorted(
             case for case, r in matrix_results.items() if not r["required"] and r["denies"]
         )
@@ -211,7 +211,7 @@ class TestPredicateSafetyAndExactness:
     def test_exactness_the_skip_and_deny_sets_exactly_partition_the_matrix(
         self, matrix_results
     ) -> None:
-        assert len(matrix_results) == 72
+        assert len(matrix_results) == 120
         # Anti-vacuity precondition (harness trap 4): a predicate that disagreed with
         # the real gate on an EQUAL number of false-skips and false-requires could still
         # make the two SET equalities below hold by coincidence unless every individual
@@ -226,7 +226,7 @@ class TestPredicateSafetyAndExactness:
         assert not (skip_set & deny_set), sorted(skip_set & deny_set)
         assert len(skip_set) == 51, sorted(skip_set)
         assert len(deny_set) == 21, sorted(deny_set)
-        assert len(skip_set) + len(deny_set) == 72
+        assert len(skip_set) + len(deny_set) == 120
 
 
 # --------------------------------------------------------------------------------- #

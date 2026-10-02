@@ -36,10 +36,11 @@ is out of that cycle's scope; the real,
 working trigger for it is exercised in tests/test_bash_expansion_boundary_gate.py,
 which is also the oracle for the unresolved-variable's own exact reason text. Not
 yet declared: writ-dispatch-discipline.sh's
-reroute-vs-deny escalation, writ-memory-policy-guard.sh, and
-writ-pre-write-dispatch.sh's gate-denial/escalation paths -- each needs a multi-step
-fixture (a live escalation history, or a memory-write classification) this cycle's
-skeleton did not build. Once `tests/_inventory.py`'s own source-derived
+reroute-vs-deny escalation, writ-memory-policy-guard.sh, and the fork hooks
+writ-read-credential-gate.sh and writ-sdd-review-order.sh. Each needs a multi-step
+fixture (a live escalation history, a memory-write classification, or a session
+cache) this cycle's skeleton did not build. writ-pre-write-dispatch.sh no longer
+matches the source-derived refusal patterns, so it is not deferred. Once `tests/_inventory.py`'s own source-derived
 `derive_refusing_scripts()` lands, a gap between it and `refusing_scripts()` below
 for one of THESE scripts is this census
 being incomplete, not a new, undeclared refusal -- that distinction matters for
@@ -1130,10 +1131,15 @@ DEFERRED_SCRIPTS: dict[str, str] = {
         "weakening regexes at a path matching the auto-memory glob, which is a "
         "classification fixture rather than a command string."
     ),
-    "writ-pre-write-dispatch.sh": (
-        "gate-denial and repeated-violation escalation paths. The decision comes from "
-        "the daemon or the local fallback, so the fixture must drive a real "
-        "_can_write_check into deny and then into ask via a denial count."
+    "writ-read-credential-gate.sh": (
+        "fork read-side secret refusal. The trigger is a Read or Grep of a credential "
+        "path, classified by bin/lib/credential_read.py, so the fixture is a path "
+        "classification rather than one command string."
+    ),
+    "writ-sdd-review-order.sh": (
+        "fork spec-before-code-quality denial. It fires only when a code-quality "
+        "reviewer is dispatched and the session cache has no completed spec review, "
+        "so the fixture has to build that session state."
     ),
 }
 

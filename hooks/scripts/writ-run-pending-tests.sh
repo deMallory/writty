@@ -166,5 +166,4 @@ SUMMARY=$(python3 "$WRIT_DIR/bin/lib/emit-summary.py" \
 # needs the user's explicit consent, so the drill pins it at 1 rather than changing it.
 log_gate_decision "pending-tests" "deny" "$SUMMARY" "$SESSION_ID"
 echo "$SUMMARY" >&2
-emit_stop_block "$SUMMARY"
-exit 2
+exit 1

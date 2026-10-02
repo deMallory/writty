@@ -74,6 +74,12 @@ def _denied_rules(sid: str) -> list[str]:
     return [g["rule_id"] for g in agg["gate_denials"]]
 
 
+def _gate_denies(sid: str) -> list[dict]:
+    """Hook denials. log_gate_decision writes event=gate_decision, not gate_denial."""
+    return [e for e in _session_rows(sid)
+            if e.get("event") == "gate_decision" and e.get("decision") == "deny"]
+
+
 def _extractor_src() -> str:
     """Slice the embedded python extractor block out of the hook script."""
     text = Path(HOOK_SH).read_text()
@@ -467,17 +473,19 @@ class TestHookEndToEnd:
         _seed(sid, mode="conversation")
         out = _run_hook("echo SECRET > .env", sid, str(tmp_path))
         assert out is not None and out.get("permissionDecision") == "deny"
-        assert _denied_rules(sid) == ["SEC-CREDENTIAL-WRITE"]
+        rows = _gate_denies(sid)
+        assert rows, "no gate_decision deny row"
+        assert "SEC-CREDENTIAL-WRITE" in (rows[-1].get("reason") or "")
 
     def test_credential_path_with_a_quote_is_recorded_exactly(self, tmp_path: Path):
-        # The shell builds this row, so a quote in the path must not reach the JSON
-        # unescaped (SEC-INJ-LOG-001).
+        # The row is JSON from log_gate_decision, so a quote in the path must survive
+        # as data (SEC-INJ-LOG-001) and land in the target field.
         sid = f"bwg-{uuid.uuid4().hex[:8]}"
         _seed(sid, mode="conversation")
         out = _run_hook("echo SECRET > 'a\"b/.env'", sid, str(tmp_path))
         assert out is not None and out.get("permissionDecision") == "deny"
-        rows = [e for e in _session_rows(sid) if e.get("event") == "gate_denial"]
-        assert len(rows) == 1 and rows[0].get("file_path", "").endswith('a"b/.env')
+        rows = _gate_denies(sid)
+        assert len(rows) == 1 and str(rows[0].get("target") or "").endswith('a"b/.env')
 
     def test_read_only_command_allowed(self, tmp_path: Path):
         sid = f"bwg-{uuid.uuid4().hex[:8]}"

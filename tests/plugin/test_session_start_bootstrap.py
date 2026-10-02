@@ -65,8 +65,11 @@ class TestSessionStartBootstrapContent:
         The script lives at hooks/scripts/ (two levels deep), so a dirname walk
         would resolve to hooks/scripts rather than the repo root.
         """
-        assert 'WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"' in content or \
-               "WRIT_DIR=${CLAUDE_PLUGIN_ROOT}" in content, (
+        assert (
+            'WRIT_DIR="${CLAUDE_PLUGIN_ROOT}"' in content
+            or "WRIT_DIR=${CLAUDE_PLUGIN_ROOT}" in content
+            or 'WRIT_DIR="${CLAUDE_PLUGIN_ROOT:-' in content
+        ), (
             "session-start-bootstrap.sh must set WRIT_DIR from ${CLAUDE_PLUGIN_ROOT} explicitly"
         )
         # Should NOT use dirname-based resolution for WRIT_DIR
@@ -160,6 +163,9 @@ class TestNeo4jProbeWithoutGnuTimeout:
             "WRIT_NEO4J_HOST": host,
             "WRIT_NEO4J_PORT": str(port),
         }
+        # The suite sets this so a hook cannot spawn a real daemon. This test stubs
+        # writ_ensure_server and is checking that the start is reached.
+        env.pop("WRIT_NO_AUTOSTART", None)
         return subprocess.run(
             ["bash", str(SESSION_START_BOOTSTRAP)], input="{}",
             capture_output=True, text=True, env=env, timeout=30,

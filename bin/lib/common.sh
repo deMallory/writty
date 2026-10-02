@@ -1317,11 +1317,15 @@ print(json.dumps(items, indent=2, ensure_ascii=False))
 # than raising. json.dumps then escapes it (ensure_ascii), so stdout stays pure ASCII.
 # Usage: [ -n "$DENY" ] && emit_deny "$DENY"
 emit_deny() {
-  WRIT_DENY_REASON="$1" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$_WRIT_SKILL_DIR" python3 <<'PY'
-import os
-from writ.harness.decisions import emit_pretool
-emit_pretool("deny", os.environ.get("WRIT_DENY_REASON", ""))
-PY
+  local _reply
+  # Reason on stdin, then the shared reply funnel. The dual envelope (Claude
+  # hookSpecificOutput plus Grok decision/reason) is built here; emit_hook_reply
+  # is what prints it and records those same bytes as the blackbox OUT row.
+  _reply=$(printf '%s' "$1" | PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$_WRIT_SKILL_DIR" python3 -c 'import json, sys
+from writ.harness.decisions import pretool_payload
+reason = sys.stdin.buffer.read().decode("utf-8", "surrogateescape")
+print(json.dumps(pretool_payload("deny", reason)))') || _reply=""
+  emit_hook_reply "$_reply"
 }
 
 # Emit a PreToolUse "ask" decision (Claude Code hookSpecificOutput contract): the
@@ -1335,11 +1339,12 @@ PY
 # would hide the very failure it exists to announce.
 # Usage: [ -n "$ASK" ] && emit_ask "$ASK"
 emit_ask() {
-  WRIT_ASK_REASON="$1" PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$_WRIT_SKILL_DIR" python3 <<'PY'
-import os
-from writ.harness.decisions import emit_pretool
-emit_pretool("ask", os.environ.get("WRIT_ASK_REASON", ""))
-PY
+  local _reply
+  _reply=$(printf '%s' "$1" | PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$_WRIT_SKILL_DIR" python3 -c 'import json, sys
+from writ.harness.decisions import pretool_payload
+reason = sys.stdin.buffer.read().decode("utf-8", "surrogateescape")
+print(json.dumps(pretool_payload("ask", reason)))') || _reply=""
+  emit_hook_reply "$_reply"
 }
 
 # Stop / SubagentStop block. Prints Grok+Claude decision JSON. Caller exits 2.
@@ -1350,6 +1355,61 @@ import os
 from writ.harness.decisions import emit_stop
 emit_stop(os.environ.get("WRIT_STOP_REASON", ""))
 PY
+}
+
+# The python extractors print this same text as the literal STATUS_COMPLETE. The
+# heredocs are quoted, so they cannot expand a bash variable; the two spellings
+# have to stay identical or `set -u` treats a finished extractor as a fault.
+WRIT_EXTRACTOR_SENTINEL=$'status\tcomplete'
+
+# A DECIDER THAT DID NOT RUN TO COMPLETION. The one shared answer for all three write
+# doors (writ-bash-write-gate.sh, writ-worktree-safety.sh, writ-pre-write-dispatch.sh):
+# their decision block crossed an exec boundary, that exec failed, and the empty value
+# it left behind used to read as "nothing to gate".
+#
+# Usage: writ_decider_fault <hook> <stage> <what could not be decided>
+#   <hook> and <stage> are SOURCE LITERALS at every call site, never payload-derived.
+#   The third argument reaches the USER, never the log row.
+#
+# THE POSTURE, and it is two postures because the two states are not the same claim:
+#
+#   python3 PRESENT, block incomplete -> ASK. This is a fault and it should be loud. The
+#     Bash gate already asks in exactly this epistemic state (an unresolvable target, an
+#     unnameable destination): "this cannot be trusted" is answered by the prompt, not by
+#     silence. An ask costs one confirmation and cannot be self-approved by the agent.
+#   python3 ABSENT -> ALLOW, exit 0, and say so once on stderr. Asking here would be
+#     worse than dishonest: on such a machine EVERY Writ decision path is inert
+#     (writ_critical's row, log_friction_event, log_gate_decision, emit_deny and emit_ask
+#     are all interpreter-bound), so an ask would imply a protection that does not exist
+#     while making every write-shaped command unusable. Stderr is the only surface that
+#     survives, and it is used. Without this probe the ask path itself goes silent:
+#     emit_ask cannot build its envelope and emit_hook_reply returns 0 on an empty
+#     payload, which is the same defect one layer down.
+#
+# `command -v` is a BUILTIN: the probe forks nothing, and it runs only on the fault path,
+# so the hot path pays for none of this.
+#
+# NON-BLOCKING IS NOT SILENT (user directive 2026-08-01, docs/reference/session-and-gates.md
+# section 8): the compensating control is visibility. Every fault writes TWO records. One
+# `[WRIT CRITICAL]` line on stderr, which Claude Code surfaces in the session and which
+# needs no interpreter, and one `gate_decider_incomplete` row on the audit stream carrying
+# `hook` and `stage` ONLY, both source literals, because a row built from the value that
+# killed the block would die exactly where the block died.
+writ_decider_fault() {
+  local _hook="${1:-unknown}" _stage="${2:-unknown}" _what="${3:-}"
+  if ! command -v python3 >/dev/null 2>&1; then
+    # No interpreter: no row can be written and no envelope can be built. One line, and
+    # it names the scope honestly: not this hook, the whole enforcement surface.
+    printf '[WRIT CRITICAL] %s: no python3 on PATH, so NO Writ Bash or write decision can be made on this machine. This command was allowed unchecked (%s).\n' \
+      "$_hook" "$_stage" >&2
+    return 0
+  fi
+  writ_critical "$_hook" \
+    "the $_stage decision block did not run to completion, so this tool call was not judged; asking the user instead of allowing it unseen" \
+    "${SESSION_ID:-${HOOK_SESSION_ID:-unknown}}"
+  log_friction_event "${SESSION_ID:-${HOOK_SESSION_ID:-}}" "${MODE:-}" "gate_decider_incomplete" \
+    "{\"hook\": \"$_hook\", \"stage\": \"$_stage\"}"
+  emit_ask "[ENF-DECIDER-INCOMPLETE] Writ could not judge this tool call: ${_what:-the decision block did not run to completion}. That is an infrastructure fault in Writ, not a finding about this command, so nothing is claimed about it either way. Confirm only if you already know it is safe. Writ's own record of the fault is the gate_decider_incomplete row on the audit stream ($_hook / $_stage)."
 }
 
 # Extract the rule objects (the fields used for violation pattern matching) from

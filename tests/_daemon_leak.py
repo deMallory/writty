@@ -29,10 +29,13 @@ so a `writ.*` import here would be paid by every one of them.
 """
 from __future__ import annotations
 
+import ctypes
+import ctypes.util
 import json
 import os
 import re
 import subprocess
+import sys
 import time
 import urllib.request
 
@@ -144,18 +147,44 @@ def snapshot_text() -> str | None:
 def _own_cmdline() -> str:
     """This process's own command line, joined exactly as `ps -o args=` renders it.
 
-    MEASURED, not assumed: the `ps` line for `os.getpid()` and this join of
-    `/proc/self/cmdline` compare byte for byte on this machine (140 characters, equal),
-    which is what lets the check below use a plain suffix comparison. Empty string when
-    `/proc` cannot be read, and the caller turns that into a refusal rather than skipping
-    the check.
+    MEASURED, not assumed: the `ps` line for `os.getpid()` and this join compare byte
+    for byte (Linux `/proc/self/cmdline`, 140 characters, equal; Darwin
+    `sysctl(KERN_PROCARGS2)`, equal on the machines this fork runs), which is what lets
+    the check below use a plain suffix comparison. Empty string when neither source can
+    be read, and the caller turns that into a refusal rather than skipping the check.
     """
+    if sys.platform == "darwin":
+        return _own_cmdline_darwin()
     try:
         with open("/proc/self/cmdline", "rb") as handle:
             raw = handle.read()
     except OSError:
         return ""
     return " ".join(part.decode("utf-8", "replace") for part in raw.split(b"\0") if part)
+
+
+def _own_cmdline_darwin() -> str:
+    """argv from `KERN_PROCARGS2`, which is the command line BSD `ps -o args=` prints.
+
+    There is no `/proc` on Darwin. The buffer is a native `int` argc, the executable
+    path, then `argc` argument strings, then the environment. `ps` prints the arguments,
+    so the executable path (the first non-empty field) is skipped.
+    """
+    # CTL_KERN = 1, KERN_PROCARGS2 = 49.
+    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    mib = (ctypes.c_int * 3)(1, 49, os.getpid())
+    size = ctypes.c_size_t(0)
+    if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) != 0 or size.value <= 4:
+        return ""
+    buf = ctypes.create_string_buffer(size.value)
+    if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, 0) != 0:
+        return ""
+    raw = buf.raw[:size.value]
+    argc = int.from_bytes(raw[:4], byteorder=sys.byteorder)
+    parts = [part for part in raw[4:].split(b"\0") if part]
+    if argc < 1 or len(parts) < 1 + argc:
+        return ""
+    return " ".join(part.decode("utf-8", "replace") for part in parts[1:1 + argc])
 
 
 def _self_visibility_reason(processes: dict[int, str]) -> str | None:
@@ -185,7 +214,8 @@ def _self_visibility_reason(processes: dict[int, str]) -> str | None:
     own = _own_cmdline()
     if not own:
         return (
-            "this process's own command line could not be read from /proc/self/cmdline, "
+            "this process's own command line could not be read "
+            "(Linux: /proc/self/cmdline, Darwin: sysctl KERN_PROCARGS2), "
             "so the snapshot cannot be certified against truncation. A snapshot that "
             "cannot be certified is not a measurement."
         )

@@ -494,6 +494,20 @@ def _preflight_isolated_graph() -> None:
         )
 
 
+def pytest_configure(config):
+    """Keep pytest's temp root short enough for a macOS AF_UNIX socket.
+
+    sockaddr_un.sun_path is 104 bytes including the trailing NUL. The default
+    root under /var/folders plus a long test name exceeds that, and several
+    tests bind a real socket inside tmp_path. A caller-supplied --basetemp wins.
+    """
+    import sys
+
+    if sys.platform != "darwin" or getattr(config.option, "basetemp", None):
+        return
+    config.option.basetemp = _tempfile.mkdtemp(prefix="wt", dir="/tmp")
+
+
 def pytest_sessionstart(session):
     """INC-1: begin the suite from a complete graph (symmetric to sessionfinish).
 

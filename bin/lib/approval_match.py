@@ -39,8 +39,14 @@ import re
 import sys
 
 
+# The whole prompt, after the caller's case fold. `approved` is the typed word.
+# `/writ-approve` and `writ-approve` are the same act through the slash command:
+# Grok plan review ends on that prompt, and it has to mint the same token.
+_EXACT_APPROVALS = frozenset({"approved", "/writ-approve", "writ-approve"})
+
+
 def is_approval(prompt: str) -> bool:
-    """Return True only for the exact word `approved`.
+    """Return True for `approved` or the `/writ-approve` command, as the whole prompt.
 
     ONE PHRASE, BY USER DIRECTIVE. This predicate mints the gate token that advances a
     phase, so its trigger surface is the set of words a user would deliberately choose and
@@ -72,7 +78,8 @@ def is_approval(prompt: str) -> bool:
     """
     try:
         prompt = (prompt or "").strip().lower()
-        return re.sub(r"[.!,]+$", "", prompt).strip() == "approved"
+        prompt = re.sub(r"[.!,]+$", "", prompt).strip()
+        return prompt in _EXACT_APPROVALS
     except Exception:
         return False
 
