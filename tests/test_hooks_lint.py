@@ -20,9 +20,26 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from writ.hooks_lint import lint_hooks
+import pytest
+
+from writ.hooks_lint import _resolve_script, lint_hooks
 
 WRIT_ROOT = Path(__file__).resolve().parent.parent
+# The form PR 10 gave every hook command, so one manifest serves Claude Code and Grok.
+GROK_ROOT = "${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}"
+
+
+def _manifest_commands() -> list[str]:
+    manifest = json.loads((WRIT_ROOT / "hooks" / "hooks.json").read_text())
+    return [h["command"] for entries in manifest["hooks"].values()
+            for entry in entries for h in entry.get("hooks", [])]
+
+
+def _hooks_json_with(tmp: Path, event: str, matcher: str, command: str) -> Path:
+    p = tmp / "hooks.json"
+    p.write_text(json.dumps({"hooks": {event: [{"matcher": matcher, "hooks": [
+        {"type": "command", "command": command}]}]}}))
+    return p
 
 
 def _hooks_json(tmp: Path, mapping: dict[str, list[tuple[str, str]]]) -> Path:
@@ -64,6 +81,35 @@ class TestSyntheticClassification:
              "command": 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/inj.sh"'}]}]}}))
         out = lint_hooks(hj, tmp_path)
         assert [(f["severity"], f["script"]) for f in out] == [("inert", "inj.sh")]
+
+    @pytest.mark.parametrize("command", [
+        f'bash "{GROK_ROOT}/hooks/scripts/inj.sh"',
+        f"bash {GROK_ROOT}/hooks/scripts/inj.sh",
+    ], ids=["quoted", "unquoted"])
+    def test_the_grok_fallback_root_resolves_the_script(self, tmp_path: Path, command: str) -> None:
+        """The manifest's real form. Matching only the closed `${CLAUDE_PLUGIN_ROOT}` token
+        resolved 0 of 50 scripts on 68e3fb7, and the lint reported a clean run."""
+        _script(tmp_path, "inj.sh", '#!/bin/bash\necho "[Writ: file rules] do X"\n')
+        hj = _hooks_json_with(tmp_path, "PreToolUse", "Read", command)
+        out = lint_hooks(hj, tmp_path)
+        assert [(f["severity"], f["script"]) for f in out] == [("inert", "inj.sh")]
+
+    @pytest.mark.parametrize("event", ["PreToolUse", "SessionStart"])
+    def test_a_registered_script_with_no_file_is_an_error(self, tmp_path: Path, event: str) -> None:
+        """A missing script used to be skipped, which is how a form the parser does not know
+        made the lint go blind in silence. SessionStart is checked too: it is skipped for
+        delivery analysis, not for existence."""
+        hj = _hooks_json_with(tmp_path, event, "Read", f'bash "{GROK_ROOT}/hooks/scripts/gone.sh"')
+        out = lint_hooks(hj, tmp_path)
+        assert [{k: v for k, v in f.items() if k != "detail"} for f in out] == [{
+            "severity": "error", "script": "hooks/scripts/gone.sh",
+            "event": event, "matcher": "Read",
+        }]
+        assert "hooks/scripts/gone.sh" in out[0]["detail"]
+
+    def test_an_inline_command_with_no_script_is_not_flagged(self, tmp_path: Path) -> None:
+        hj = _hooks_json_with(tmp_path, "PreToolUse", "Read", "echo hi")
+        assert lint_hooks(hj, tmp_path) == []
 
     def test_log_rag_query_event_with_no_channel_is_inert(self, tmp_path: Path) -> None:
         _script(tmp_path, "rag.sh", '#!/bin/bash\nlog_rag_query_event a b c d e\n')
@@ -213,6 +259,14 @@ class TestRealCorpus:
     def _findings(self) -> list[dict]:
         return lint_hooks(WRIT_ROOT / "hooks" / "hooks.json", WRIT_ROOT)
 
+    def test_every_registered_script_resolves_to_a_file(self) -> None:
+        """Without this, every assertion in this class passes on a lint that read nothing."""
+        commands = _manifest_commands()
+        unresolved = [c for c in commands
+                      if (p := _resolve_script(c, WRIT_ROOT)) is None or not p.exists()]
+        assert commands
+        assert unresolved == [], f"{len(unresolved)} of {len(commands)} unresolved: {unresolved!r}"
+
     def test_fixed_injectors_no_longer_flagged(self) -> None:
         # #2 converted these to additionalContext -- must be clean now.
         flagged = {f["script"] for f in self._findings()}
@@ -356,15 +410,32 @@ class TestHookLintSummary:
         assert self._summary([]) == ""
 
 
+def unquoted_plugin_roots(commands: list[str]) -> list[str]:
+    """Commands that name the plugin root, in either form, with no quote in front of it.
+
+    The open prefix `${CLAUDE_PLUGIN_ROOT` matches the bare and the Grok fallback form alike;
+    the closed token matched only the bare one, so this check covered nothing after PR 10.
+    Raises when no command names the root at all, for the same reason.
+    """
+    covered = [c for c in commands if "${CLAUDE_PLUGIN_ROOT" in c]
+    if not covered:
+        raise AssertionError("no command names the plugin root, so the quote check covers nothing")
+    return [c for c in covered if '"${CLAUDE_PLUGIN_ROOT' not in c]
+
+
 def test_hooks_quote_the_plugin_root() -> None:
     """An install path with a space in it must not split a hook command into several words.
     `claude plugin validate --strict` enforces this too, but CI has no claude CLI, so this is
     the check that runs there."""
-    import json
+    assert unquoted_plugin_roots(_manifest_commands()) == []
 
-    manifest = json.loads((Path(__file__).resolve().parent.parent / "hooks" / "hooks.json").read_text())
-    commands = [h["command"] for entries in manifest["hooks"].values()
-                for entry in entries for h in entry.get("hooks", [])]
-    assert commands
-    unquoted = [c for c in commands if "${CLAUDE_PLUGIN_ROOT}" in c and '"${CLAUDE_PLUGIN_ROOT}' not in c]
-    assert unquoted == [], unquoted
+
+@pytest.mark.parametrize("root", ["${CLAUDE_PLUGIN_ROOT}", GROK_ROOT], ids=["bare", "grok"])
+def test_an_unquoted_plugin_root_is_caught_in_either_form(root: str) -> None:
+    command = f"bash {root}/hooks/scripts/x.sh"
+    assert unquoted_plugin_roots([command, f'bash "{root}/hooks/scripts/y.sh"']) == [command]
+
+
+def test_a_manifest_that_never_names_the_plugin_root_fails_the_quote_check() -> None:
+    with pytest.raises(AssertionError, match="covers nothing"):
+        unquoted_plugin_roots(["bash /opt/writ/hooks/scripts/x.sh"])

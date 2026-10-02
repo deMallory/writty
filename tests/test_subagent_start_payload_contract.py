@@ -30,6 +30,10 @@ import pytest
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_JSON = SKILL_ROOT / "hooks" / "hooks.json"
 EVENT = "SubagentStart"
+BARE_ROOT = "${CLAUDE_PLUGIN_ROOT}"
+# The manifest's form since PR 10. It must be expanded BEFORE the bare token: the bare token
+# is not a substring of it, so expanding only the bare one leaves the path unresolved.
+GROK_ROOT = "${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}"
 
 # THE SINGLE PLACE TO EDIT IF A BUILD RESTORES A KEY. The live evidence is a capture log
 # that does not exist in a clean checkout, so the measurement is carried here as a constant
@@ -124,8 +128,14 @@ def hooks_registered_for(event: str, hooks_json: Path = HOOKS_JSON) -> list[Path
             command = hook.get("command", "")
             for token in command.replace('"', "").split():
                 if token.endswith(".sh"):
-                    found.append(Path(token.replace("${CLAUDE_PLUGIN_ROOT}", str(root))))
+                    found.append(Path(token.replace(GROK_ROOT, str(root)).replace(BARE_ROOT, str(root))))
     return found
+
+
+def missing_scripts(event: str, hooks_json: Path = HOOKS_JSON) -> list[Path]:
+    """Registered scripts with no file behind them. `violations` skips these by design, so
+    without this check a path the parser cannot expand turns every test here vacuous."""
+    return [p for p in hooks_registered_for(event, hooks_json) if not p.exists()]
 
 
 def violations(event: str, hooks_json: Path = HOOKS_JSON,
@@ -148,16 +158,19 @@ def violations(event: str, hooks_json: Path = HOOKS_JSON,
     return out
 
 
-def _write_tree(tmp_path: Path, scripts: dict[str, str], event: str = EVENT) -> Path:
+def _write_tree(tmp_path: Path, scripts: dict[str, str], event: str = EVENT,
+                root: str = BARE_ROOT, unwritten: tuple[str, ...] = ()) -> Path:
     """Build a synthetic hook tree whose shape matches the real one, and return its
-    registrations file. Layout is <root>/hooks/hooks.json plus <root>/hooks/scripts/*."""
+    registrations file. Layout is <root>/hooks/hooks.json plus <root>/hooks/scripts/*.
+    Names in `unwritten` are registered with no file behind them."""
     hooks_dir = tmp_path / "hooks"
     (hooks_dir / "scripts").mkdir(parents=True, exist_ok=True)
     entries = []
-    for name, body in scripts.items():
-        (hooks_dir / "scripts" / name).write_text(body)
+    for name in [*scripts, *unwritten]:
+        if name in scripts:
+            (hooks_dir / "scripts" / name).write_text(scripts[name])
         entries.append({"matcher": "", "hooks": [
-            {"type": "command", "command": f"bash ${{CLAUDE_PLUGIN_ROOT}}/hooks/scripts/{name}"}]})
+            {"type": "command", "command": f'bash "{root}/hooks/scripts/{name}"'}]})
     path = hooks_dir / "hooks.json"
     path.write_text(json.dumps({"hooks": {event: entries}}))
     return path
@@ -184,6 +197,24 @@ class TestTheRegisteredPopulationIsDerived:
         path = _write_tree(tmp_path, {"one.sh": NO_READ, "two.sh": NO_READ})
         names = {p.name for p in hooks_registered_for(EVENT, path)}
         assert names == {"one.sh", "two.sh"}
+
+    @pytest.mark.parametrize("root", [BARE_ROOT, GROK_ROOT], ids=["bare", "grok"])
+    def test_either_plugin_root_form_expands_to_the_script_on_disk(self, tmp_path, root):
+        path = _write_tree(tmp_path, {"one.sh": NO_READ}, root=root)
+        assert hooks_registered_for(EVENT, path) == [tmp_path / "hooks" / "scripts" / "one.sh"]
+        assert missing_scripts(EVENT, path) == []
+
+    def test_a_registered_script_with_no_file_is_reported_missing(self, tmp_path):
+        path = _write_tree(tmp_path, {"one.sh": NO_READ}, root=GROK_ROOT, unwritten=("gone.sh",))
+        assert missing_scripts(EVENT, path) == [tmp_path / "hooks" / "scripts" / "gone.sh"]
+
+    def test_every_registered_script_exists(self):
+        registered = hooks_registered_for(EVENT)
+        assert registered
+        assert missing_scripts(EVENT) == [], (
+            f"{len(missing_scripts(EVENT))} of {len(registered)} {EVENT} scripts do not resolve "
+            "to a file; every other test here would pass on an empty population"
+        )
 
 
 class TestNoRegisteredHookReadsAnAbsentKey:
