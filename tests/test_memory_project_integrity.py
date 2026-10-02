@@ -203,6 +203,20 @@ class TestListAllMemoriesStoreMethod:
                 assert field in row, f"list_all_memories row missing {field!r}: {row!r}"
 
     @pytest.mark.asyncio
+    async def test_returns_description_and_body(self, db_clean: Neo4jConnection) -> None:
+        # The Pair Ledger compares these two against the note on disk to tell a
+        # current copy from an outdated one.
+        name = f"copy-{uuid.uuid4().hex[:8]}"
+        await db_clean.create_memory(
+            name=name, project=_TEST_SCOPE, description="the description", type="project",
+            body="the body", links=[], path="/tmp/x.md", session_id="s1",
+            updated_at="2026-08-01T00:00:00Z", status="live",
+        )
+        rows = await db_clean.list_all_memories()
+        row = next(r for r in rows if r.get("project") == _TEST_SCOPE and r["name"] == name)
+        assert (row["description"], row["body"]) == ("the description", "the body")
+
+    @pytest.mark.asyncio
     async def test_ordered_by_project_then_name(self, db_clean: Neo4jConnection) -> None:
         second, first = f"b-{uuid.uuid4().hex[:6]}", f"a-{uuid.uuid4().hex[:6]}"
         for n in (second, first):

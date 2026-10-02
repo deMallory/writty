@@ -27,6 +27,7 @@ from writ.analysis.friction import (
     analyze_trim_candidates,
     parse_log,
 )
+from writ.analysis.pair_ledger import memory_copies, rule_sources, stale_notes
 from writ.shared.logging import resolve_project, stream_path
 
 REFRESH_SECONDS = 60
@@ -95,8 +96,12 @@ def _safe_load_events(project: str | None, files: list[Path]) -> list[FrictionEv
     return events
 
 
-def render_dashboard() -> str:
-    """Compose the dashboard HTML. Always returns a complete page."""
+def render_dashboard(memory_rows: list[dict[str, Any]] | None = None) -> str:
+    """Compose the dashboard HTML. Always returns a complete page.
+
+    `memory_rows` are the graph's Memory rows, read by the async route; None means
+    the graph was not reachable, and the memory section says so.
+    """
     # Resolved once per request: without WRIT_LOG_PROJECT, resolve_project() shells out to git.
     project, files = _log_files()
     events = _safe_load_events(project, files)
@@ -157,6 +162,23 @@ def render_dashboard() -> str:
           f"{q.override_rate:.2f}"] for q in qj_rows],
     )
 
+    # Pair Ledger: the files Claude follows, and its memory against the graph copy
+    sources_table = _table(
+        ["source", "path", "rules", "changed", "sync"],
+        [[s.label, s.display_path, "-" if s.rules is None else s.rules,
+          s.changed or "-", s.sync] for s in rule_sources()],
+    )
+    copies = memory_copies(memory_rows)
+    copies_body = '<p class="empty">graph not reachable</p>' if copies is None else _table(
+        ["project", "copied", "outdated", "no copy", "outdated notes"],
+        [[c.project, c.copied, c.outdated, c.missing,
+          ", ".join(c.outdated_names) or "-"] for c in copies],
+    )
+    stale_table = _table(
+        ["note", "project", "changed", "age_days"],
+        [[n.name, n.project, n.changed, n.age_days] for n in stale_notes()],
+    )
+
     sections = [
         _section("Live counts", _table(
             ["metric", "value"],
@@ -168,6 +190,9 @@ def render_dashboard() -> str:
         _section("Graduation candidates", grad_table),
         _section("Trim candidates (last 90 days)", trim_table),
         _section("Quality judge false positives (last 30 days)", qj_table),
+        _section("What we follow", sources_table),
+        _section("Claude's memory, copied into Writ", copies_body),
+        _section("Notes untouched for 90 days or more", stale_table),
     ]
 
     rendered_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
