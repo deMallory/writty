@@ -85,7 +85,8 @@ class TestSyntheticClassification:
     @pytest.mark.parametrize("command", [
         f'bash "{GROK_ROOT}/hooks/scripts/inj.sh"',
         f"bash {GROK_ROOT}/hooks/scripts/inj.sh",
-    ], ids=["quoted", "unquoted"])
+        f'test -f "{GROK_ROOT}/state/ready" && bash "{GROK_ROOT}/hooks/scripts/inj.sh"',
+    ], ids=["quoted", "unquoted", "after-a-non-script-path"])
     def test_the_grok_fallback_root_resolves_the_script(self, tmp_path: Path, command: str) -> None:
         """The manifest's real form. Matching only the closed `${CLAUDE_PLUGIN_ROOT}` token
         resolved 0 of 50 scripts on 68e3fb7, and the lint reported a clean run."""
@@ -107,8 +108,15 @@ class TestSyntheticClassification:
         }]
         assert "hooks/scripts/gone.sh" in out[0]["detail"]
 
-    def test_an_inline_command_with_no_script_is_not_flagged(self, tmp_path: Path) -> None:
-        hj = _hooks_json_with(tmp_path, "PreToolUse", "Read", "echo hi")
+    @pytest.mark.parametrize("command", [
+        "echo hi",
+        f'test -f "{GROK_ROOT}/state/ready"',
+        'test -f "${CLAUDE_PLUGIN_ROOT}/state/ready"',
+    ], ids=["no-root", "grok-root-path", "bare-root-path"])
+    def test_an_inline_command_with_no_script_is_not_flagged(self, tmp_path: Path, command: str) -> None:
+        """Only a `.sh` is a script. A root-relative path that is not one (PR 32 review) is
+        not reported missing."""
+        hj = _hooks_json_with(tmp_path, "PreToolUse", "Read", command)
         assert lint_hooks(hj, tmp_path) == []
 
     def test_log_rag_query_event_with_no_channel_is_inert(self, tmp_path: Path) -> None:
