@@ -2,7 +2,8 @@
 
 Session state used to live under the install directory, and a plugin install path carries the
 version, so every upgrade orphaned every live session's mode and approvals. These pin the new
-contract: $XDG_STATE_HOME/writ (absolute values only), else ~/.local/state/writ, never the install
+contract: $XDG_STATE_HOME/writ (absolute values only), else ~/.cache/writ (the fork's fallback,
+matching its pinned WRIT_CACHE_DIR and WRIT_LOG_ROOT), never the install
 dir and never the temp dir, with WRIT_CACHE_DIR still winning for the session dir. Every path
 here is RESOLVED; only the last class writes, and only inside tmp_path.
 """
@@ -66,12 +67,12 @@ class TestPythonResolution:
         monkeypatch.setenv("XDG_STATE_HOME", str(clean_env / "xdg"))
         assert sr.state_root() == str(clean_env / "xdg" / "writ")
 
-    def test_unset_xdg_falls_back_to_home_local_state(self, clean_env):
-        assert sr.state_root() == str(clean_env / "home" / ".local" / "state" / "writ")
+    def test_unset_xdg_falls_back_to_home_cache(self, clean_env):
+        assert sr.state_root() == str(clean_env / "home" / ".cache" / "writ")
 
     def test_a_relative_xdg_is_ignored_as_the_spec_requires(self, clean_env, monkeypatch):
         monkeypatch.setenv("XDG_STATE_HOME", "relative/state")
-        assert sr.state_root() == str(clean_env / "home" / ".local" / "state" / "writ")
+        assert sr.state_root() == str(clean_env / "home" / ".cache" / "writ")
 
     def test_session_dir_defaults_under_the_state_root(self, clean_env):
         assert sr.session_dir() == os.path.join(sr.state_root(), "session")
@@ -115,7 +116,7 @@ class TestBashAgreesWithPython:
             monkeypatch.delenv(var, raising=False)
         env = {k: v for k, v in os.environ.items()}
         assert _bash("writ_session_cache_dir", env) == sr.session_dir()
-        assert not sr.session_dir().startswith("/.local/")
+        assert not sr.session_dir().startswith("/.cache/")
         socket = _bash('printf %s "$WRIT_SESSION_SOCKET"', env)
         assert socket == os.path.join(os.path.expanduser("~"), ".cache/writ/run/writ.sock")
 

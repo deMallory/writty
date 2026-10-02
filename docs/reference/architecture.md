@@ -39,7 +39,7 @@ Contributor-facing system design: the spine `README.md` and `HANDBOOK.md` refere
 
 **Telemetry.** A middleware emits one `daemon_request` metrics row per request (route template, not concrete path; `/health` excluded), in a `finally` so failures are recorded too. Every `/query` emits a `retrieval_result` row including the abstention signal, hit or miss, which is the data for retuning the 0.30 threshold.
 
-**State the daemon does not own:** session caches are files under `$XDG_STATE_HOME/writ/session` (default `~/.local/state/writ/session`) (hooks and CLI read them directly when the daemon is down); route modules read `server._pipeline` / `server._db` as live attributes (the monkeypatch seam; never `from`-import them).
+**State the daemon does not own:** session caches are files under `$XDG_STATE_HOME/writ/session` (default `~/.cache/writ/session`) (hooks and CLI read them directly when the daemon is down); route modules read `server._pipeline` / `server._db` as live attributes (the monkeypatch seam; never `from`-import them).
 
 ## 4. Operations
 

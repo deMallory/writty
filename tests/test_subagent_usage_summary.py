@@ -178,7 +178,7 @@ class TestSandbox:
         assert env["WRIT_PORT"] == "59999"
 
     def test_a_hook_run_writes_only_inside_the_sandbox(self, sandbox, tmp_path) -> None:
-        real_state = Path.home() / ".local" / "state" / "writ"
+        real_state = Path.home() / ".cache" / "writ"
         before = sorted(p.name for p in real_state.iterdir()) if real_state.is_dir() else None
         transcript = _hook_transcript(sandbox)
         result = sandbox.run_hook(sandbox.payload(transcript=transcript))

@@ -249,7 +249,8 @@ class TestPreApprovalBaselineUnchanged:
         targets = {
             "in_root": str(root / "app.py"),
             "sibling": str(outside / "app.py"),
-            "unrelated_absolute": "/etc/passwd-probe.txt",
+            # .py, not .txt: the fork's gate exclusions cover *.txt, which answers before this arm.
+            "unrelated_absolute": "/etc/passwd-probe.py",
         }
         result = gates._can_write_check(f"pb-2-{which}", _envelope(targets[which]), "", cache)
         assert result["can_write"] is False

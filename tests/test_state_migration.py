@@ -134,7 +134,8 @@ class TestEntryPoint:
 
     def test_the_migration_runs_before_the_plugin_root_exit(self):
         text = BOOTSTRAP.read_text()
-        assert text.index("writ_state_migrate.py") < text.index('if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then')
+        plugin_root_exit = 'if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${GROK_PLUGIN_ROOT:-}" ]; then'
+        assert text.index("writ_state_migrate.py") < text.index(plugin_root_exit)
 
     def test_session_start_carries_a_legacy_cache_with_no_plugin_root(self, tmp_path):
         """A FAKE skill tree holding exactly what the hook and the script need, so no real

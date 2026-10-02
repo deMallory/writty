@@ -34,6 +34,10 @@ EXPECTED = {
     "writ-explorer": ("ROL-EXPLORER-001", "sonnet", "medium"),
     "writ-test-writer": ("ROL-TEST-WRITER-001", "sonnet", "medium"),
     "writ-reviewer": ("ROL-REVIEWER-001", "sonnet", "medium"),
+    # Fork-only: the split reviewers the review-order gate dispatches. Effort follows the
+    # model tier: haiku low, sonnet medium.
+    "writ-spec-reviewer": ("ROL-SPEC-REVIEWER-001", "haiku", "low"),
+    "writ-code-quality-reviewer": ("ROL-CODE-QUALITY-REVIEWER-001", "sonnet", "medium"),
 }
 
 FRONT_MATTER = re.compile(r"^---\n(.*?)\n---\n(.*)", re.DOTALL)
@@ -206,7 +210,7 @@ def _frontmatter(name: str) -> tuple[dict, str]:
 
 
 class TestAgentFiles:
-    def test_exactly_the_five_expected_agent_files(self) -> None:
+    def test_exactly_the_expected_agent_files(self) -> None:
         assert {p.stem for p in AGENTS_DIR.glob("*.md")} == set(EXPECTED)
 
     @pytest.mark.parametrize("name", sorted(EXPECTED))
@@ -243,13 +247,13 @@ class TestCorpusCypher:
         assert len(lines) == 1, f"{role_id}: expected one CREATE line, got {len(lines)}"
         return lines[0]
 
-    def test_exactly_five_subagent_role_creates(self) -> None:
+    def test_exactly_seven_subagent_role_creates(self) -> None:
         n = sum(
             1
             for ln in CORPUS.read_text(encoding="utf-8").splitlines()
             if ln.startswith("CREATE (:SubagentRole")
         )
-        assert n == 5
+        assert n == len(EXPECTED) == 7
 
     @pytest.mark.parametrize("name", sorted(EXPECTED))
     def test_effort_and_model_preference(self, name: str) -> None:

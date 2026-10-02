@@ -266,6 +266,13 @@ GRANT_HELPER = SKILL / "bin" / "lib" / "manual_test_grant.py"
 FLUSH_EVENTS = SKILL / "bin" / "lib" / "writ-flush-events.py"
 USER_STORE = Path.home() / ".cache" / "writ" / "session"
 USER_LOG_ROOT = Path.home() / ".cache" / "writ" / "logs"
+# Where the gates protect the legacy <skill>/var/session (state gate, bash gate, and the
+# bash gate's embedded python).
+_LEGACY_GUARD_LINES = frozenset({
+    'LEGACY_DIR="$WRIT_DIR/var/session"',
+    'LEGACY_STATE_DIR_GUARD="$WRIT_DIR/var/session"',
+    'os.path.join(_WRIT_HOME, "var", "session") if _WRIT_HOME else "",',
+})
 
 
 class TestTheDefaultStoreIsUserLevel:
@@ -303,10 +310,13 @@ class TestTheDefaultStoreIsUserLevel:
     @pytest.mark.parametrize("path", [STATE_GATE, BASH_GATE, GRANT_HELPER, FLUSH_EVENTS])
     def test_no_private_skill_relative_fallback_survives(self, path):
         """Each of these carried its own copy of the old default. Comments are stripped so
-        the line that documents the change cannot fail the test for the change."""
+        the line that documents the change cannot fail the test for the change. So are the
+        exact guard lines: the gates name the old directory to keep protecting it, because
+        bin/lib/writ_state_migrate.py reads from it, not to fall back to it. Exact lines,
+        so a new fallback spelled any other way still fails."""
         code = "\n".join(
             line for line in path.read_text().splitlines()
-            if not line.lstrip().startswith("#")
+            if not line.lstrip().startswith("#") and line.strip() not in _LEGACY_GUARD_LINES
         )
         assert "/var/session" not in code, (
             f"{path.name} still falls back to <skill>/var/session"

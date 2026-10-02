@@ -74,9 +74,9 @@ class TestResolutionOrder:
         got = _resolve(WRIT_DIR="/opt/writ", XDG_STATE_HOME="/xdg")
         assert got == "/xdg/writ/logs/server.log"
 
-    def test_standalone_without_xdg_uses_home_local_state(self):
+    def test_standalone_without_xdg_uses_home_cache(self):
         got = _resolve(WRIT_DIR="/opt/writ")
-        assert got == f"{os.path.expanduser('~')}/.local/state/writ/logs/server.log"
+        assert got == f"{os.path.expanduser('~')}/.cache/writ/logs/server.log"
 
     def test_explicit_beats_every_implicit_source(self):
         got = _resolve(WRIT_LOG="/win.log", WRIT_LOG_ROOT="/logs",

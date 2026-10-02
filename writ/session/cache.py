@@ -27,7 +27,7 @@ from writ.shared.state_root import session_dir, state_root
 
 
 # Default session-state root: `<state_root>/session`, resolved by writ/shared/state_root.py
-# ($XDG_STATE_HOME/writ, else ~/.local/state/writ) at CALL time. It used to be this install's
+# ($XDG_STATE_HOME/writ, else ~/.cache/writ) at CALL time. It used to be this install's
 # own `var/session`, derived from this module's __file__, and a plugin install path carries the
 # version, so every upgrade started from an empty directory and orphaned every live session's
 # mode and approvals. bin/lib/writ_state_migrate.py carries those old caches over at

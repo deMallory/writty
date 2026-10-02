@@ -269,7 +269,7 @@ _DEFAULT_STREAM = "friction"
 NON_GOVERNANCE_MODE_EVENTS: frozenset[str] = frozenset({"retrieval_result"})
 
 # Default log root: the durable state root's `logs/` (writ/shared/state_root.py:
-# $XDG_STATE_HOME/writ/logs, else ~/.local/state/writ/logs), resolved at CALL time. It used to
+# $XDG_STATE_HOME/writ/logs, else ~/.cache/writ/logs), resolved at CALL time. It used to
 # be `<install>/var/logs`, derived from this module's __file__, and a plugin install path carries
 # the version, so each upgrade started a fresh, empty history while the previous version's audit
 # trail stayed in a directory nothing reads. History is NOT migrated (docs/adr/ADR-state-root.md);

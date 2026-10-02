@@ -49,7 +49,7 @@ if [ -n "$_SSB_SKILL_DIR" ] && [ -f "$_SSB_SKILL_DIR/bin/lib/writ_state_migrate.
   else
     case "${XDG_STATE_HOME:-}" in
       /*) _SSB_STATE_ROOT="${XDG_STATE_HOME%/}/writ" ;;
-      *)  _SSB_STATE_ROOT=~/.local/state/writ ;;
+      *)  _SSB_STATE_ROOT=~/.cache/writ ;;
     esac
     _SSB_STAMP_FILE="$_SSB_STATE_ROOT/state-migrate.stamp"
     _SSB_STAMP_KEY="$_SSB_VERSION $_SSB_SKILL_DIR"
@@ -146,7 +146,7 @@ writ_venv_repoint "${VENV_DIR}" "${WRIT_DIR}" || true
 # Bounded: a bare /dev/tcp connect to a black-holed host blocks for the kernel SYN
 # timeout (minutes) and would stall every SessionStart with it. run-bounded.py, not GNU
 # timeout: stock macOS lacks it, and the shell's exit 127 read as "Neo4j down" with Neo4j up.
-if ! python3 "${WRIT_DIR}/bin/lib/run-bounded.py" 2 bash -c "exec 3<>/dev/tcp/${NEO4J_HOST}/${NEO4J_PORT}" 2>/dev/null; then
+if ! python3 "${WRIT_DIR}/bin/lib/run-bounded.py" 0.5 bash -c "exec 3<>/dev/tcp/${NEO4J_HOST}/${NEO4J_PORT}" 2>/dev/null; then
   cat >&2 <<MSG
 [Writ] Neo4j not reachable at ${NEO4J_HOST}:${NEO4J_PORT}.
 [Writ] Start it with:

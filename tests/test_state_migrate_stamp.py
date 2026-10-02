@@ -267,7 +267,7 @@ class TestStampPathMatchesStateRoot:
             f"after a first, unstamped SessionStart"
         )
 
-    def test_under_a_relative_xdg_state_home_falls_back_to_home_local_state(self, tmp_path) -> None:
+    def test_under_a_relative_xdg_state_home_falls_back_to_home_cache(self, tmp_path) -> None:
         skill = _build_skill_tree(tmp_path)
         shim = _shim_dir(tmp_path)
         counter = tmp_path / "counter"
@@ -283,8 +283,8 @@ class TestStampPathMatchesStateRoot:
             capture_output=True, text=True, timeout=30,
         )
         assert result.returncode == 0, result.stderr
-        expected = tmp_path / "home" / ".local" / "state" / "writ" / "state-migrate.stamp"
+        expected = tmp_path / "home" / ".cache" / "writ" / "state-migrate.stamp"
         assert expected.exists(), (
-            f"a relative XDG_STATE_HOME must fall back to HOME/.local/state/writ: "
+            f"a relative XDG_STATE_HOME must fall back to HOME/.cache/writ: "
             f"{list((tmp_path / 'home').rglob('*'))}"
         )

@@ -2,6 +2,7 @@
 name: writ-spec-reviewer
 description: "Reviews an implementation diff for compliance with the approved spec. Runs BEFORE code-quality review per plan Section 7.1 review ordering. Reports structured findings per spec requirement."
 model: haiku
+effort: low
 tools: Read Glob Grep Bash
 ---
 

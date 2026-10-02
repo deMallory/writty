@@ -128,3 +128,21 @@ arm gains the artifact `state/writ`, so `rm -rf ~/.local/state/writ/logs` is ENF
   new root.
 - Doctor checks that read recent logs report thin data until the new streams fill, which is
   accurate.
+
+## Fork note (deMallory/writty, 2026-10-02)
+
+The fork keeps this contract with one change: the fallback is `~/.cache/writ`, not
+`~/.local/state/writ`. An absolute `XDG_STATE_HOME` still wins, so `$XDG_STATE_HOME/writ` is
+unchanged, and the test suite still sandboxes through it.
+
+Why: the fork already pinned `WRIT_CACHE_DIR` and `WRIT_LOG_ROOT` under `~/.cache/writ`
+(2026-09-13, the two-session-stores fix). After this ADR merged, a process started without
+those pins wrote its audit and metrics logs to `~/.local/state/writ/logs`, a tree the
+dashboard does not read. With the fallback at `~/.cache/writ`, pinned and unpinned processes
+share one root. `~/.cache` is not a temp directory: nothing empties it at boot.
+
+The gates follow: the Bash gate also names `.cache/writ/session`, and the irreversibility arm
+also names `.cache/writ/logs`. The token stops at `logs/` because `~/.cache/writ` also holds
+rebuildable indexes, and `cache/writ` alone would match `~/.claude/plugins/cache/writ/`. The
+`state/writ` tokens stay, for anything left under the upstream default. Logs already written
+there are not migrated.

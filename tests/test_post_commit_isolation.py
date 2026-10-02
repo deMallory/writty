@@ -164,7 +164,7 @@ class TestThePinCanActuallySeeALeak:
     """
 
     def test_the_counter_reports_real_commits_for_this_project(self):
-        seen = _commit_count_for("github.com/infinri/Writ")
+        seen = _commit_count_for("github.com/deMallory/writty")
         if seen is None:
             pytest.fail("production graph unreachable; the pin above cannot be trusted")
         assert seen > 0, (

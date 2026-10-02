@@ -7,7 +7,7 @@ Writ runs the same way under two install paths; pick one:
 
 In every path, hook registrations come from one place, `hooks/hooks.json`. The current counts are generated from that file into [`reference/hooks.md`](reference/hooks.md). Editing that file is all a hook change needs.
 
-**Where state lives (both paths):** session caches, approvals and the pending-test and lint scratch files under `$XDG_STATE_HOME/writ` (default `~/.local/state/writ`), typed logs under its `logs/`. None of it is inside the install, so an upgrade or a second copy of Writ sees the same sessions. The first session after upgrading from 1.8.0 or earlier copies each old `<install>/var/session/writ-session-*.json` across once, never overwriting.
+**Where state lives (both paths):** session caches, approvals and the pending-test and lint scratch files under `$XDG_STATE_HOME/writ` (default `~/.cache/writ`), typed logs under its `logs/`. None of it is inside the install, so an upgrade or a second copy of Writ sees the same sessions. The first session after upgrading from 1.8.0 or earlier copies each old `<install>/var/session/writ-session-*.json` across once, never overwriting.
 
 **Prerequisites (all paths):** Python 3.11+, Docker (Neo4j runs in a container), and `git` for the clone paths. That is the whole list. `jq` and `curl` are optional accelerators: every JSON read has a Python fallback and every HTTP call has a `urllib` fallback, so their absence changes speed, never behavior. Nothing needs `envsubst`/gettext.
 
@@ -166,7 +166,7 @@ The standalone install keeps working; the plugin path is additive. To move over:
 - **`python3 version is 3.9; need >= 3.11`**: install a newer Python (`pyenv` works well).
 - **`port 7687 already in use`**: another Neo4j is running; stop it or change the `ports:` mapping in `docker-compose.yml`.
 - **`Neo4j did not become reachable within 60s`**: `docker compose logs neo4j`; the common cause is too little memory for Docker (Neo4j wants ~1 GB).
-- **Daemon not healthy**: check the daemon log; the location is install-dependent: `$WRIT_LOG` if set, else `$XDG_STATE_HOME/writ/logs/server.log` (default `~/.local/state/writ/logs/server.log`, clone) or `${CLAUDE_PLUGIN_DATA:-~/.cache/writ}/server.log` (plugin), or `journalctl --user -u writ-server` under systemd. Usually an import error; re-run `pip install -e .` inside the venv.
+- **Daemon not healthy**: check the daemon log; the location is install-dependent: `$WRIT_LOG` if set, else `$XDG_STATE_HOME/writ/logs/server.log` (default `~/.cache/writ/logs/server.log`, clone) or `${CLAUDE_PLUGIN_DATA:-~/.cache/writ}/server.log` (plugin), or `journalctl --user -u writ-server` under systemd. Usually an import error; re-run `pip install -e .` inside the venv.
 - **A GPU-discovery warning from onnxruntime at startup** on CPU-only machines is unsuppressible and harmless; CPU execution works normally.
 - **Default Neo4j credentials (`neo4j/writdevpass`)**: a development default, silently used whenever `writ.toml` is missing. For any non-local use, change `NEO4J_AUTH` in `docker-compose.yml` and the `[neo4j]` section of `writ.toml`.
 

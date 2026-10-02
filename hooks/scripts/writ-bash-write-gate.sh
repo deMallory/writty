@@ -612,8 +612,9 @@ _readonly_inspection() {
 
 # The state root's session/ (bin/lib/common.sh), and the install-relative var/session every
 # earlier release used, which bin/lib/writ_state_migrate.py reads from and so must stay
-# protected. The literal "state/writ/session" in the list below catches the ~ and $HOME
-# spellings of the default, which the absolute path text cannot.
+# protected. The literals ".cache/writ/session" (the fork's default) and "state/writ/session"
+# (upstream's, still guarded for anything left there) in the list below catch the ~ and $HOME
+# spellings, which the absolute path text cannot.
 STATE_DIR_GUARD="${WRIT_CACHE_DIR:-$_WRIT_STATE_ROOT/session}"
 LEGACY_STATE_DIR_GUARD="$WRIT_DIR/var/session"
 
@@ -691,7 +692,7 @@ STATE_MATCH=""
 # stays runnable. The cost is the one every pattern here carries: a Bash command that
 # merely mentions the symbol is refused unless it is plain read-only inspection, so prose
 # naming it goes through a file with `git commit -F <file>`.
-for _state_pat in "$STATE_DIR_GUARD" "$LEGACY_STATE_DIR_GUARD" "state/writ/session" "/tmp/writ-current-session" "writ-session-" \
+for _state_pat in "$STATE_DIR_GUARD" "$LEGACY_STATE_DIR_GUARD" ".cache/writ/session" "state/writ/session" "/tmp/writ-current-session" "writ-session-" \
                   "writ-manual-test-grant" "manual_test_grant" "writ-grant-" \
                   "writ-gate-token" "reopen-planning" "auto-approve-gate" \
                   "mint_gate_token"; do
@@ -1009,10 +1010,12 @@ _irreversible_reason() {
     #
     #    THE ARTIFACT TOKEN IS THE EXACT FILENAME, never the bare prefix: writ-blackbox
     #    alone appears in 14 real command lines, all of them routine capture on and off, so
-    #    a prefix rule reds every one. The two tree tokens (var/logs, the legacy log
-    #    tree, and state/writ, the state root that now holds the logs) are LAST so that a path naming both
-    #    a tree and a file inside it reports the file the operator actually aimed at.
-    local -a _IRREV_LOG_ARTIFACTS=("audit.jsonl" "friction.jsonl" "metrics.jsonl" "errors.jsonl" "workflow-friction.log" "writ-blackbox.jsonl" "var/logs" "state/writ")
+    #    a prefix rule reds every one. The tree tokens (var/logs, the legacy log tree;
+    #    state/writ, upstream's state root; .cache/writ/logs, the fork's log tree) are LAST so that a
+    #    path naming both a tree and a file inside it reports the file the operator actually aimed at.
+    #    The fork's token stops at logs/: ~/.cache/writ also holds rebuildable indexes (hnsw, bm25,
+    #    models), and plain "cache/writ" would also match ~/.claude/plugins/cache/writ/.
+    local -a _IRREV_LOG_ARTIFACTS=("audit.jsonl" "friction.jsonl" "metrics.jsonl" "errors.jsonl" "workflow-friction.log" "writ-blackbox.jsonl" "var/logs" "state/writ" ".cache/writ/logs")
     local _irrev_art="" _irrev_verb="" _irrev_flat="" _irrev_seg _irrev_a _irrev_v
     for _irrev_a in "${_IRREV_LOG_ARTIFACTS[@]}"; do
         case "$lower" in *"$_irrev_a"*) _irrev_art="$_irrev_a"; break ;; esac

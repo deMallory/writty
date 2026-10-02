@@ -62,7 +62,8 @@ STALE_AGENTS_PATH = ".claude/agents"
 # tests/test_gate_claude_dir_scope.py uses ".claude/agents/..." as SAMPLE PATHS to exercise
 # the gate's glob matching (including `..` traversal). Its subject is the matcher, not the
 # location of the real role files, so it is exempt from the no-stale-path sweep.
-_SWEEP_EXEMPT = {"test_gate_claude_dir_scope.py", Path(__file__).name}
+# tests/test_plugin_role_names.py builds a fake ~/.claude/agents under tmp_path on purpose.
+_SWEEP_EXEMPT = {"test_gate_claude_dir_scope.py", "test_plugin_role_names.py", Path(__file__).name}
 
 
 def _load(path: Path):

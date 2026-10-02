@@ -196,7 +196,8 @@ class TestRotatedSourcesStillCarryForwardOnce:
 
 
 class TestNeo4jProbe:
-    """Capability: the Neo4j probe is `timeout 0.5` over NEO4J_HOST/NEO4J_PORT, succeeds
+    """Capability: the Neo4j probe is bounded at 0.5 seconds (`run-bounded.py 0.5`, which
+    replaced GNU `timeout`) over NEO4J_HOST/NEO4J_PORT, succeeds
     against a real listening socket named through WRIT_NEO4J_HOST/WRIT_NEO4J_PORT (no
     "Neo4j not reachable" on stderr), and prints that block and exits 0 against a closed
     port. Only the timeout-literal assertion is RED at HEAD (today reads `timeout 2`);
@@ -206,9 +207,8 @@ class TestNeo4jProbe:
 
     def test_source_uses_a_half_second_timeout(self):
         text = HOOK.read_text()
-        assert 'timeout 0.5 bash -c "exec 3<>/dev/tcp/${NEO4J_HOST}/${NEO4J_PORT}"' in text, (
-            "the Neo4j probe must read `timeout 0.5`, not the HEAD `timeout 2`"
-        )
+        probe = 'run-bounded.py" 0.5 bash -c "exec 3<>/dev/tcp/${NEO4J_HOST}/${NEO4J_PORT}"'
+        assert probe in text, "the Neo4j probe must be bounded at 0.5 seconds, not 2"
 
     def test_succeeds_against_a_real_listening_socket(self, tmp_path, neo4j_listener):
         venv, _counter = _fake_venv(tmp_path)
@@ -236,11 +236,22 @@ class TestServerAlreadyRunningMessageReachesStderr:
     pattern, so nothing here ever binds or connects to the real daemon port."""
 
     def test_shows_server_already_running_on_stderr(self, tmp_path, neo4j_listener):
+        # On Darwin the hook realigns: it curls the real /health on its hardcoded port 8765
+        # despite WRIT_HEALTH_CMD, reads the live daemon's cache_dir, sees a mismatch with
+        # tmp/cache, and stop-server.sh kills whatever listens there by `lsof`. Both
+        # commands are stubbed to fail, so the realign reads nothing and stops nothing.
+        stub_bin = tmp_path / "stub-bin"
+        stub_bin.mkdir()
+        for name in ("curl", "lsof"):
+            stub = stub_bin / name
+            stub.write_text("#!/bin/sh\nexit 1\n")
+            stub.chmod(0o755)
         venv, _counter = _fake_venv(tmp_path)
         payload = {"session_id": "boot-autostart-1", "cwd": str(tmp_path), "source": "startup"}
         result = _run_hook(
             tmp_path, venv, payload, neo4j_listener, autostart=True,
-            extra_env={"WRIT_HEALTH_CMD": "true"},
+            extra_env={"WRIT_HEALTH_CMD": "true",
+                       "PATH": f"{stub_bin}{os.pathsep}{os.environ['PATH']}"},
         )
         assert result.returncode == 0, result.stderr
         assert "[Writ] Server already running" in result.stderr
