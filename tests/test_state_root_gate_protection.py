@@ -78,6 +78,8 @@ class TestBashGate:
     @pytest.mark.parametrize("cmd", [
         "touch {xdg}/writ/session/x",
         "rm -f ~/.local/state/writ/session/x",
+        "rm -f ~/.cache/writ/session/x",
+        "rm -f $HOME/.cache/writ/session/x",
         "cp /dev/null {repo}/var/session/x",
     ])
     def test_the_state_dirs_are_refused(self, tmp_path, cmd):
@@ -88,6 +90,23 @@ class TestBashGate:
     def test_read_only_inspection_of_the_state_root_is_allowed(self, tmp_path):
         assert _bash(tmp_path, "ls ~/.local/state/writ/session")[0] != "deny"
 
-    def test_destroying_the_state_root_logs_is_irreversible(self, tmp_path):
-        decision, why = _bash(tmp_path, "rm -rf ~/.local/state/writ/logs")
+    @pytest.mark.parametrize("cmd", [
+        "rm -rf ~/.local/state/writ/logs",
+        "rm -rf ~/.cache/writ/logs",
+        "rm -rf $HOME/.cache/writ/logs",
+    ])
+    def test_destroying_the_state_root_logs_is_irreversible(self, tmp_path, cmd):
+        decision, why = _bash(tmp_path, cmd)
         assert decision == "deny" and "ENF-IRREVERSIBLE" in why, why
+
+    def test_read_only_inspection_of_the_cache_root_is_allowed(self, tmp_path):
+        assert _bash(tmp_path, "ls ~/.cache/writ/session")[0] != "deny"
+
+    @pytest.mark.parametrize("cmd", [
+        "rm -rf ~/.cache/writ/hnsw",
+        "rm -rf ~/.claude/plugins/cache/writ/writ/1.7.0",
+    ])
+    def test_rebuildable_caches_beside_the_root_stay_deletable(self, tmp_path, cmd):
+        """~/.cache/writ also holds the rebuildable indexes, and the plugin cache path
+        contains `cache/writ`; neither is session state or the log tree."""
+        assert _bash(tmp_path, cmd)[0] != "deny", cmd

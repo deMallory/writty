@@ -31,10 +31,10 @@ At the install root, gitignored; `writ.toml.example` is the template. Readers in
 | Variable | Effect | Default |
 |---|---|---|
 | `WRIT_HOST` / `WRIT_PORT` | Daemon target for every hook and CLI call | `localhost` / `8765` |
-| `WRIT_CACHE_DIR` | Root for everything a session writes: the session cache, the pending-test markers `writ-mark-pending-test.sh` leaves for the Stop hook, and the per-file lint logs from `validate-file.sh`. Unset, none of these live in the install directory. | `$XDG_STATE_HOME/writ/session` (default `~/.local/state/writ/session`); with it unset the pending-test markers and lint logs go to the state root's `cache/`. Never `/tmp`: systemd empties it at boot |
-| `WRIT_LOG_ROOT` | Typed log streams root | `$XDG_STATE_HOME/writ/logs` (default `~/.local/state/writ/logs`) |
+| `WRIT_CACHE_DIR` | Root for everything a session writes: the session cache, the pending-test markers `writ-mark-pending-test.sh` leaves for the Stop hook, and the per-file lint logs from `validate-file.sh`. Unset, none of these live in the install directory. | `$XDG_STATE_HOME/writ/session` (default `~/.cache/writ/session`); with it unset the pending-test markers and lint logs go to the state root's `cache/`. Never `/tmp`: systemd empties it at boot |
+| `WRIT_LOG_ROOT` | Typed log streams root | `$XDG_STATE_HOME/writ/logs` (default `~/.cache/writ/logs`) |
 | `WRIT_VENV` | The Python venv every Writ script and hook uses, ahead of the resolver in `bin/lib/writ-venv.sh`. SessionStart warns, and never reinstalls, when it imports `writ` from another install | resolved: `$CLAUDE_PLUGIN_DATA/.venv`, then `<install>/.venv`, then the plugin data dir derived from the install path, then `~/.cache/writ/.venv` |
-| `XDG_STATE_HOME` | Base of Writ's durable state root, `$XDG_STATE_HOME/writ`; honoured only when absolute (XDG spec) | `~/.local/state` |
+| `XDG_STATE_HOME` | Base of Writ's durable state root, `$XDG_STATE_HOME/writ`; honoured only when absolute (XDG spec) | unset: the root falls back to `~/.cache/writ` (this fork; upstream uses `~/.local/state/writ`) |
 | `WRIT_LOG_PROJECT` | Override the per-project log scope (sanitized against path traversal) | git-derived project name, else `writ` |
 | `WRIT_FRICTION_LOG` | Collapse **all** streams into one file (test isolation, single-log operators) | unset |
 | `WRIT_DEBUG` | Enable the `/tmp` debug sinks (`WRIT_HOOK_LOG` names one of them) | off |

@@ -14,7 +14,8 @@ _PARSE_HOOK_STDIN_JQ="$_WRIT_LIB_DIR/parse-hook-stdin.jq"
 
 # ── Durable state root and session-cache location (THE bash-side definition) ──
 # Mirrors writ/shared/state_root.py: $XDG_STATE_HOME/writ when that variable is absolute (the
-# XDG spec says a relative value is to be ignored), else ~/.local/state/writ. Session caches,
+# XDG spec says a relative value is to be ignored), else ~/.cache/writ (the fork's fallback, where
+# its pinned WRIT_CACHE_DIR and WRIT_LOG_ROOT already point; upstream uses ~/.local/state/writ). Session caches,
 # the pending-test and lint scratch files and the typed logs all live under it, so they no
 # longer depend on where this copy of Writ is installed. The previous default was
 # <skill>/var/session, and a plugin install path carries the version, so every upgrade started
@@ -34,8 +35,8 @@ _PARSE_HOOK_STDIN_JQ="$_WRIT_LIB_DIR/parse-hook-stdin.jq"
 case "${XDG_STATE_HOME:-}" in
     /*) _WRIT_STATE_ROOT="${XDG_STATE_HOME%/}/writ" ;;
     # Tilde, not ${HOME}: with HOME unset bash then asks the password database, exactly as
-    # Python's os.path.expanduser does, so the two sides cannot split onto /.local/state.
-    *)  _WRIT_STATE_ROOT=~/.local/state/writ ;;
+    # Python's os.path.expanduser does, so the two sides cannot split onto /.cache.
+    *)  _WRIT_STATE_ROOT=~/.cache/writ ;;
 esac
 # Where every earlier release kept session state: this install's own var/session. The state
 # gates keep protecting it, because bin/lib/writ_state_migrate.py copies caches OUT of it at

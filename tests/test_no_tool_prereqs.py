@@ -755,6 +755,7 @@ DAEMON_DOWN_EQUIVALENT_RAW_CURL: dict[str, tuple[str, ...]] = {
     "hooks/scripts/writ-cwd-changed.sh": ("git-hooks/auto-install",),
     "hooks/scripts/writ-memory-capture.sh": ("$MEMORY_URL",),
     "hooks/scripts/validate-rules.sh": ("$ANALYZE_URL",),
+    "scripts/bootstrap-grok.sh": ("8765", "/health"),
 }
 
 # Lines that LOOK like a curl invocation but are not one: text Writ PRINTS for the model

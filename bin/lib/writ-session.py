@@ -250,6 +250,7 @@ __all__ = [
     'cmd_pending_violations',
     'cmd_read',
     'cmd_clear_rules_for_compaction',
+    'cmd_detect_compaction',
     'cmd_reset_after_compaction',
     'WRIT_FEEDBACK_URL',
     'cmd_auto_feedback',

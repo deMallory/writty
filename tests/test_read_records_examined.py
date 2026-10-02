@@ -467,4 +467,5 @@ class TestHooksJsonMatcherUnchanged:
                 for h in entry.get("hooks", [])
             )
         ]
-        assert matchers == ["Read"], matchers
+        # read_file is Grok's name for the same tool (the fork's Grok port).
+        assert matchers == ["Read|read_file"], matchers

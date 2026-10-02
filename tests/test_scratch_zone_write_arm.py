@@ -278,7 +278,7 @@ class TestNonScratchOutOfRepoStillRefused:
         # docstring, HARD CONSTRAINT 1).
         gates = _gates_module()
         cache = _pre_approval_cache(str(zone.root), str(zone.zone))
-        target = "/etc/writ-scratch-arm-probe.txt"
+        target = "/etc/writ-scratch-arm-probe.py"  # .py: the fork's exclusions cover *.txt
         result = gates._can_write_check("sza-6b", _envelope(target), "", cache)
         assert result["can_write"] is False
         assert "ENF-GATE-PLAN" in (result["reason"] or "")

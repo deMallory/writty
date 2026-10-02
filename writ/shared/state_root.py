@@ -7,10 +7,13 @@ install path carries the version (`~/.claude/plugins/cache/writ/writ/1.8.0/`), s
 started from an empty state tree and orphaned the live sessions' modes and approvals, and every
 copy of Writ on one machine (the plugin cache, a marketplace clone, a dev checkout) kept its own.
 
-The root is the XDG state directory: `$XDG_STATE_HOME/writ`, else `~/.local/state/writ`.
-XDG_STATE_HOME is honoured only when absolute, because the spec says a relative value is to be
-ignored. NOT a temp directory: `/usr/lib/tmpfiles.d/tmp.conf` declares `D /tmp`, which empties it
-at boot, and that wipe once destroyed every session cache (see writ/session/cache.py).
+The root is `$XDG_STATE_HOME/writ`, else `~/.cache/writ`. XDG_STATE_HOME is honoured only when
+absolute, because the spec says a relative value is to be ignored. The fallback is this fork's,
+not upstream's `~/.local/state/writ`: the fork pins WRIT_CACHE_DIR and WRIT_LOG_ROOT under
+`~/.cache/writ`, and a process started without those pins wrote its logs to a second tree the
+dashboard never reads (docs/adr/ADR-state-root.md, fork note). NOT a temp directory:
+`/usr/lib/tmpfiles.d/tmp.conf` declares `D /tmp`, which empties it at boot, and that wipe once
+destroyed every session cache (see writ/session/cache.py). Nothing empties `~/.cache` at boot.
 
 ONE definition per language. bin/lib/common.sh computes the same root in bash
 (`_WRIT_STATE_ROOT`) with parameter expansion only, because common.sh is sourced by every hook
@@ -23,10 +26,10 @@ import os
 
 
 def state_root() -> str:
-    """`$XDG_STATE_HOME/writ` when that variable is absolute, else `~/.local/state/writ`."""
+    """`$XDG_STATE_HOME/writ` when that variable is absolute, else `~/.cache/writ`."""
     base = os.environ.get("XDG_STATE_HOME", "")
     if not os.path.isabs(base):
-        base = os.path.join(os.path.expanduser("~"), ".local", "state")
+        base = os.path.join(os.path.expanduser("~"), ".cache")
     return os.path.join(base, "writ")
 
 

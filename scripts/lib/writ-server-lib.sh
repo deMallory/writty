@@ -179,7 +179,7 @@ writ_default_server_log() {
     elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
         printf '%s/server.log' "${CLAUDE_PLUGIN_DATA:-$HOME/.cache/writ}"
     else
-        printf '%s/logs/server.log' "${_WRIT_STATE_ROOT:-${HOME:-}/.local/state/writ}"
+        printf '%s/logs/server.log' "${_WRIT_STATE_ROOT:-${HOME:-}/.cache/writ}"
     fi
 }
 

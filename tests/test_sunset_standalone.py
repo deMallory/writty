@@ -104,7 +104,8 @@ class TestHooksJsonIsSoleSource:
     def test_hooks_use_plugin_root(self):
         # SoT registers via the plugin root, never absolute home paths.
         src = _read("hooks", "hooks.json")
-        assert "${CLAUDE_PLUGIN_ROOT}" in src
+        # The prefix, so the Grok fallback `${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}` counts.
+        assert "${CLAUDE_PLUGIN_ROOT" in src
         assert "/.claude/skills/writ/" not in src
 
 
