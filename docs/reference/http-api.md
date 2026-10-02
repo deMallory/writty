@@ -3,7 +3,7 @@
 
 # HTTP API reference
 
-All 51 endpoints, generated from the FastAPI route table. JSON bodies; no auth. The daemon listens on `http://localhost:8765` and on a unix socket (`$WRIT_SOCKET`, default `~/.cache/writ/run/writ.sock`); with `WRIT_TCP_READONLY=1` set, TCP serves reads plus `POST /query` and refuses every other state-changing request with 403, so those routes are reachable only over the socket, which is private to the user running the daemon. Logical failures return HTTP 200 with an `error` key; 422 is request validation.
+All 52 endpoints, generated from the FastAPI route table. JSON bodies; no auth. The daemon listens on `http://localhost:8765` and on a unix socket (`$WRIT_SOCKET`, default `~/.cache/writ/run/writ.sock`); with `WRIT_TCP_READONLY=1` set, TCP serves reads plus `POST /query` and refuses every other state-changing request with 403, so those routes are reachable only over the socket, which is private to the user running the daemon. Logical failures return HTTP 200 with an `error` key; 422 is request validation.
 
 ## decision_memory
 
@@ -72,6 +72,7 @@ All 51 endpoints, generated from the FastAPI route table. JSON bodies; no auth. 
 | POST | `/session/{session_id}/context-percent` | Set context_percent for the session |
 | GET | `/session/{session_id}/coverage` | Get rule coverage for the session |
 | GET | `/session/{session_id}/current-phase` | The phase, the mode, the next pending gate and the plan fingerprint |
+| POST | `/session/{session_id}/detect-compaction` | Detect context window compaction and recover if needed |
 | POST | `/session/{session_id}/invalidate-gate` | Invalidate a gate: record the cycle, delete the .approved file, check escalation |
 | GET | `/session/{session_id}/mode` | Get the current mode for the session |
 | POST | `/session/{session_id}/mode` | Set the mode for the session |

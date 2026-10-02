@@ -187,13 +187,13 @@ jobs:
                       "MERGE (c:Commit {commit_hash: $h, project: $p}) "
                       "ON CREATE SET c.subject = $s, c.author = $a, "
                       "c.branch = $b, c.ts = $t",
-                      h="ci-witness-0000000", p="github.com/infinri/Writ",
+                      h="ci-witness-0000000", p="github.com/deMallory/writty",
                       s="CI witness for the post-commit isolation pin",
                       a="ci@github", b="ci", t="1970-01-01T00:00:00Z",
                   )
                   rows = await db._run(
                       "MATCH (c:Commit) WHERE c.project CONTAINS $s RETURN count(c) AS n",
-                      s="github.com/infinri/Writ",
+                      s="github.com/deMallory/writty",
                   )
                   n = rows[0]["n"] if rows else 0
                   print(f"witness commits at 7687: {n}")

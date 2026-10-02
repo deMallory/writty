@@ -91,6 +91,7 @@ MEMORY_BUDGET_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
 # 770-820ms warm. 1000ms keeps headroom below the documented cold outliers
 # (1.9-3.2s) so a real regression still fails.
 INTEGRITY_BUDGET_MS = 1000.0
+INTEGRITY_BUDGET_SCALED_MS = INTEGRITY_BUDGET_MS * _BUDGET_SCALE
 INGESTION_BUDGET_S = 2.0
 # MRR@5 ambiguous-set floor and hit-rate floor live in
 # tests/fixtures/regression_floors.py (single source of truth shared

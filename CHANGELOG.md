@@ -4,6 +4,36 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.6] - 2026-10-02
+
+Ships everything merged since 1.7.5 to installed plugins: the Grok harness, upstream Writ 1.11.1 and the Pair Ledger dashboard. Upstream's own changes are in its 1.8.0 to 1.11.1 entries below; this fork keeps its 1.7.x line, so those headings stay upstream's.
+
+### Added
+
+- **Writ runs on Grok Build as well as Claude Code.** (PR 10) An adapter reads Grok's camelCase hook envelopes beside Claude's snake_case ones and emits each deny, ask and block in both hosts' shapes. `writ approve` copies the Grok session plan to the repo-root `plan.md`. Rules reach Grok through a sidecar, because its prompt-submit output is observe-only.
+- **Upstream Writ 1.11.1 is merged, with the fork surface kept.** (PR 31) Kept: the Grok adapter, the five fork hooks, the dual hook envelope, the two split reviewer roles, and the plugin name `writ` in the `writty` marketplace.
+- **`/dashboard` shows where Claude's rules live and which notes reached Writ.** (PR 30) Pair Ledger sections list the rule sources, the memory copies and the stale notes.
+- **A dialectic review workflow reviews a plan or a diff without writing to the tree.** `.claude/workflows/dialectic-review.js`.
+
+### Changed
+
+- **The state root falls back to `~/.cache/writ`, not `~/.local/state/writ`.** (PR 34) An absolute `XDG_STATE_HOME` still wins. Processes with and without the `WRIT_CACHE_DIR` and `WRIT_LOG_ROOT` pins now share one root, so the dashboard sees every log. Logs already written under `~/.local/state/writ/logs` are not moved. The fork note in `docs/adr/ADR-state-root.md` gives the reasons.
+- **The whole `/dashboard` page uses the Pair Ledger design.** (PR 33)
+- **The openwiki project log records the passed 1.7.4 live check and the review-order race it hit.** (PR 29)
+
+### Fixed
+
+- **`/dashboard` reads the split log streams.** (PR 27) It read `./workflow-friction.log`, which the hooks stopped writing when the logs split, so it showed the same numbers from 1 August on. A `pytest --noconftest` run no longer writes test rows into the real log root.
+- **Hook commands quote `${CLAUDE_PLUGIN_ROOT}`.** (PR 30) Claude Code 2.1.286 validates hook commands strictly. All 49 are quoted, the parsers that read them follow, and the `writ doctor` hook-registration check passes again.
+- **The hooks lint reads the Grok plugin root and flags missing scripts.** (PR 32)
+- **The Bash gate protects the `~/.cache/writ` spellings.** (PR 34) `rm -f ~/.cache/writ/session/x` is refused by ENF-GATE-STATE, and `rm -rf ~/.cache/writ/logs` by ENF-IRREVERSIBLE. `~/.cache/writ/hnsw` and the plugin cache stay deletable.
+- **A test no longer stops the live daemon on macOS.** (PR 34) `test_shows_server_already_running_on_stderr` reached the real `/health` on port 8765 and ran `stop-server.sh`. It now stubs `curl` and `lsof`.
+- **The bootstrap's Neo4j probe is bounded at 0.5 seconds again.** (PR 34) The fork's merge had kept 2 seconds.
+- **The 18 tests that failed on main after the 1.11.1 merge pass.** (PR 34)
+- **CI seeds its commit witness under this fork's project name.** The sensitivity control in `tests/test_post_commit_isolation.py` counts `github.com/deMallory/writty`, but the seed in `.github/workflows/pr.yml` still wrote `github.com/infinri/Writ`.
+- **The integrity benchmark runs again.** The 1.11.1 merge kept the fork's 1000 ms budget and dropped the `INTEGRITY_BUDGET_SCALED_MS` line, so `make bench` died on a NameError.
+- **`docs/reference/cli.md` and `http-api.md` match the code again.** Both lagged `detect-compaction`, which failed the CI `docs` check.
+
 ## [1.7.5] - 2026-09-29
 
 ### Fixed
