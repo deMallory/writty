@@ -6,8 +6,10 @@ gracefully when the friction log is empty.
 """
 from __future__ import annotations
 
+import html
 import json
 import os
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -170,8 +172,8 @@ class TestDashboardReadsSplitStreams:
         for event in ("split_audit_row", "split_friction_row", "split_metrics_row"):
             assert f"<td>{event}</td><td>1</td>" in body, f"{event} missing from Live counts"
         # Exact totals hold on a first GET: its own daemon_request row lands after render.
-        assert "<td>total events</td><td>3</td>" in body
-        assert "<td>distinct sessions</td><td>3</td>" in body
+        assert '<div class="fig"><b>3</b><span>events</span></div>' in body
+        assert '<div class="fig"><b>3</b><span>sessions</span></div>' in body
 
     def test_ignores_legacy_file_in_cwd(self, client: TestClient, split_streams: dict[str, Path]) -> None:
         body = client.get("/dashboard").text
@@ -244,7 +246,16 @@ class TestDashboardPairLedger:
     ) -> None:
         (isolated_home / ".claude" / "CLAUDE.md").write_text("- one\n- two\n")
         body = client.get("/dashboard").text
-        assert "<td>~/.claude/CLAUDE.md</td><td>2</td>" in body
+        assert '<td>global<span class="sub mono">~/.claude/CLAUDE.md</span></td><td>2 rules</td>' in body
+
+    def test_an_untracked_source_is_a_marked_check_row(
+        self, client: TestClient, empty_log: Path, isolated_home: Path
+    ) -> None:
+        (isolated_home / ".claude" / "CLAUDE.md").write_text("- one\n")
+        body = client.get("/dashboard").text
+        row = body[body.index('<tr class="gap"><td>global'):]
+        row = row[:row.index("</tr>")]
+        assert '<span class="chip check">this Mac only</span>' in row
 
     def test_memory_section_says_graph_not_reachable_without_db(
         self, client: TestClient, empty_log: Path
@@ -261,8 +272,39 @@ class TestDashboardPairLedger:
                "updated_at": "2026-09-01T00:00:00Z", "description": "d", "body": "body"}
         monkeypatch.setattr(server, "_db", _StubDb([row]))
         body = client.get("/dashboard").text
-        assert "<td>alpha</td><td>1</td><td>0</td><td>0</td>" in body
+        assert '<span class="lab">alpha</span>' in body
+        assert '<span class="val">1 of 1</span>' in body
         assert "graph not reachable" not in body.lower()
+
+    def test_memory_meter_shares_one_scale_and_names_outdated_notes(
+        self, client: TestClient, empty_log: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        alpha = _memory_project(isolated_home, "/work/alpha", {"n1": "body", "n2": "new"})
+        _memory_project(isolated_home, "/work/beta", {"m1": "x"})
+
+        def row(name: str, body: str) -> dict:
+            return {"name": name, "project": alpha, "path": "", "status": "live", "type": "project",
+                    "updated_at": "2026-09-01T00:00:00Z", "description": "d", "body": body}
+
+        monkeypatch.setattr(server, "_db", _StubDb([row("n1", "body"), row("n2", "old")]))
+        body = client.get("/dashboard").text
+        # alpha has 2 notes, beta 1: the longest bar is 100%, the others are measured against it.
+        assert '<span class="lab">alpha</span><div class="m-bar" style="width:100.0%">' in body
+        assert '<span class="lab">beta</span><div class="m-bar" style="width:50.0%">' in body
+        assert '<span class="val">2 of 2, 1 outdated</span>' in body
+        assert '<span class="val">0 of 1</span>' in body
+        assert "Outdated copies: n2 (alpha)" in body
+
+    def test_stale_note_row_shows_date_and_age(
+        self, client: TestClient, empty_log: Path, isolated_home: Path
+    ) -> None:
+        encoded = _memory_project(isolated_home, "/work/alpha", {"n_old": "body"})
+        note = isolated_home / ".claude" / "projects" / encoded / "memory" / "n_old.md"
+        mtime = time.time() - 120 * 86400 - 3600
+        os.utime(note, (mtime, mtime))
+        date = datetime.fromtimestamp(mtime, UTC).strftime("%Y-%m-%d")
+        body = client.get("/dashboard").text
+        assert f"<td>n_old</td><td>alpha</td><td>{date}, 120 days</td>" in body
 
     def test_raising_db_read_still_renders_200(
         self, client: TestClient, empty_log: Path, monkeypatch: pytest.MonkeyPatch
@@ -277,3 +319,81 @@ class TestDashboardPairLedger:
 
     def test_never_reads_the_operator_home(self, client: TestClient, empty_log: Path) -> None:
         assert _REAL_HOME not in client.get("/dashboard").text
+
+
+BANDS = {
+    "What we follow": ["Rule sources"],
+    "What holds": [
+        "Live counts", "Rule effectiveness", "Skill usage", "Playbook compliance",
+        "Graduation candidates", "Quality judge false positives",
+    ],
+    "What's gone stale": [
+        "Claude's memory, copied into Writ", "Notes untouched for 90 days or more",
+        "Trim candidates",
+    ],
+}
+
+
+def _bands(body: str) -> list[str]:
+    """The page split at each band, masthead dropped."""
+    return body.split('<section class="band"')[1:]
+
+
+class TestDashboardDesign:
+    """Step 3 of the Pair Ledger: the sketch's design applied to the whole page."""
+
+    def test_masthead_names_the_page_and_its_source(
+        self, client: TestClient, split_streams: dict[str, Path]
+    ) -> None:
+        body = client.get("/dashboard").text
+        assert "<title>Pair Ledger</title>" in body
+        assert "<h1>Pair Ledger</h1>" in body
+        assert "The rules you and Claude both work by." in body
+        masthead = body[:body.index('<section class="band"')]
+        assert f"log: {split_streams['friction'].parent}" in masthead
+        assert "refreshes every 60s" in masthead
+
+    def test_three_bands_in_order(self, client: TestClient, empty_log: Path) -> None:
+        bands = _bands(client.get("/dashboard").text)
+        assert len(bands) == 3
+        for band, title in zip(bands, BANDS, strict=True):
+            assert f"<h2>{html.escape(title)}</h2>" in band, title
+
+    @pytest.mark.parametrize("band_title", list(BANDS))
+    def test_each_section_sits_in_its_band(
+        self, band_title: str, client: TestClient, synthetic_log: Path
+    ) -> None:
+        bands = dict(zip(BANDS, _bands(client.get("/dashboard").text), strict=True))
+        for section in BANDS[band_title]:
+            assert html.escape(section) in bands[band_title], f"{section!r} not under {band_title!r}"
+
+    def test_friction_headers_are_plain_words(self, client: TestClient, synthetic_log: Path) -> None:
+        body = client.get("/dashboard").text
+        assert "<th>Stick rate</th>" in body
+        assert "stick_rate" not in body
+
+    def test_tables_scroll_inside_their_own_box(self, client: TestClient, synthetic_log: Path) -> None:
+        body = client.get("/dashboard").text
+        assert body.count("<table>") == body.count('<div class="table-wrap"><table>') > 0
+
+    @pytest.mark.parametrize("sync,kind", [
+        ("in git", "ok"),
+        ("copy in dotfiles, same", "ok"),
+        ("copy in dotfiles, differs", "check"),
+        ("this Mac only", "check"),
+        ("missing", "check"),
+    ])
+    def test_every_sync_state_maps_to_a_chip(self, sync: str, kind: str) -> None:
+        from writ.dashboard import _sync_chip
+
+        assert _sync_chip(sync) == f'<span class="chip {kind}">{sync}</span>'
+
+    def test_dark_mode_and_narrow_screens_are_styled(self, client: TestClient, empty_log: Path) -> None:
+        body = client.get("/dashboard").text
+        assert "@media (prefers-color-scheme: dark)" in body
+        assert "@media (max-width: 760px)" in body
+
+    def test_page_loads_nothing_from_outside(self, client: TestClient, empty_log: Path) -> None:
+        body = client.get("/dashboard").text.lower()
+        for marker in ("<script", "<link", "googleapis", "http://", "https://"):
+            assert marker not in body, marker
