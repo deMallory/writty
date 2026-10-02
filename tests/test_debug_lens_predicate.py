@@ -150,10 +150,14 @@ def _worst_case_project(root: Path) -> Path:
 def _worst_case_envelope(tool: str, proj: Path) -> dict:
     if tool == "Grep":
         return {"tool_name": "Grep", "tool_input": {"pattern": "foo", "path": str(proj)}}
+    if tool == "grep":
+        return {"tool_name": "grep", "tool_input": {"pattern": "foo", "path": str(proj)}}
     if tool == "Glob":
         return {"tool_name": "Glob", "tool_input": {"pattern": "**/*.py", "path": str(proj)}}
     if tool == "Read":
         return {"tool_name": "Read", "tool_input": {"file_path": str(proj / "app.py")}}
+    if tool == "read_file":
+        return {"tool_name": "read_file", "tool_input": {"target_file": str(proj / "app.py")}}
     raise ValueError(f"no worst-case envelope defined for derived tool {tool!r}")
 
 
@@ -224,8 +228,11 @@ class TestPredicateSafetyAndExactness:
         skip_set = {c for c, r in matrix_results.items() if not r["required"]}
         deny_set = {c for c, r in matrix_results.items() if r["denies"]}
         assert not (skip_set & deny_set), sorted(skip_set & deny_set)
-        assert len(skip_set) == 51, sorted(skip_set)
-        assert len(deny_set) == 21, sorted(deny_set)
+        # 17 non-runtime shapes skip and 7 runtime shapes deny, on every matcher
+        # tool. 17*5=85, 7*5=35. grep denies on the same shapes as Grep, and
+        # read_file on the same shapes as Read.
+        assert len(skip_set) == 85, sorted(skip_set)
+        assert len(deny_set) == 35, sorted(deny_set)
         assert len(skip_set) + len(deny_set) == 120
 
 

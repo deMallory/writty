@@ -1057,15 +1057,27 @@ def _can_write_check(session_id: str, envelope: dict, skill_dir: str = "", cache
     return _check_work_gate(session_id, mode, file_path, current_phase, cache, skill_dir)
 
 
+# Claude's matcher names and Grok's. The debug-code hook fires on both
+# (hooks.json: Grep|Read|Glob|grep|read_file). A Grok name that falls through
+# the else arm is an allow, which is a runtime-lens bypass.
+_SEARCH_PATH_TOOLS = ("Grep", "grep", "Glob")
+_READ_TOOLS = ("Read", "read_file")
+
+
+def _read_target(ti: dict) -> str:
+    """Claude Read sends file_path; Grok read_file sends target_file."""
+    return ti.get("file_path") or ti.get("target_file") or ""
+
+
 def _resolve_read_search_dir(tool: str, ti: dict) -> str:
     """Locate the directory to search for debug.md, for Read / Grep / Glob alike.
 
-    Grep and Glob gate on their `path` arg; Read (and any other tool) gates on the
-    parent of its `file_path`. Falls back to cwd when neither is present. Pure.
+    Grep, grep and Glob gate on their `path` arg; Read and read_file gate on the
+    parent of file_path or target_file. Falls back to cwd when neither is present. Pure.
     """
-    if tool in ("Grep", "Glob"):
+    if tool in _SEARCH_PATH_TOOLS:
         return ti.get("path") or os.getcwd()
-    fp = ti.get("file_path") or ""
+    fp = _read_target(ti)
     return os.path.dirname(fp) if fp else os.getcwd()
 
 
@@ -1132,11 +1144,11 @@ def _can_read_code_check(session_id: str, envelope: dict, skill_dir: str = "") -
             "and non-code files is allowed now. (PBK-PROC-DEBUG-001)"
         )
 
-        if tool == "Grep":
+        if tool in ("Grep", "grep"):
             decision = {"can_read": False, "reason": reason}
             target = ti.get("path") or ""
-        elif tool == "Read":
-            target = ti.get("file_path") or ""
+        elif tool in _READ_TOOLS:
+            target = _read_target(ti)
             decision = _classify_runtime_read(target, skill_dir, reason)
         # #5: Glob is file enumeration -- classify by its pattern's extension so a
         # source hunt (**/*.py) is blocked premature, but a log/doc/navigation glob

@@ -2317,7 +2317,7 @@ print(envelope)
             done
             local cp_body cp_result
             cp_body="{\"context_percent\":${cp_pct},\"context_warning_emitted_at_pct\":${cp_emitted}}"
-            cp_result=$(curl -sf --connect-timeout 0.1 --max-time 0.5 \
+            cp_result=$(curl ${WRIT_CURL_TRANSPORT} -sf --connect-timeout 0.1 --max-time 0.5 \
                 -X POST "${WRIT_SESSION_BASE}/session/${session_id}/context-percent" \
                 -H "Content-Type: application/json" \
                 -d "$cp_body" 2>/dev/null) || true
