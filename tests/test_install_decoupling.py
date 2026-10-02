@@ -311,7 +311,13 @@ class TestVenvServesInstall:
 def _session_start_tree(tmp_path: Path) -> Path:
     """A fake install holding exactly what the hook needs up to its Neo4j probe."""
     skill = tmp_path / "skill"
-    for rel in ("hooks/scripts/session-start-bootstrap.sh", "bin/lib/writ-venv.sh"):
+    # Repoint time-boxes pip through the sibling of writ-venv.sh. A tree that
+    # copies the lib without run-bounded.py never reaches the fake pip.
+    for rel in (
+        "hooks/scripts/session-start-bootstrap.sh",
+        "bin/lib/writ-venv.sh",
+        "bin/lib/run-bounded.py",
+    ):
         (skill / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO / rel, skill / rel)
     (skill / "writ").mkdir()

@@ -27,9 +27,11 @@ TEST-TDD-001: skeletons approved before implementation.
 
 Hermetic: WRIT_CACHE_DIR -> tmp_path (matches test_pol6b2_cache_dir_env.py); the
 session-pointer seam is monkeypatched to a tmp_path file with raising=False so the same
-call is harmless whether or not the resolver still has that attribute; CLAUDE_SESSION_ID /
-CLAUDE_JOB_DIR are set/deleted per case. No test here touches the real
-/tmp/writ-current-session.
+call is harmless whether or not the resolver still has that attribute. GROK_SESSION_ID
+is cleared for every case: it outranks Claude, and a Grok runner injects it into this
+process, so leaving it set resolves this Grok session instead of the Claude id under
+test (or instead of None). CLAUDE_SESSION_ID / CLAUDE_JOB_DIR are set/deleted per case.
+No test here touches the real /tmp/writ-current-session.
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ from tests.fixtures.session_state import sandbox_cwd  # noqa: F401
 @pytest.fixture(autouse=True)
 def _isolated_cache_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("WRIT_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("GROK_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
     pointer = tmp_path / "writ-current-session"

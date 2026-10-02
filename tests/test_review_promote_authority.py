@@ -532,6 +532,7 @@ class TestPromoteUnresolvableSession:
     def test_no_session_id_and_no_resolvable_session_refuses_exit_2_names_the_flag_and_logs_nothing(
         self, tmp_path, monkeypatch,
     ):
+        monkeypatch.delenv("GROK_SESSION_ID", raising=False)
         monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         monkeypatch.delenv("CLAUDE_JOB_DIR", raising=False)
         monkeypatch.setenv("WRIT_LOG_ROOT", str(tmp_path / "logs"))
