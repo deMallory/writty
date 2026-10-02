@@ -406,7 +406,8 @@ def _cc_registration_ok() -> tuple[bool, list[str]]:
     except (OSError, ValueError):
         return (False, [str(plugin_json)])
 
-    hooks_ref = plugin.get("hooks", "")
+    # No "hooks" key means Claude Code reads hooks/hooks.json by convention.
+    hooks_ref = plugin.get("hooks") or "hooks/hooks.json"
     hooks_path = (_PACKAGE_ROOT / str(hooks_ref).lstrip("./")).resolve()
     try:
         with open(hooks_path) as f:
@@ -450,7 +451,7 @@ def _resolve_hook_script(command: str) -> Path | None:
     token = None
     for part in command.split():
         if ".sh" in part:
-            token = part
+            token = part.strip("\"'")
             break
     if token is None:
         return None

@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh\""
           }
         ]
       },
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/session-start-bootstrap.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/session-start-bootstrap.sh\""
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-manual-test-grant.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-manual-test-grant.sh\""
           }
         ]
       },
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/auto-approve-gate.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/auto-approve-gate.sh\""
           }
         ]
       },
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-rag-inject.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-rag-inject.sh\""
           }
         ]
       }
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-subagent-start.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-subagent-start.sh\""
           }
         ]
       }
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh\""
           }
         ]
       },
@@ -76,7 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-subagent-stop.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-subagent-stop.sh\""
           }
         ]
       }
@@ -87,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/friction-logger.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/friction-logger.sh\""
           }
         ]
       },
@@ -96,7 +96,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/enforce-violations.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/enforce-violations.sh\""
           }
         ]
       },
@@ -105,7 +105,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-verify-before-claim.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-verify-before-claim.sh\""
           }
         ]
       },
@@ -114,7 +114,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-run-pending-tests.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-run-pending-tests.sh\""
           }
         ]
       },
@@ -123,7 +123,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-comms-output-gate.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-comms-output-gate.sh\""
           }
         ]
       }
@@ -134,7 +134,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh\""
           }
         ]
       },
@@ -143,7 +143,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-bash-failure.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-bash-failure.sh\""
           }
         ]
       }
@@ -154,7 +154,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-precompact.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-precompact.sh\""
           }
         ]
       }
@@ -165,7 +165,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh\""
           }
         ]
       },
@@ -174,7 +174,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-postcompact.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-postcompact.sh\""
           }
         ]
       }
@@ -185,7 +185,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-session-end.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-session-end.sh\""
           }
         ]
       },
@@ -194,7 +194,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-pressure-audit.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-pressure-audit.sh\""
           }
         ]
       }
@@ -205,7 +205,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-blackbox-capture.sh\""
           }
         ]
       },
@@ -214,7 +214,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-cwd-changed.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-cwd-changed.sh\""
           }
         ]
       }
@@ -225,7 +225,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-read-credential-gate.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-read-credential-gate.sh\""
           }
         ]
       },
@@ -234,7 +234,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/validate-exit-plan.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/validate-exit-plan.sh\""
           }
         ]
       },
@@ -243,7 +243,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-read-junk-gate.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-read-junk-gate.sh\""
           }
         ]
       },
@@ -252,7 +252,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-read-rag.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-read-rag.sh\""
           }
         ]
       },
@@ -261,7 +261,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-debug-code-gate.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-debug-code-gate.sh\""
           }
         ]
       },
@@ -270,7 +270,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-state-write-gate.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-state-write-gate.sh\""
           }
         ]
       },
@@ -279,7 +279,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-pre-write-dispatch.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-pre-write-dispatch.sh\""
           }
         ]
       },
@@ -288,7 +288,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/pre-validate-file.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/pre-validate-file.sh\""
           }
         ]
       },
@@ -297,7 +297,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-dispatch-discipline.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-dispatch-discipline.sh\""
           }
         ]
       },
@@ -306,7 +306,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-agent-hotswap.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-agent-hotswap.sh\""
           }
         ]
       },
@@ -315,7 +315,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-sdd-review-order.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-sdd-review-order.sh\""
           }
         ]
       },
@@ -324,7 +324,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-worktree-safety.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-worktree-safety.sh\""
           }
         ]
       },
@@ -333,7 +333,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-bash-write-gate.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-bash-write-gate.sh\""
           }
         ]
       },
@@ -342,7 +342,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/validate-test-file.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/validate-test-file.sh\""
           }
         ]
       },
@@ -351,7 +351,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/validate-design-doc.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/validate-design-doc.sh\""
           }
         ]
       },
@@ -360,7 +360,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-memory-policy-guard.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-memory-policy-guard.sh\""
           }
         ]
       }
@@ -371,7 +371,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/inject-tier-workflow.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/inject-tier-workflow.sh\""
           }
         ]
       },
@@ -380,7 +380,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-output-rewrite.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-output-rewrite.sh\""
           }
         ]
       },
@@ -389,7 +389,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-web-capture.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-web-capture.sh\""
           }
         ]
       },
@@ -398,7 +398,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/validate-file.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/validate-file.sh\""
           }
         ]
       },
@@ -407,7 +407,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-bible-authoring-push.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-bible-authoring-push.sh\""
           }
         ]
       },
@@ -416,7 +416,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/validate-handoff.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/validate-handoff.sh\""
           }
         ]
       },
@@ -425,7 +425,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/validate-rules.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/validate-rules.sh\""
           }
         ]
       },
@@ -434,7 +434,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-posttool-rag.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-posttool-rag.sh\""
           }
         ]
       },
@@ -443,7 +443,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-quality-judge.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-quality-judge.sh\""
           }
         ]
       },
@@ -452,7 +452,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-mark-pending-test.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-mark-pending-test.sh\""
           }
         ]
       },
@@ -461,7 +461,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${WRIT_DIR}/hooks/scripts/writ-memory-capture.sh"
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-memory-capture.sh\""
           }
         ]
       }

@@ -127,7 +127,7 @@ def render_hooks() -> str:
         for entry in entries:
             matcher = entry.get("matcher", "") or "(all)"
             for hook in entry["hooks"]:
-                script = hook["command"].split("/")[-1]
+                script = hook["command"].split("/")[-1].strip("\"'")
                 scripts.add(script)
                 total += 1
                 body.append(f"| `{matcher}` | `{script}` |")

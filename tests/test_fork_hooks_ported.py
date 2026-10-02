@@ -36,7 +36,7 @@ def _registrations() -> dict[str, list[tuple[str, str]]]:
     for event, groups in data["hooks"].items():
         for group in groups:
             for hook in group.get("hooks", []):
-                name = os.path.basename(hook["command"].split()[-1])
+                name = os.path.basename(hook["command"].split()[-1].strip('"'))
                 out.setdefault(name, []).append((event, group.get("matcher", "")))
     return out
 
