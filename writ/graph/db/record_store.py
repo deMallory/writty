@@ -133,7 +133,8 @@ class RecordStoreMixin:
         return [dict(r) for r in await self._run(
             "MATCH (m:Memory) "
             "RETURN m.name AS name, m.project AS project, m.path AS path, "
-            "m.status AS status, m.type AS type, m.updated_at AS updated_at "
+            "m.status AS status, m.type AS type, m.updated_at AS updated_at, "
+            "m.description AS description, m.body AS body "
             "ORDER BY m.project, m.name",
         )]
 

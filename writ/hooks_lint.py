@@ -63,6 +63,7 @@ def _resolve_script(command: str, plugin_root: Path) -> Path | None:
     if m:
         return plugin_root / m.group(1)
     for tok in reversed(command.split()):
+        tok = tok.strip("\"'")
         if tok.endswith(".sh"):
             return plugin_root / tok.lstrip("/")
     return None

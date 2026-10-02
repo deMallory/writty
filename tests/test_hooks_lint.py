@@ -54,6 +54,17 @@ class TestSyntheticClassification:
         assert [f["severity"] for f in out] == ["inert"]
         assert out[0]["script"] == "inj.sh"
 
+    def test_a_quoted_plugin_root_still_resolves_the_script(self, tmp_path: Path) -> None:
+        """hooks.json quotes the path for `claude plugin validate --strict`; an unresolved
+        script is skipped silently, so a parse that keeps the quote lints nothing."""
+        _script(tmp_path, "inj.sh", '#!/bin/bash\necho "[Writ: file rules] do X"\n')
+        hj = tmp_path / "hooks.json"
+        hj.write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "Read", "hooks": [
+            {"type": "command",
+             "command": 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/inj.sh"'}]}]}}))
+        out = lint_hooks(hj, tmp_path)
+        assert [(f["severity"], f["script"]) for f in out] == [("inert", "inj.sh")]
+
     def test_log_rag_query_event_with_no_channel_is_inert(self, tmp_path: Path) -> None:
         _script(tmp_path, "rag.sh", '#!/bin/bash\nlog_rag_query_event a b c d e\n')
         hj = _hooks_json(tmp_path, {"PostToolUse": [("Write|Edit", "rag.sh")]})

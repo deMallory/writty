@@ -6,18 +6,36 @@ gracefully when the friction log is empty.
 """
 from __future__ import annotations
 
+import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from writ import server
+from writ.dashboard import render_dashboard
 from writ.server import app
+
+# Captured at import, before any fixture moves HOME.
+_REAL_HOME = os.path.expanduser("~")
 
 
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The Pair Ledger sections read ~/.claude and the graph. Point both away from
+    the operator: HOME at an empty temp dir, and no graph connection."""
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(server, "_db", None)
+    return home
 
 
 @pytest.fixture
@@ -182,3 +200,80 @@ class TestDashboardReadsSplitStreams:
         assert "<td>single_file_row</td><td>1</td>" in body
         assert "split_friction_row" not in body
         assert f"log: {single}" in body
+
+
+class _StubDb:
+    """Stands in for server._db: only list_all_memories, with the real row shape."""
+
+    def __init__(self, rows: list[dict] | None = None, error: Exception | None = None) -> None:
+        self.rows = rows or []
+        self.error = error
+
+    async def list_all_memories(self) -> list[dict]:
+        if self.error:
+            raise self.error
+        return self.rows
+
+
+def _memory_project(home: Path, cwd: str, notes: dict[str, str]) -> str:
+    """~/.claude/projects/<encoded>/ with a transcript naming cwd and the given note bodies."""
+    encoded = cwd.replace("/", "-")
+    project_dir = home / ".claude" / "projects" / encoded
+    (project_dir / "memory").mkdir(parents=True)
+    (project_dir / "s1.jsonl").write_text(json.dumps({"cwd": cwd}) + "\n")
+    for name, body in notes.items():
+        (project_dir / "memory" / f"{name}.md").write_text(
+            f"---\nname: {name}\ndescription: d\nmetadata:\n  type: project\n---\n\n{body}\n"
+        )
+    return encoded
+
+
+class TestDashboardPairLedger:
+    """Step 2 of the Pair Ledger: rule sources, memory copies and stale notes."""
+
+    @pytest.mark.parametrize("phrase", [
+        "what we follow",
+        "copied into writ",
+        "notes untouched for 90 days or more",
+    ])
+    def test_section_present(self, phrase: str, client: TestClient, empty_log: Path) -> None:
+        assert phrase in client.get("/dashboard").text.lower()
+
+    def test_rule_source_row_comes_from_home(
+        self, client: TestClient, empty_log: Path, isolated_home: Path
+    ) -> None:
+        (isolated_home / ".claude" / "CLAUDE.md").write_text("- one\n- two\n")
+        body = client.get("/dashboard").text
+        assert "<td>~/.claude/CLAUDE.md</td><td>2</td>" in body
+
+    def test_memory_section_says_graph_not_reachable_without_db(
+        self, client: TestClient, empty_log: Path
+    ) -> None:
+        resp = client.get("/dashboard")
+        assert resp.status_code == 200
+        assert "graph not reachable" in resp.text.lower()
+
+    def test_memory_counts_use_rows_from_db(
+        self, client: TestClient, empty_log: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        encoded = _memory_project(isolated_home, "/work/alpha", {"n1": "body"})
+        row = {"name": "n1", "project": encoded, "path": "", "status": "live", "type": "project",
+               "updated_at": "2026-09-01T00:00:00Z", "description": "d", "body": "body"}
+        monkeypatch.setattr(server, "_db", _StubDb([row]))
+        body = client.get("/dashboard").text
+        assert "<td>alpha</td><td>1</td><td>0</td><td>0</td>" in body
+        assert "graph not reachable" not in body.lower()
+
+    def test_raising_db_read_still_renders_200(
+        self, client: TestClient, empty_log: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(server, "_db", _StubDb(error=RuntimeError("graph down")))
+        resp = client.get("/dashboard")
+        assert resp.status_code == 200
+        assert "graph not reachable" in resp.text.lower()
+
+    def test_render_without_arguments_still_works(self, empty_log: Path) -> None:
+        assert "graph not reachable" in render_dashboard().lower()
+
+    def test_never_reads_the_operator_home(self, client: TestClient, empty_log: Path) -> None:
+        assert _REAL_HOME not in client.get("/dashboard").text

@@ -732,10 +732,14 @@ def _loaded_plugin_paths():
 def _merge_event(existing, incoming):
     """jq merge_event: append only groups whose commands are all unregistered."""
     existing = list(existing or [])
-    have = [hook.get("command") for group in existing for hook in (group.get("hooks") or [])]
+    # Compared without quotes: the template once left the script path unquoted, and an
+    # entry seeded then is the same hook as its quoted successor.
+    have = [str(hook.get("command")).replace('"', "")
+            for group in existing for hook in (group.get("hooks") or [])]
     out = list(existing)
     for group in incoming or []:
-        commands = [hook.get("command") for hook in (group.get("hooks") or [])]
+        commands = [str(hook.get("command")).replace('"', "")
+                    for hook in (group.get("hooks") or [])]
         if all(command not in have for command in commands):
             out.append(group)
     return out

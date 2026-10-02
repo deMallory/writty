@@ -1185,6 +1185,16 @@ class TestCCHookRegistration:
         assert r.name == "cc-hook-registration"
         # The detail is allowed to be empty on ok; we only assert no crash here
 
+    def test_a_quoted_plugin_root_resolves_under_the_package(self) -> None:
+        from writ.session.doctor import _PACKAGE_ROOT, _resolve_hook_script
+        path = _resolve_hook_script('bash "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/x.sh"')
+        assert path == _PACKAGE_ROOT / "hooks" / "scripts" / "x.sh"
+
+    def test_the_shipped_hooks_json_resolves_every_script(self) -> None:
+        """The tests above mock the resolver; this one runs it on the real manifest."""
+        from writ.session.doctor import _cc_registration_ok
+        assert _cc_registration_ok() == (True, [])
+
 
 # ---------------------------------------------------------------------------
 # Check 10: mode-gate-sanity

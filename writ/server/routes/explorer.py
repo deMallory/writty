@@ -34,11 +34,23 @@ async def dashboard() -> HTMLResponse:
     friction log path from WRIT_FRICTION_LOG or falls back to
     ./workflow-friction.log. Empty / missing log renders a placeholder
     body without throwing.
+
+    Memory rows are read here, on the event loop that owns the driver, then handed
+    to the threaded render. A failed read renders the page with the graph marked
+    unreachable instead of failing it.
     """
     from writ.dashboard import render_dashboard
+    from writ.shared.logging import emit_exception
+
+    rows: list[dict[str, Any]] | None = None
+    if server._db is not None:
+        try:
+            rows = await server._db.list_all_memories()
+        except Exception as exc:  # noqa: BLE001 - any driver failure degrades one section, not the page
+            emit_exception("server.dashboard.list_all_memories", exc)
 
     def _render() -> str:
-        return render_dashboard()
+        return render_dashboard(memory_rows=rows)
 
     html = await asyncio.to_thread(_render)
     return HTMLResponse(content=html, status_code=200)

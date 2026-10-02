@@ -723,7 +723,7 @@ def _resolve_hook_script(command: str) -> Path | None:
     # The manifest quotes the path so an install dir with a space cannot split it.
     for part in command.replace('"', "").split():
         if ".sh" in part:
-            token = part
+            token = part.strip("\"'")
             break
     if token is None:
         return None

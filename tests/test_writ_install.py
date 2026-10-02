@@ -565,6 +565,18 @@ class TestHooksRenderAndMerge:
             cmds = [h["command"] for g in groups for h in g.get("hooks", [])]
             assert len(cmds) == len(set(cmds)), f"{event} has duplicate commands"
 
+    def test_an_install_seeded_before_the_quotes_is_not_registered_twice(self, tmp_path):
+        """The template once read `bash ${WRIT_DIR}/...` unquoted; a re-run after upgrading
+        must see those entries as the same hooks, or every hook fires twice."""
+        install = _fake_install(tmp_path)
+        target = tmp_path / "settings.json"
+        _seed(target, allow=[])
+        run_module("hooks", "--target", str(target), "--skill-dir", str(install))
+        target.write_text(target.read_text().replace('\\"', ""))
+        before = json.loads(target.read_text())["hooks"]
+        run_module("hooks", "--target", str(target), "--skill-dir", str(install))
+        assert json.loads(target.read_text())["hooks"] == before
+
     def test_preserves_users_own_hook_on_same_event(self, tmp_path):
         install = _fake_install(tmp_path)
         target = tmp_path / "settings.json"

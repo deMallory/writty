@@ -36,6 +36,8 @@ HANDLED_SITES = {
     "writ/session/pr_comments.py": "check=True inside except CalledProcessError",
     "writ/cli.py": "returns '' on non-zero; documented no-repo/detached-HEAD outcome",
     "writ/session/git_identity.py": "raises NotInRepoError carrying the returncode",
+    "writ/analysis/pair_ledger.py": "check=False, then each caller reads returncode; "
+                                    "a failed git reads as untracked or undated",
 }
 
 
