@@ -180,8 +180,16 @@ def test_matcher_covers_the_scratchpad_tool_which_holds_writs_state_file(name):
 
 
 @pytest.mark.parametrize("name", [
-    "subagent.spawn", "subagent.send_message", "task", "skill.read",
-    "file_system.read_file_extra", "xbash",
+    "subagent.spawn", "subagent.send_message", "SUBAGENT.SPAWN",
+])
+def test_matcher_covers_the_subagent_calls_that_hand_a_child_work(name):
+    rx = re.compile(vibe_install.matcher().removeprefix("re:"), re.IGNORECASE)
+    assert rx.fullmatch(name)
+
+
+@pytest.mark.parametrize("name", [
+    "subagent.list", "subagent.wait", "subagent.interrupt", "subagent.stop",
+    "subagent.spawn_extra", "task", "skill.read", "file_system.read_file_extra", "xbash",
 ])
 def test_matcher_rejects_tools_the_bridge_does_not_map(name):
     rx = re.compile(vibe_install.matcher().removeprefix("re:"), re.IGNORECASE)
@@ -214,6 +222,16 @@ def test_agents_md_says_a_failing_end_of_turn_check_sends_the_turn_back(dirs, ca
     section = text[text.index("## End of turn"):]
     for needle in ("unresolved rule violations", "failing tests", "below 3",
                    "sends your turn back", "at most 3 times"):
+        assert needle in section, needle
+
+
+def test_agents_md_says_where_subagents_are_refused(dirs, capsys):
+    assert _install(dirs, capsys)[0] == 0
+    text = _agents(dirs["home"])
+    section = text[text.index("## Subagents"):]
+    section = section[:section.index("\n## ", 1)]
+    for needle in ("`subagent.spawn`", "`subagent.send_message`", "work mode", "debug mode",
+                   "no mode set", "do not retry"):
         assert needle in section, needle
 
 

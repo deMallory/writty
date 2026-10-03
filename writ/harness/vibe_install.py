@@ -99,6 +99,13 @@ failing tests for the files you changed, and work its quality review scored belo
 failing check sends your turn back with Writ's reason as a user message. Fix what it
 names before you finish. Vibe sends a turn back at most 3 times.
 
+## Subagents
+
+Vibe runs no hook inside a subagent, so Writ cannot check a subagent's tool calls. In
+work mode, in debug mode and with no mode set, Writ refuses `subagent.spawn` and
+`subagent.send_message`: do the work yourself, and do not retry a refused call. In the
+other modes subagents run, and Writ's rules still apply to the work you give them.
+
 ## Refusals
 
 A direct tool call that Writ refuses fails with Writ's reason. Inside `run_typescript`, a

@@ -97,8 +97,12 @@ _WRIT_FILE_REASON = (
     "already in your context. Keep your own notes in another scratchpad file."
 )
 
+# Subagent calls that hand a child work. Vibe runs no hook inside a subagent, so the
+# child's tool calls skip every Writ check. list, wait, interrupt and stop give it none.
+_SUBAGENT_WORK = ("subagent.spawn", "subagent.send_message")
+
 # Tools the bridge decides without a Writ script. The installer matches them too.
-_BRIDGE_TOOLS = (_PROCESS_WRITE, _SCRATCHPAD)
+_BRIDGE_TOOLS = (_PROCESS_WRITE, _SCRATCHPAD, *_SUBAGENT_WORK)
 
 _NO_SESSION_REASON = (
     "Writ could not tell which Vibe session made this call, so it is denied (fail-closed). "
@@ -515,6 +519,14 @@ def _session_mode(sid: str) -> str | None:
     return mode if isinstance(mode, str) and mode else None
 
 
+def _gated_where(sid: str) -> str:
+    """Where Writ gates writes, as a phrase for a deny reason, or "" in a mode that allows them."""
+    mode = _session_mode(sid)
+    if mode is not None and mode not in _GATED_MODES:
+        return ""
+    return f"in {mode} mode" if mode else "while no Writ mode is set"
+
+
 def _process_write(event: str, envelope: dict,
                    session_resolver: Callable[[dict], str | None]) -> str:
     if event != PRE:
@@ -531,15 +543,35 @@ def _process_write(event: str, envelope: dict,
     sid = session_resolver(envelope)
     if not sid:
         return _deny(_NO_SESSION_REASON)
-    mode = _session_mode(sid)
-    if mode is not None and mode not in _GATED_MODES:
+    where = _gated_where(sid)
+    if not where:
         return ""
-    where = f"in {mode} mode" if mode else "while no Writ mode is set"
     return _deny(
         f"Writ refuses typed input to a running process {where}: its shell checks cannot "
         "see what the process does with it. Only the keys ctrl_c, ctrl_d, ctrl_z, esc and "
         "enter go through. Pass the input as a flag (`--yes`) or pipe it in through bash "
         "(`printf 'y\\n' | cmd`), which Writ checks."
+    )
+
+
+def _subagent(event: str, envelope: dict,
+              session_resolver: Callable[[dict], str | None]) -> str:
+    if event != PRE:
+        return ""
+    # Checked in every mode: a child could run the command with no hook to stop it.
+    if _USER_ONLY.search(str(_as_dict(envelope.get("tool_input")).get("message") or "")):
+        return _deny(_USER_ONLY_REASON)
+    sid = session_resolver(envelope)
+    if not sid:
+        return _deny(_NO_SESSION_REASON)
+    where = _gated_where(sid)
+    if not where:
+        return ""
+    return _deny(
+        f"Writ refuses subagents {where}: Vibe runs no hook inside a subagent, so Writ "
+        "could not check its writes or shell commands. Do this work yourself in this "
+        "session. Do not retry or reword the call: every subagent spawn and message is "
+        f"refused {where}."
     )
 
 
@@ -644,6 +676,8 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
         return _deny(_WRIT_FILE_REASON)
     if name == _PROCESS_WRITE:
         return _process_write(event, envelope, session_resolver)
+    if name in _SUBAGENT_WORK:
+        return _subagent(event, envelope, session_resolver)
     if tool is None:
         return ""
     if event == PRE and tool == "Bash":

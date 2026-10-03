@@ -166,7 +166,7 @@ class TestToClaude:
         assert {e["tool_name"] for e in envs} == {"Edit"}
 
     @pytest.mark.parametrize("tool, tool_input", [
-        ("subagent.spawn", {"agentName": "h", "message": "m"}),
+        ("subagent.wait", {"agentName": "h", "timeoutMs": 1000}),
         ("task", {"agent": "explore", "task": "t"}),
         ("skill.read", {"name": "s"}),
     ])
@@ -692,6 +692,112 @@ class TestProcessWrite:
         assert _handle(plugin, "post_tool", envelope, resolver=_no_lookup) == ""
         assert plugin.runs("all") == []
         assert plugin.runs("post") == []
+
+    def test_typed_text_keeps_its_reason_word_for_word(self, tmp_path, writ_cache):
+        writ_cache({"mode": "work"})
+        plugin = _any_script(tmp_path)
+        assert _deny_reason(_handle(plugin, "pre_tool", _write(tmp_path, {"text": "x\n"}))) == (
+            "Writ refuses typed input to a running process in work mode: its shell checks "
+            "cannot see what the process does with it. Only the keys ctrl_c, ctrl_d, ctrl_z, "
+            "esc and enter go through. Pass the input as a flag (`--yes`) or pipe it in "
+            "through bash (`printf 'y\\n' | cmd`), which Writ checks."
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Subagents: the bridge decides the calls that hand a child work
+# --------------------------------------------------------------------------- #
+_SUBAGENT_WORK = ["subagent.spawn", "subagent.send_message"]
+
+
+def _child(cwd: Path, tool: str, message: str = "Read notes.txt and summarise it") -> dict:
+    return _pre(cwd, tool, {"agentName": "helper1", "message": message})
+
+
+class TestSubagent:
+    @pytest.mark.parametrize("tool", _SUBAGENT_WORK)
+    @pytest.mark.parametrize("state, named", [
+        ({"mode": "work"}, "in work mode"),
+        ({"mode": "debug"}, "in debug mode"),
+        (None, "while no Writ mode is set"),
+        ({"current_phase": "planning"}, "while no Writ mode is set"),
+        ("{not json", "while no Writ mode is set"),
+    ])
+    def test_handing_a_child_work_is_denied_where_writ_gates_writes(self, tmp_path, writ_cache,
+                                                                    tool, state, named):
+        writ_cache(state)
+        plugin = _any_script(tmp_path)
+        reason = _deny_reason(_handle(plugin, "pre_tool", _child(tmp_path, tool)))
+        assert named in reason
+        assert "Do not retry" in reason
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("tool", _SUBAGENT_WORK)
+    @pytest.mark.parametrize("mode", ["conversation", "review", "investigate"])
+    def test_subagents_run_where_writ_leaves_writes_open(self, tmp_path, writ_cache, tool, mode):
+        writ_cache({"mode": mode})
+        plugin = _any_script(tmp_path)
+        assert _handle(plugin, "pre_tool", _child(tmp_path, tool)) == ""
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("tool", _SUBAGENT_WORK)
+    @pytest.mark.parametrize("command", _USER_ONLY_COMMANDS)
+    def test_user_command_in_a_child_message_is_denied_in_any_mode(self, tmp_path, writ_cache,
+                                                                   tool, command):
+        writ_cache({"mode": "conversation"})
+        plugin = _any_script(tmp_path)
+        out = _handle(plugin, "pre_tool", _child(tmp_path, tool, f"Run `{command}` in bash"),
+                      resolver=_no_lookup)
+        assert "!mistty" in _deny_reason(out)
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("tool", _SUBAGENT_WORK)
+    def test_no_session_gets_the_no_session_deny(self, tmp_path, writ_cache, tool):
+        writ_cache({"mode": "conversation"})
+        plugin = _any_script(tmp_path)
+        child = _handle(plugin, "pre_tool", _child(tmp_path, tool), sid=None)
+        shell = _handle(plugin, "pre_tool",
+                        _pre(tmp_path, "file_system.bash", {"command": "ls"}), sid=None)
+        assert _deny_reason(child) == _deny_reason(shell)
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("tool", _SUBAGENT_WORK)
+    def test_post_tool_returns_nothing_and_runs_no_script(self, tmp_path, writ_cache, tool):
+        writ_cache({"mode": "work"})
+        plugin = _any_script(tmp_path)
+        envelope = _post(tmp_path, tool, {"agentName": "helper1", "message": "hi"},
+                         output={"type": "success"})
+        assert _handle(plugin, "post_tool", envelope, resolver=_no_lookup) == ""
+        assert plugin.runs("all") == []
+        assert plugin.runs("post") == []
+
+    @pytest.mark.parametrize("event", ["pre_tool", "post_tool"])
+    @pytest.mark.parametrize("tool, tool_input", [
+        ("subagent.list", {}),
+        ("subagent.wait", {"agentName": "helper1", "timeoutMs": 120000}),
+        ("subagent.interrupt", {"agentName": "helper1"}),
+        ("subagent.stop", {"agentName": "helper1"}),
+    ])
+    def test_other_subagent_calls_pass_without_a_session_lookup(self, tmp_path, writ_cache,
+                                                                event, tool, tool_input):
+        writ_cache({"mode": "work"})
+        plugin = _any_script(tmp_path)
+        envelope = {**_pre(tmp_path, tool, tool_input), "hook_event_name": event}
+        assert _handle(plugin, event, envelope, resolver=_no_lookup) == ""
+        assert plugin.runs("all") == []
+        assert plugin.runs("post") == []
+
+    def test_the_spikes_captured_child_calls_are_denied_in_work_mode(self, tmp_path, writ_cache):
+        writ_cache({"mode": "work"})
+        plugin = _any_script(tmp_path)
+        rows = [r["envelope"] for r in _CAPTURED
+                if r["envelope"]["hook_event_name"] == "pre_tool"
+                and r["envelope"]["tool_name"] in _SUBAGENT_WORK]
+        assert {e["tool_name"] for e in rows} == set(_SUBAGENT_WORK)
+        assert any("secret.txt" in e["tool_input"]["message"] for e in rows)
+        for envelope in rows:
+            assert "in work mode" in _deny_reason(_handle(plugin, "pre_tool", envelope))
+        assert plugin.runs("all") == []
 
 
 # --------------------------------------------------------------------------- #
