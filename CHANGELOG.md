@@ -7,6 +7,7 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 ### Fixed
 
 - **The test suite stops writing into the real session store.** `tests/conftest.py` kept an already-set `WRIT_CACHE_DIR`, and Claude Code pins it to `~/.cache/writ/session`; the Python hook client also fell back to the live daemon's socket, which wrote test sessions into the same folder (516 leftovers found on 2026-10-03). The addopts plugin `tests/_log_isolation.py` now assigns a throwaway cache folder and socket path, `--noconftest` runs included.
+- **The Python daemon client stops reaching the default daemon when a caller names another.** With `WRIT_SOCKET` unset, `bin/lib/writ_daemon_client.py` used `~/.cache/writ/run/writ.sock` whenever it existed, so a caller that set `WRIT_PORT`, `WRIT_HOST` or `WRIT_SESSION_BASE` to another daemon still reached the operator's; the test suite's `WRIT_PORT=8799` wrote test sessions into the real store that way. The client now skips that socket for any endpoint other than `localhost:8765`, as `common.sh` does, and builds its TCP fallback from `WRIT_HOST` and `WRIT_PORT` when `WRIT_SESSION_BASE` is unset.
 
 ## [1.7.6] - 2026-10-02
 
