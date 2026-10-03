@@ -324,15 +324,16 @@ def test_real_mode_work_leaves_the_session_in_planning(real, capsys):
 # Launcher dispatch
 # --------------------------------------------------------------------------- #
 def _launcher_env(tmp_path: Path) -> tuple[Path, dict]:
-    """A symlinked launcher, as ~/.local/bin/mistty is, and a fake vibe first on PATH."""
+    """A symlinked launcher, as ~/.local/bin/mistty is, and a fake Rust client to exec."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     link = bin_dir / "mistty"
     link.symlink_to(LAUNCHER)
-    fake = bin_dir / "vibe"
+    fake = bin_dir / "vibe-rs"
     fake.write_text('#!/bin/sh\necho FAKE-VIBE\nprintf \'%s\\n\' "$@"\n')
     fake.chmod(0o755)
-    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path),
+           "MISTTY_RUST_BIN": str(fake)}
     env.pop("MISTTY_HOME", None)
     return link, env
 
