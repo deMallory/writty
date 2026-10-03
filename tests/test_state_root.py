@@ -112,7 +112,7 @@ class TestBashAgreesWithPython:
     def test_same_answer_when_home_is_unset(self, monkeypatch):
         """Minimal containers and some systemd units export no HOME. Both sides must then
         fall back to the password database, or hooks and the daemon split onto two trees."""
-        for var in ("WRIT_CACHE_DIR", "XDG_STATE_HOME", "HOME"):
+        for var in ("WRIT_CACHE_DIR", "WRIT_SOCKET", "XDG_STATE_HOME", "HOME"):
             monkeypatch.delenv(var, raising=False)
         env = {k: v for k, v in os.environ.items()}
         assert _bash("writ_session_cache_dir", env) == sr.session_dir()

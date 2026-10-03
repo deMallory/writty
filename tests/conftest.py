@@ -37,22 +37,10 @@ from tests._graph import apply_isolation_env  # noqa: E402
 
 WRIT_SUITE_IS_ISOLATED = apply_isolation_env(_os.environ)
 
-# Force WRIT_CACHE_DIR to a session-owned temp dir, at import (before any test or
-# subprocess). The session-cache default is the XDG state root (off /tmp, so it
-# survives a reboot), which made the operator's real state directory the fallback, so
-# any subprocess test that does NOT set WRIT_CACHE_DIR (many build their own env from
-# os.environ) would now write real session caches into that state directory,
-# polluting live state. /tmp
-# used to absorb those harmlessly. This restores that: a stable non-production dir
-# for the whole run (the daemon reads it once at start via expected_cache_dir(), so
-# it must not change per-test), off the install tree. Tests that set their own
-# WRIT_CACHE_DIR via monkeypatch still override it and monkeypatch restores this
-# default afterward. mkdtemp (not a fixed name) so parallel `pytest` invocations do
-# not share one dir.
-_os.environ.setdefault("WRIT_CACHE_DIR", _tempfile.mkdtemp(prefix="writ-test-cache-"))
+# WRIT_CACHE_DIR is assigned by the addopts plugin tests/_log_isolation.py, before
+# this file loads.
 
-# Force WRIT_LOG_ROOT the same way and for the same reason, at import rather than
-# per test. `_isolate_friction_log` below sets it with monkeypatch.setenv, but that
+# Force WRIT_LOG_ROOT to a temp dir at import rather than per test. `_isolate_friction_log` below sets it with monkeypatch.setenv, but that
 # fixture is function scoped, so it is not in effect during COLLECTION, and
 # collection is when the damage happens. Test modules resolve config at their own
 # import (see the seventeen modules named above), get_neo4j_uri() calls load_config,
