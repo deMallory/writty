@@ -4,6 +4,10 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **The test suite stops writing into the real session store.** `tests/conftest.py` kept an already-set `WRIT_CACHE_DIR`, and Claude Code pins it to `~/.cache/writ/session`; the Python hook client also fell back to the live daemon's socket, which wrote test sessions into the same folder (516 leftovers found on 2026-10-03). The addopts plugin `tests/_log_isolation.py` now assigns a throwaway cache folder and socket path, `--noconftest` runs included.
+
 ## [1.7.6] - 2026-10-02
 
 Ships everything merged since 1.7.5 to installed plugins: the Grok harness, upstream Writ 1.11.1 and the Pair Ledger dashboard. Upstream's own changes are in its 1.8.0 to 1.11.1 entries below; this fork keeps its 1.7.x line, so those headings stay upstream's.
