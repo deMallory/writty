@@ -1,0 +1,7 @@
+#!/bin/sh
+# Mistral Vibe under Writ. Vibe reads its whole config from VIBE_HOME, so the hooks.toml
+# that scripts/bootstrap-vibe.sh writes there governs these sessions only. Plain `vibe`
+# with ~/.vibe stays ungoverned.
+VIBE_HOME="${MISTTY_HOME:-$HOME/.mistty}"
+export VIBE_HOME
+exec vibe "$@"
