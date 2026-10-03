@@ -40,6 +40,8 @@ from tests.fixtures.session_state import sandbox_cwd  # noqa: F401
 # (tests/fixtures/server_routes.py's own module docstring) -- never registered
 # in a root conftest.
 from tests.fixtures.server_routes import isolated_cache, route_db, route_pipeline
+from tests._stub_daemon import StubDaemon
+from tests.firedrill._harness import make_isolation, run_hook
 
 SKILL_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 QUERY_ROUTE = os.path.join(SKILL_ROOT, "writ", "server", "routes", "query.py")
@@ -382,3 +384,79 @@ class TestEndToEnd:
     # the subset assertion above; widening `loaded_ids` to accept anything
     # reddens the refusal arm below. Either alone leaves the other green, which
     # is what makes the pair a discrimination (decision 5, module 3).
+
+
+class TestWriteTimeAlwaysOnIdsAreRecorded:
+    """The write-time channel showed rules it never recorded (MTY-22).
+
+    `writ-pre-write-dispatch.sh` renders `=== APPLICABLE RULES (this write) ===` from
+    `/always-on?at=write`. In mistty session 2709fed0 the model cited SEC-CRYPTO-RAND-001
+    from that block and the approval called it hallucinated. Drives the REAL hook against
+    a loopback stub daemon, then the real validator.
+    """
+
+    SHOWN = "SEC-CRYPTO-RAND-001"
+    PARTIAL = "PARTIAL-NO-STATEMENT-001"
+    RAG = "TEST-RULE-001"
+    ALWAYS_ON = {"rules": [
+        {"rule_id": SHOWN, "trigger": "generating a token", "statement": "Use the secrets module."},
+        {"rule_id": PARTIAL, "trigger": "anything", "statement": ""},
+    ]}
+    ALLOW = {"decision": "allow", "reason": "", "mode": "work"}
+    ALLOW_WITH_RAG = {**ALLOW, "rag_rules": f"[{RAG}] a rule that must reach the model",
+                      "rag_meta": {"rule_ids": [RAG], "tokens": 12}}
+
+    def _run(self, tmp_path, session_id, pre_write_check):
+        iso = make_isolation(tmp_path, session_id=session_id)
+        target = iso.project_root / "src" / "tokens.py"
+        envelope = {"session_id": session_id, "hook_event_name": "PreToolUse",
+                    "tool_name": "Write",
+                    "tool_input": {"file_path": str(target), "content": "import random\n"}}
+        with StubDaemon(pre_write_check=pre_write_check, always_on=self.ALWAYS_ON) as stub:
+            result = run_hook("writ-pre-write-dispatch.sh", envelope, iso,
+                              extra_env={"WRIT_HOST": "127.0.0.1", "WRIT_PORT": str(stub.port)})
+            assert stub.saw("GET", "/always-on"), stub.describe()
+        assert result.returncode == 0, result.stderr
+        return result
+
+    @staticmethod
+    def _recorded(session_id):
+        from writ.session.cache import _read_cache
+        cache = _read_cache(session_id)
+        return set(cache.get("always_on_rule_ids") or []), set(cache.get("loaded_rule_ids") or [])
+
+    def test_a_shown_rule_is_recorded_as_always_on_when_rag_returns_nothing(
+        self, project, sid, tmp_path
+    ):
+        self._run(tmp_path, sid, self.ALLOW)
+        always_on, loaded = self._recorded(sid)
+        assert self.SHOWN in always_on
+        assert self.SHOWN not in loaded
+
+    def test_a_rule_without_a_statement_is_not_recorded(self, project, sid, tmp_path):
+        self._run(tmp_path, sid, self.ALLOW)
+        always_on, _loaded = self._recorded(sid)
+        assert self.PARTIAL not in always_on
+
+    def test_with_rag_rules_each_list_gets_only_its_own_ids(self, project, sid, tmp_path):
+        self._run(tmp_path, sid, self.ALLOW_WITH_RAG)
+        always_on, loaded = self._recorded(sid)
+        assert self.RAG in loaded
+        assert self.RAG not in always_on
+        assert self.SHOWN in always_on
+        assert self.SHOWN not in loaded
+
+    def test_the_block_the_model_sees_is_unchanged(self, project, sid, tmp_path):
+        context = self._run(tmp_path, sid, self.ALLOW).permission_reason()
+        assert "=== APPLICABLE RULES (this write) ===" in context
+        assert f"[{self.SHOWN}] WHEN: generating a token" in context
+        assert self.PARTIAL not in context
+        assert json.dumps([self.SHOWN]) not in context
+
+    def test_a_plan_citing_the_shown_rule_passes_the_approval_check(self, project, sid, tmp_path):
+        # An empty loaded set skips the citation check (_validate_citations), so the
+        # session first holds one ranked rule, as any session past its first prompt does.
+        _write_cache(sid, loaded_rule_ids=[self.RAG])
+        self._run(tmp_path, sid, self.ALLOW)
+        (project / "plan.md").write_text(_plan([self.SHOWN]))
+        assert _validate(project, sid) is None
