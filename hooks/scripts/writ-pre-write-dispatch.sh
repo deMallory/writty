@@ -34,6 +34,10 @@ source "$_WRIT_BOOTSTRAP_DIR/../../bin/lib/common.sh"
 # TestSkillDirResolvedWithoutDirname), not assumed.
 SKILL_DIR="$_WRIT_SKILL_DIR"
 SESSION_HELPER="$SKILL_DIR/bin/lib/writ-session.py"
+# The translator below imports writ.harness.decisions from $WRIT_DIR. No harness sets it,
+# and an empty entry puts the hook's cwd on sys.path, so outside this repo the import
+# failed and every verdict turned into an ENF-DECIDER-INCOMPLETE ask.
+export WRIT_DIR="${WRIT_DIR:-$SKILL_DIR}"
 
 # WRIT_HOOK_LOG stderr breadcrumb sink, gated by WRIT_DEBUG: /dev/null when unset,
 # ${WRIT_HOOK_LOG:-/tmp/writ-hooks.log} when WRIT_DEBUG=1 (single source: common.sh).
