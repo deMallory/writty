@@ -28,7 +28,15 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-from writ.harness.vibe import _BRIDGE_TOOLS, _TOOLS, PLUGIN_ROOT, POST, PRE
+from writ.harness.vibe import (
+    _BRIDGE_TOOLS,
+    _TOOLS,
+    AGENT,
+    PLUGIN_ROOT,
+    POST,
+    PRE,
+    STOP_SCRIPT_TIMEOUT_S,
+)
 from writ.harness.vibe_context import WRIT_FILE
 from writ.retrieval.prompt_bundle import render_always_on
 
@@ -41,6 +49,8 @@ SHARED = (".env", "config.toml")
 _OWNED = "writ-"
 AGENTS_MARKER = "<!-- Written by writty's scripts/bootstrap-vibe.sh, which owns this file. -->"
 _RULES_TIMEOUT_S = 5.0
+# Vibe accepts the turn when its own timeout fires, so it waits past the bridge's.
+_STOP_TIMEOUT_S = STOP_SCRIPT_TIMEOUT_S + 20
 
 _AGENTS = f"""\
 {AGENTS_MARKER}
@@ -82,6 +92,13 @@ folder and next step. Writ rewrites it after each tool call and each `!mistty` c
 Read it there and never write it; keep your own notes in other scratchpad files. A new
 session has none until the first tool call or `!mistty` command.
 
+## End of turn
+
+When your turn ends, Writ runs its end-of-turn checks: unresolved rule violations,
+failing tests for the files you changed, and work its quality review scored below 3. A
+failing check sends your turn back with Writ's reason as a user message. Fix what it
+names before you finish. Vibe sends a turn back at most 3 times.
+
 ## Refusals
 
 A direct tool call that Writ refuses fails with Writ's reason. Inside `run_typescript`, a
@@ -121,6 +138,10 @@ def render_hooks() -> str:
         if strict:
             # A bridge that crashes before printing still denies the call.
             out += "strict = true\n"
+    # Vibe's loader refuses match and strict on post_agent.
+    out += (f'\n[[hooks]]\nname = "writ-stop"\ntype = "{AGENT}"\n'
+            f"command = {json.dumps(f'{shlex.quote(str(HOOK))} {AGENT}')}\n"
+            f"timeout = {_STOP_TIMEOUT_S}\n")
     return out
 
 

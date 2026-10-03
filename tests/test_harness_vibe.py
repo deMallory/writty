@@ -7,6 +7,7 @@ bridge and none about Writ's gates. The real scripts run in test_harness_vibe_ho
 from __future__ import annotations
 
 import fcntl
+import io
 import json
 import os
 import subprocess
@@ -870,6 +871,141 @@ class TestWritFileWrites:
                       resolver=_no_lookup)
         assert "0-writ.md" in _deny_reason(out)
         assert plugin.runs("all") == []
+
+
+# --------------------------------------------------------------------------- #
+# post_agent: Writ's Stop checks at the end of a turn
+# --------------------------------------------------------------------------- #
+def _agent(cwd: Path) -> dict:
+    return {"cwd": str(cwd), "hook_event_name": "post_agent"}
+
+
+def _refusing(text: str, code: int = 2) -> str:
+    return f'echo "{text}" >&2\nexit {code}\n'
+
+
+class TestStop:
+    def test_every_stop_script_runs_once_with_a_claude_stop_envelope(self, tmp_path):
+        work = tmp_path / "proj"
+        work.mkdir()
+        plugin = Plugin(tmp_path, {
+            "Stop": [{"matcher": "", "scripts": {"s1": ALLOW}},
+                     {"matcher": "", "scripts": {"s2": ALLOW}}],
+            "PreToolUse": [{"matcher": "", "scripts": {"pre": ALLOW}}],
+            "PostToolUse": [{"matcher": "", "scripts": {"post": ALLOW}}],
+        })
+        assert _handle(plugin, "post_agent", _agent(work)) == ""
+        for name in ("s1", "s2"):
+            assert plugin.runs(name) == [{
+                "session_id": "sid-1", "transcript_path": "", "cwd": str(work),
+                "hook_event_name": "Stop", "stop_hook_active": False,
+            }]
+        assert plugin.runs("pre") == plugin.runs("post") == []
+        [[root, strict, cwd]] = plugin.envs("s1")
+        assert root == str(plugin.root)
+        assert strict == "1"
+        assert os.path.realpath(cwd) == os.path.realpath(work)
+
+    @pytest.mark.parametrize("body, needle", [
+        (_refusing("R-EXIT2", 2), "R-EXIT2"),
+        (_refusing("R-EXIT1", 1), "R-EXIT1"),
+        (_json_body({"decision": "block", "reason": "R-BLOCK"}), "R-BLOCK"),
+    ])
+    def test_a_refusing_script_denies_the_turn_under_writs_header(self, tmp_path, body, needle):
+        plugin = Plugin(tmp_path, {"Stop": [{"matcher": "", "scripts": {"check": body}}]})
+        reason = _deny_reason(_handle(plugin, "post_agent", _agent(tmp_path)))
+        assert reason.startswith(vibe._STOP_HEADER)
+        assert needle in reason
+
+    @pytest.mark.parametrize("code", [1, 2])
+    def test_a_silent_refusal_names_the_script(self, tmp_path, code):
+        plugin = Plugin(tmp_path, {"Stop": [{"matcher": "", "scripts": {"quiet": f"exit {code}\n"}}]})
+        assert "quiet" in _deny_reason(_handle(plugin, "post_agent", _agent(tmp_path)))
+
+    def test_refusals_join_into_one_deny_in_hooks_json_order(self, tmp_path):
+        plugin = Plugin(tmp_path, {"Stop": [
+            {"matcher": "", "scripts": {"first": _refusing("REASON-ONE", 2)}},
+            {"matcher": "", "scripts": {"passes": ALLOW}},
+            {"matcher": "", "scripts": {"second": _refusing("REASON-TWO", 1)}},
+        ]})
+        out = _handle(plugin, "post_agent", _agent(tmp_path))
+        assert json.loads(out) == {
+            "decision": "deny",
+            "reason": f"{vibe._STOP_HEADER}\n\nREASON-ONE\n\nREASON-TWO",
+        }
+
+    @pytest.mark.parametrize("body", [
+        ALLOW,
+        "echo chatter\nexit 0\n",
+        _json_body({"decision": "approve"}),
+        _json_body({"continue": False, "stopReason": "done"}),
+        _refusing("crashed", 3),
+        _refusing("command not found", 127),
+    ])
+    def test_any_other_answer_accepts_the_turn(self, tmp_path, body):
+        plugin = Plugin(tmp_path, {"Stop": [{"matcher": "", "scripts": {"check": body}}]})
+        assert _handle(plugin, "post_agent", _agent(tmp_path)) == ""
+        assert len(plugin.runs("check")) == 1
+
+    def test_a_timed_out_script_accepts_the_turn_without_waiting_it_out(self, tmp_path):
+        plugin = Plugin(tmp_path, {"Stop": [
+            {"matcher": "", "timeout": 1, "scripts": {"slow": "sleep 5\nexit 2\n"}}]})
+        start = time.monotonic()
+        assert _handle(plugin, "post_agent", _agent(tmp_path)) == ""
+        assert time.monotonic() - start < 4
+
+    def test_no_session_accepts_the_turn_and_runs_nothing(self, tmp_path):
+        plugin = Plugin(tmp_path, {"Stop": [{"matcher": "", "scripts": {"s": _refusing("R")}}]})
+        assert _handle(plugin, "post_agent", _agent(tmp_path), sid=None) == ""
+        assert plugin.runs("s") == []
+
+    @pytest.mark.parametrize("raw", ["garbage", "[]", ""])
+    def test_unreadable_input_accepts_the_turn_and_runs_nothing(self, tmp_path, raw):
+        plugin = Plugin(tmp_path, {"Stop": [{"matcher": "", "scripts": {"s": _refusing("R")}}]})
+        assert _handle(plugin, "post_agent", raw) == ""
+        assert plugin.runs("s") == []
+
+    def test_a_bridge_exception_accepts_the_turn(self, tmp_path):
+        plugin = Plugin(tmp_path, {"Stop": [{"matcher": "", "scripts": {"s": _refusing("R")}}]})
+        assert _handle(plugin, "post_agent", _agent(tmp_path), resolver=_raise) == ""
+
+    def test_stop_scripts_default_to_the_stop_timeout_and_tool_scripts_keep_theirs(
+            self, tmp_path, monkeypatch):
+        plugin = Plugin(tmp_path, {
+            "Stop": [{"matcher": "", "scripts": {"plain": ALLOW}},
+                     {"matcher": "", "timeout": 7, "scripts": {"pinned": ALLOW}}],
+            "PreToolUse": [{"matcher": "Bash", "scripts": {"pre": ALLOW}}],
+        })
+        seen: dict[str, float] = {}
+        real = vibe._run
+
+        def spy(command, stdin, *, cwd, env, timeout):
+            seen[vibe._script_name(command)] = timeout
+            return real(command, stdin, cwd=cwd, env=env, timeout=timeout)
+        monkeypatch.setattr(vibe, "_run", spy)
+        _handle(plugin, "post_agent", _agent(tmp_path))
+        _handle(plugin, "pre_tool", _pre(tmp_path, "file_system.bash", {"command": "ls"}))
+        assert vibe.STOP_SCRIPT_TIMEOUT_S == 180.0
+        assert seen == {"plain": vibe.STOP_SCRIPT_TIMEOUT_S, "pinned": 7.0,
+                        "pre": vibe.DEFAULT_SCRIPT_TIMEOUT_S}
+
+    @pytest.mark.parametrize("argv", [["post_agent"], []])
+    def test_main_routes_post_agent_from_argv_and_from_the_payload(self, monkeypatch, argv):
+        seen = []
+
+        def fake(event, raw):
+            seen.append(event)
+            return ""
+        monkeypatch.setattr(vibe, "handle", fake)
+        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(_agent(Path("/")))))
+        assert vibe.main(argv) == 0
+        assert seen == ["post_agent"]
+
+    def test_shim_accepts_garbage_and_exits_zero(self):
+        proc = subprocess.run([sys.executable, str(SHIM), "post_agent"], input="garbage",
+                              capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 0
+        assert proc.stdout.strip() == ""
 
 
 # --------------------------------------------------------------------------- #

@@ -57,3 +57,30 @@ def test_unified_read_in_planning_phase_is_allowed(tmp_path, isolated_daemon):  
     })
     if out:
         assert json.loads(out)["decision"] != "deny", out
+
+
+def _session(daemon: dict, mode: str, **cache: object) -> str:
+    sid = f"vibe-{uuid.uuid4().hex[:8]}"
+    path = Path(seed_session_cache(daemon["health"]["cache_dir"], sid, mode,
+                                   current_phase="planning" if mode == "work" else None))
+    path.write_text(json.dumps({**json.loads(path.read_text()), **cache}))
+    return sid
+
+
+def _turn_end(cwd: Path) -> dict:
+    return {"cwd": str(cwd), "hook_event_name": "post_agent"}
+
+
+def test_unified_turn_with_pending_violations_is_sent_back(tmp_path, isolated_daemon):  # noqa: F811
+    sid = _session(isolated_daemon, "work", pending_violations=[
+        {"rule_id": "TEST-VIOL-001"}, {"rule_id": "TEST-VIOL-002"}])
+    out = _run(isolated_daemon, sid, "post_agent", _turn_end(tmp_path))
+    data = json.loads(out)
+    assert data["decision"] == "deny", data
+    assert data["reason"].startswith(vibe._STOP_HEADER), data
+    assert "TEST-VIOL-001, TEST-VIOL-002" in data["reason"], data
+
+
+def test_unified_turn_in_conversation_mode_ends(tmp_path, isolated_daemon):  # noqa: F811
+    sid = _session(isolated_daemon, "conversation")
+    assert _run(isolated_daemon, sid, "post_agent", _turn_end(tmp_path)) == ""

@@ -128,11 +128,11 @@ def test_existing_target_is_left_alone_and_reported(dirs, capsys):
 # --------------------------------------------------------------------------- #
 # hooks.toml and the matcher
 # --------------------------------------------------------------------------- #
-def test_hooks_file_holds_exactly_the_two_writ_entries(dirs, capsys):
+def test_hooks_file_holds_exactly_the_three_writ_entries(dirs, capsys):
     rc, _ = _install(dirs, capsys)
     assert rc == 0
     hooks = _hooks(dirs["home"])
-    assert set(hooks) == {"writ-pre", "writ-post"}
+    assert set(hooks) == {"writ-pre", "writ-post", "writ-stop"}
 
     pre, post = hooks["writ-pre"], hooks["writ-post"]
     assert pre["type"] == "pre_tool"
@@ -142,6 +142,18 @@ def test_hooks_file_holds_exactly_the_two_writ_entries(dirs, capsys):
     assert post.get("strict", False) is False
     assert post["command"] == f"{shlex.quote(str(HOOK))} post_tool"
     assert pre["match"] == post["match"] == vibe_install.matcher()
+
+
+def test_the_stop_entry_runs_the_bridge_at_every_turn_end(dirs, capsys):
+    assert _install(dirs, capsys)[0] == 0
+    stop = _hooks(dirs["home"])["writ-stop"]
+    assert stop["type"] == "post_agent"
+    assert stop["command"] == f"{shlex.quote(str(HOOK))} post_agent"
+    # Vibe's loader refuses both on post_agent.
+    assert "match" not in stop
+    assert "strict" not in stop
+    # Vibe accepts the turn when its own timeout fires, so it must outlast the bridge's.
+    assert stop["timeout"] > vibe.STOP_SCRIPT_TIMEOUT_S
 
 
 def test_matcher_covers_every_bridge_tool_in_any_case():
@@ -194,6 +206,15 @@ def test_install_writes_agents_md_with_the_commands_and_the_rules(dirs, capsys):
                    "process.write", RULES):
         assert needle in text, needle
     assert f"write {dirs['home'] / 'AGENTS.md'}" in out
+
+
+def test_agents_md_says_a_failing_end_of_turn_check_sends_the_turn_back(dirs, capsys):
+    assert _install(dirs, capsys)[0] == 0
+    text = _agents(dirs["home"])
+    section = text[text.index("## End of turn"):]
+    for needle in ("unresolved rule violations", "failing tests", "below 3",
+                   "sends your turn back", "at most 3 times"):
+        assert needle in section, needle
 
 
 def test_a_rerun_picks_up_changed_rules(dirs, capsys, rules):
@@ -363,7 +384,7 @@ def test_generated_file_passes_vibes_own_loader(dirs, capsys):
     assert proc.returncode == 0, proc.stderr
     result = json.loads(proc.stdout)
     assert result["issues"] == []
-    assert sorted(result["names"]) == ["writ-post", "writ-pre"]
+    assert sorted(result["names"]) == ["writ-post", "writ-pre", "writ-stop"]
 
 
 def test_installer_check_reports_zero_issues_with_real_vibe(dirs, capsys):
@@ -414,7 +435,7 @@ def test_bootstrap_runs_from_any_cwd_and_forwards_flags(dirs, tmp_path):
     proc = subprocess.run(["bash", str(BOOTSTRAP), *_flags(dirs)], env=_no_daemon(tmp_path),
                           cwd=elsewhere, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert set(_hooks(dirs["home"])) == {"writ-pre", "writ-post"}
+    assert set(_hooks(dirs["home"])) == {"writ-pre", "writ-post", "writ-stop"}
     assert _agents(dirs["home"]).splitlines()[0] == vibe_install.AGENTS_MARKER
 
 

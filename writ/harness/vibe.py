@@ -1,8 +1,9 @@
-"""Run Writ's Claude hook scripts for Mistral Vibe tool calls.
+"""Run Writ's Claude hook scripts for Mistral Vibe tool calls and turn ends.
 
-Vibe calls `bin/writ-vibe-hook pre_tool|post_tool` with its own envelope on stdin. This
-module translates that envelope to the Claude envelope the scripts in hooks/hooks.json
-read, runs the scripts that match, and translates their answers back to Vibe's output.
+Vibe calls `bin/writ-vibe-hook pre_tool|post_tool|post_agent` with its own envelope on
+stdin. This module translates that envelope to the Claude envelope the scripts in
+hooks/hooks.json read, runs the scripts that match, and translates their answers back to
+Vibe's output. post_agent runs the Stop scripts at the end of a turn.
 Every verdict still comes from the scripts, except three Vibe has and Claude lacks: the
 user's own `!mistty` commands, typed input to a running process (`process.write`), and
 Writ's state file in the scratchpad, which the bridge rewrites after each tool call
@@ -13,8 +14,10 @@ imports only os.
 
 Vibe's contract (2.25.8, mistralai_vibe_local_harness/vibe/_foreign_hooks.py): exit 0 and
 JSON on stdout. `{"decision": "deny", "reason": ...}` blocks a pre_tool call, and in
-post_tool replaces the result the model sees. `hook_specific_output.tool_input` rewrites
-pre_tool arguments. `hook_specific_output.additional_context` is read in post_tool only.
+post_tool replaces the result the model sees, and in post_agent re-runs the turn with the
+reason as a user message, at most 3 times per turn. `hook_specific_output.tool_input`
+rewrites pre_tool arguments. `hook_specific_output.additional_context` is read in post_tool
+only.
 """
 
 from __future__ import annotations
@@ -38,8 +41,11 @@ from writ.harness import vibe_context
 
 PRE = "pre_tool"
 POST = "post_tool"
+AGENT = "post_agent"
 
 DEFAULT_SCRIPT_TIMEOUT_S = 30.0
+# writ-run-pending-tests.sh gives each of its three runners 60 s.
+STOP_SCRIPT_TIMEOUT_S = 180.0
 
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -292,7 +298,8 @@ def resolve_session_id(
 # --------------------------------------------------------------------------- #
 # Running scripts
 # --------------------------------------------------------------------------- #
-def select_commands(config: Mapping, claude_event: str, tool_name: str) -> list[tuple[str, float]]:
+def select_commands(config: Mapping, claude_event: str, tool_name: str, *,
+                    default_timeout: float = DEFAULT_SCRIPT_TIMEOUT_S) -> list[tuple[str, float]]:
     """(command, timeout) for every hooks.json hook whose matcher fullmatches the tool."""
     events = _as_dict(config.get("hooks"))
     selected = []
@@ -304,7 +311,7 @@ def select_commands(config: Mapping, claude_event: str, tool_name: str) -> list[
             continue
         for hook in group.get("hooks") or []:
             if isinstance(hook, dict) and hook.get("command") and hook.get("type", "command") == "command":
-                selected.append((str(hook["command"]), float(hook.get("timeout") or DEFAULT_SCRIPT_TIMEOUT_S)))
+                selected.append((str(hook["command"]), float(hook.get("timeout") or default_timeout)))
     return selected
 
 
@@ -566,11 +573,58 @@ def _refresh_state(sid: str, plugin_root: str, base_env: Mapping[str, str] | Non
 
 
 # --------------------------------------------------------------------------- #
+# Turn end
+# --------------------------------------------------------------------------- #
+_STOP_HEADER = "Writ's end-of-turn checks failed. Fix what they name before you finish:"
+
+
+def _refusal(run: _Run) -> str:
+    """Why a Stop script refuses to let the turn end, or "" when it lets it end.
+
+    Claude re-runs the turn only on exit 2 or `"decision": "block"`. Writ's Stop checks
+    also refuse with exit 1, which Claude only shows the user; mistty re-runs on both, by
+    the user's choice. A script that did not run, or exited any other way, lets the turn
+    end, as Vibe does for a broken post_agent hook.
+    """
+    if run.error:
+        return ""
+    if run.returncode in (1, 2):
+        return run.stderr.strip() or f"{run.name} refused to let the turn end"
+    if run.returncode != 0:
+        return ""
+    try:
+        parsed = json.loads(run.stdout) if run.stdout.strip() else None
+    except ValueError:
+        return ""
+    if isinstance(parsed, dict) and parsed.get("decision") == "block":
+        return str(parsed.get("reason") or f"{run.name} refused to let the turn end")
+    return ""
+
+
+def _stop(envelope: dict, *, plugin_root: str, base_env: Mapping[str, str] | None,
+          session_resolver: Callable[[dict], str | None]) -> str:
+    sid = session_resolver(envelope)
+    if not sid:
+        return ""
+    # Vibe gives no transcript and no turn id, so the comms check reads no text and every
+    # run is a first stop; Vibe's cap of 3 re-runs ends the turn.
+    claude = {"session_id": sid, "transcript_path": "", "cwd": str(envelope.get("cwd") or ""),
+              "hook_event_name": "Stop", "stop_hook_active": False}
+    with open(os.path.join(plugin_root, "hooks", "hooks.json")) as handle:
+        config = json.load(handle)
+    jobs = [(claude, command, timeout) for command, timeout
+            in select_commands(config, "Stop", "", default_timeout=STOP_SCRIPT_TIMEOUT_S)]
+    refusals = [r for r in map(_refusal, _run_all(jobs, plugin_root=plugin_root,
+                                                   base_env=base_env)) if r]
+    return _deny("\n\n".join([_STOP_HEADER, *refusals])) if refusals else ""
+
+
+# --------------------------------------------------------------------------- #
 # Entry
 # --------------------------------------------------------------------------- #
 def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, str] | None,
             session_resolver: Callable[[dict], str | None], context_dir: str) -> str:
-    if event not in (PRE, POST):
+    if event not in (PRE, POST, AGENT):
         raise ValueError(f"unknown Vibe hook event {event!r}")
     try:
         envelope = json.loads(raw)
@@ -580,6 +634,9 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
         if event == PRE:
             return _deny("Writ could not read Vibe's hook input, so this call is denied (fail-closed).")
         return ""
+    if event == AGENT:
+        return _stop(envelope, plugin_root=plugin_root, base_env=base_env,
+                     session_resolver=session_resolver)
     name = str(envelope.get("tool_name") or "")
     tool = _TOOLS.get(name)
     if event == PRE and _names_writ_file(name, tool, _as_dict(envelope.get("tool_input")),
@@ -656,7 +713,8 @@ def handle(
     """Vibe's stdout for one hook call: "" for a plain allow, else one JSON object.
 
     pre_tool fails closed: any error denies the call. post_tool fails quiet: the tool
-    already ran, and blanking its result would hide output the model needs.
+    already ran, and blanking its result would hide output the model needs. post_agent
+    fails open: a broken check must not trap the turn.
     """
     try:
         return _handle(event, raw, plugin_root=plugin_root, base_env=base_env,
@@ -674,13 +732,13 @@ def _event_from(raw: str) -> str:
         event = json.loads(raw).get("hook_event_name")
     except (ValueError, AttributeError):
         return ""
-    return event if event in (PRE, POST) else ""
+    return event if event in (PRE, POST, AGENT) else ""
 
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     raw = sys.stdin.read()
-    event = args[0] if args and args[0] in (PRE, POST) else _event_from(raw)
+    event = args[0] if args and args[0] in (PRE, POST, AGENT) else _event_from(raw)
     if not event:
         return 0
     out = handle(event, raw)
