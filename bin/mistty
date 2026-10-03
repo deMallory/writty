@@ -12,4 +12,10 @@ case "${1:-}" in
         PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m writ.harness.vibe_user "$@"
         ;;
 esac
-exec vibe "$@"
+# Launch the Rust thin client: it renders the ccstatusline bottom bar and spawns
+# the Python app-server itself. VIBE_APP_SERVER_BIN points it at the installed
+# app-server so any cwd works; VIBE_HOME above still governs that backend, which
+# inherits this environment.
+VIBE_APP_SERVER_BIN="$(command -v vibe-app-server)"
+[ -n "$VIBE_APP_SERVER_BIN" ] && export VIBE_APP_SERVER_BIN
+exec "${MISTTY_RUST_BIN:-/Users/david.malinen/Documents/laarge/dev/mistty/vibe/cli-rust/target/release/vibe-rs}" "$@"

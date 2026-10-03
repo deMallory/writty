@@ -358,25 +358,33 @@ def test_launcher_is_linked_onto_the_bin_dir(dirs, capsys):
     assert Path(os.readlink(link)) == LAUNCHER
 
 
-def _fake_vibe(tmp_path: Path) -> Path:
+def _fake_client_bins(tmp_path: Path) -> tuple[Path, Path]:
     fake_bin = tmp_path / "fakebin"
     fake_bin.mkdir()
-    fake = fake_bin / "vibe"
-    fake.write_text('#!/bin/sh\nprintf \'%s\\n\' "$VIBE_HOME" "$@"\n')
+    fake = fake_bin / "vibe-rs"
+    fake.write_text('#!/bin/sh\nprintf \'%s\\n\' "$VIBE_HOME" "$VIBE_APP_SERVER_BIN" "$@"\n')
     fake.chmod(0o755)
-    return fake_bin
+    app_server = fake_bin / "vibe-app-server"
+    app_server.write_text('#!/bin/sh\nexit 0\n')
+    app_server.chmod(0o755)
+    return fake_bin, fake
 
 
 @pytest.mark.parametrize("mistty_home", [None, "/opt/elsewhere"])
-def test_launcher_runs_vibe_in_the_mistty_home_with_args_unchanged(tmp_path, mistty_home):
-    env = {"PATH": f"{_fake_vibe(tmp_path)}:/usr/bin:/bin", "HOME": str(tmp_path)}
+def test_launcher_runs_the_rust_client_in_the_mistty_home_with_args_unchanged(
+    tmp_path, mistty_home
+):
+    fake_bin, fake = _fake_client_bins(tmp_path)
+    env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path),
+           "MISTTY_RUST_BIN": str(fake)}
     if mistty_home:
         env["MISTTY_HOME"] = mistty_home
     proc = subprocess.run([str(LAUNCHER), "-p", "hello world", ""],
                           capture_output=True, text=True, env=env, timeout=10)
     assert proc.returncode == 0, proc.stderr
     expected_home = mistty_home or str(tmp_path / ".mistty")
-    assert proc.stdout.split("\n")[:4] == [expected_home, "-p", "hello world", ""]
+    assert proc.stdout.split("\n")[:5] == [
+        expected_home, str(fake_bin / "vibe-app-server"), "-p", "hello world", ""]
 
 
 # --------------------------------------------------------------------------- #
