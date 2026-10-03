@@ -68,6 +68,31 @@ def socket_available(socket_path: str) -> bool:
         return False
 
 
+def _resolve(socket_path: str | None, base_url: str | None) -> tuple[str, str]:
+    """(socket_path, base_url) for one call: the arguments when given, else the env.
+
+    Matches common.sh. WRIT_SOCKET wins when set, even to "": writ-subagent-start.sh
+    passes "" to mean "no socket". Otherwise the TCP base is WRIT_SESSION_BASE, else
+    WRIT_HOST and WRIT_PORT, and an endpoint other than localhost:8765 turns the default
+    socket off: that socket belongs to the default daemon, so a caller naming another one
+    (the suite's WRIT_PORT=8799) would silently reach the operator's.
+
+    UNLIKE common.sh, a value EQUAL to the default is not an override. A daemon started
+    by writ_ensure_server inherits WRIT_HOST=localhost and WRIT_PORT=8765, and posts its
+    own auto-feedback through this client; those calls belong on its socket.
+    """
+    if base_url is None:
+        base_url = os.environ.get("WRIT_SESSION_BASE") or "http://{}:{}".format(
+            os.environ.get("WRIT_HOST") or "localhost", os.environ.get("WRIT_PORT") or "8765")
+    if socket_path is None:
+        socket_path = os.environ.get("WRIT_SOCKET")
+    if socket_path is None:
+        parsed = urllib.parse.urlsplit(base_url)
+        named = (parsed.hostname or "localhost", parsed.port or 8765)
+        socket_path = DEFAULT_SOCKET if named == ("localhost", 8765) else ""
+    return socket_path, base_url
+
+
 def _request(
     method: str,
     path: str,
@@ -119,8 +144,7 @@ def post_json(
     """POST `payload` as JSON to `path` (e.g. "/session/abc/context-percent")."""
     return _request(
         "POST", path, json.dumps(payload).encode(),
-        socket_path if socket_path is not None else os.environ.get("WRIT_SOCKET", DEFAULT_SOCKET),
-        base_url if base_url is not None else os.environ.get("WRIT_SESSION_BASE", DEFAULT_BASE_URL),
+        *_resolve(socket_path, base_url),
         timeout,
     )
 
@@ -134,8 +158,7 @@ def get_json(
     """GET `path` and return (status, body text)."""
     return _request(
         "GET", path, None,
-        socket_path if socket_path is not None else os.environ.get("WRIT_SOCKET", DEFAULT_SOCKET),
-        base_url if base_url is not None else os.environ.get("WRIT_SESSION_BASE", DEFAULT_BASE_URL),
+        *_resolve(socket_path, base_url),
         timeout,
     )
 
@@ -177,10 +200,7 @@ def post_json_outcome(
     """
     body = json.dumps(payload).encode()
     headers = {"Host": "localhost", "Content-Type": "application/json"}
-    socket_path = socket_path if socket_path is not None else os.environ.get(
-        "WRIT_SOCKET", DEFAULT_SOCKET)
-    base_url = base_url if base_url is not None else os.environ.get(
-        "WRIT_SESSION_BASE", DEFAULT_BASE_URL)
+    socket_path, base_url = _resolve(socket_path, base_url)
 
     if socket_available(socket_path):
         outcome = _attempt_outcome(
