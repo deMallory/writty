@@ -85,6 +85,15 @@ class TestRender:
         for needle in ("plan.md", "capabilities.md", "!mistty approve"):
             assert needle in nxt, needle
 
+    def test_phase_a_next_line_names_the_sections_and_the_files_line_grammar(self):
+        # Session 2709fed0: the model wrote a plan with none of these, and each miss
+        # cost one rejected approval.
+        nxt = _next(_render(PHASE_A, "/work/proj"))
+        for needle in ("## Files", "- `path` (change) -- reason", "create, modify or delete",
+                       "## Analysis", "## Rules Applied", '"No matching rules"',
+                       "## Capabilities", "unchecked - [ ]"):
+            assert needle in nxt, needle
+
     def test_work_without_a_project_root_has_no_plan_folder_line(self):
         assert "Plan folder:" not in _render(PHASE_A, None)
 

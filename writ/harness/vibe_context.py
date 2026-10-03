@@ -71,8 +71,13 @@ def _next_step(mode: str | None, pending: str | None) -> str:
         return f"Writ refuses every write. Ask the user to set a mode: {_MODES}."
     if mode == "work":
         if pending == "phase-a":
-            return ("Write plan.md and capabilities.md in the plan folder, present them, "
-                    f"and stop. {_APPROVE}")
+            return ("Write plan.md in the plan folder in one write, with four sections: "
+                    "## Files (one line per file: - `path` (change) -- reason, where change "
+                    "is create, modify or delete), ## Analysis (the design and why), "
+                    "## Rules Applied (only rule IDs Writ showed you this session, or exactly "
+                    "\"No matching rules\"), ## Capabilities (one unchecked - [ ] line per "
+                    "behavior). Writ checks plan.md each time you save it. Then write "
+                    f"capabilities.md, present both, and stop. {_APPROVE}")
         if pending == "test-skeletons":
             return f"Write the test files the plan names, present them, and stop. {_APPROVE}"
         if pending:
