@@ -422,6 +422,16 @@ def test_loader_issue_fails_the_install(dirs, capsys, tmp_path):
     assert "writ-pre - bad field" in out
 
 
+def test_a_crashing_loader_fails_the_install_with_its_exit_code(dirs, capsys, tmp_path):
+    fake = tmp_path / "fake-python"
+    fake.write_text("#!/bin/sh\necho 'ModuleNotFoundError: No module named vibe' >&2\nexit 3\n")
+    fake.chmod(0o755)
+    rc, out = _install(dirs, capsys, "--vibe-python", str(fake), check=True)
+    assert rc == 1
+    assert "exited 3" in out
+    assert "No module named vibe" in out
+
+
 def test_check_is_skipped_when_vibe_is_not_on_path(dirs, capsys, tmp_path, monkeypatch):
     empty = tmp_path / "empty-bin"
     empty.mkdir()

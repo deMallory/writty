@@ -266,6 +266,10 @@ def _check(path: Path, python: str) -> list[str]:
     try:
         proc = subprocess.run([python, "-c", _LOAD, str(path)],
                               capture_output=True, text=True, timeout=60)
+        if proc.returncode != 0:
+            detail = proc.stderr.strip().splitlines()[-1:]
+            return [f"Vibe's loader exited {proc.returncode}"
+                    + (f" ({detail[0]})" if detail else "")]
         return [str(i) for i in json.loads(proc.stdout)["issues"]]
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError) as e:
         return [f"Vibe's loader did not run ({e})"]
