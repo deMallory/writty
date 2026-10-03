@@ -161,7 +161,6 @@ class TestToClaude:
     @pytest.mark.parametrize("tool, tool_input", [
         ("subagent.spawn", {"agentName": "h", "message": "m"}),
         ("task", {"agent": "explore", "task": "t"}),
-        ("process.write", {"processId": "p1", "input": "rm -rf x\n"}),
         ("skill.read", {"name": "s"}),
     ])
     def test_unmapped_tool_runs_no_script(self, tmp_path, tool, tool_input):
@@ -570,6 +569,122 @@ class TestUserOnlyCommands:
             {"path": "notes.md", "content": "Type `!mistty approve` to advance.\n"}))
         assert out == ""
         assert len(plugin.runs("w")) == 1
+
+
+# --------------------------------------------------------------------------- #
+# process.write: typed input to a running process
+# --------------------------------------------------------------------------- #
+_SAFE_KEYS = ["ctrl_c", "ctrl_d", "ctrl_z", "esc", "enter"]
+
+
+@pytest.fixture
+def writ_cache(tmp_path, monkeypatch):
+    """Points the bridge at a temp Writ session cache. seed(None) leaves sid-1 with no
+    file, a dict is written as its JSON, a str is written as is."""
+    cache = tmp_path / "writ-cache"
+    cache.mkdir()
+    monkeypatch.setenv("WRIT_CACHE_DIR", str(cache))
+
+    def seed(state):
+        if state is not None:
+            body = state if isinstance(state, str) else json.dumps(state)
+            (cache / "writ-session-sid-1.json").write_text(body)
+    return seed
+
+
+def _write(cwd: Path, tool_input: dict) -> dict:
+    return _pre(cwd, "process.write", {"processId": "p1", **tool_input})
+
+
+def _any_script(tmp_path: Path) -> Plugin:
+    return Plugin(tmp_path, {"PreToolUse": [{"matcher": ".*", "scripts": {"all": ALLOW}}],
+                             "PostToolUse": [{"matcher": ".*", "scripts": {"post": ALLOW}}]})
+
+
+def _no_lookup(_env):
+    raise AssertionError("this decision must not need a session")
+
+
+class TestProcessWrite:
+    @pytest.mark.parametrize("state, named", [
+        ({"mode": "work"}, "work mode"),
+        ({"mode": "debug"}, "debug mode"),
+        (None, "no Writ mode"),
+        ({"current_phase": "planning"}, "no Writ mode"),
+        ("{not json", "no Writ mode"),
+    ])
+    def test_typed_text_is_denied_where_writ_gates_writes(self, tmp_path, writ_cache,
+                                                          state, named):
+        writ_cache(state)
+        plugin = _any_script(tmp_path)
+        reason = _deny_reason(_handle(plugin, "pre_tool",
+                                      _write(tmp_path, {"text": "print(1)\n"})))
+        assert named in reason
+        for key in _SAFE_KEYS:
+            assert key in reason
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("tool_input", [
+        {"bytesBase64": "cHJpbnQoMSkK"},
+        {"control": ["up", "enter"]},
+        {"control": ["down"]},
+        {"control": ["tab"]},
+        {"control": ["ctrl_c", {"key": "up"}]},
+        {},
+    ])
+    def test_other_typed_input_is_denied_in_work_mode(self, tmp_path, writ_cache, tool_input):
+        writ_cache({"mode": "work"})
+        plugin = _any_script(tmp_path)
+        assert "work mode" in _deny_reason(_handle(plugin, "pre_tool",
+                                                   _write(tmp_path, tool_input)))
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("keys", [["ctrl_c"], ["enter"], _SAFE_KEYS])
+    def test_safe_keys_pass_in_work_mode_without_a_session_lookup(self, tmp_path, writ_cache,
+                                                                  keys):
+        writ_cache({"mode": "work"})
+        plugin = _any_script(tmp_path)
+        out = _handle(plugin, "pre_tool", _write(tmp_path, {"control": keys}),
+                      resolver=_no_lookup)
+        assert out == ""
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("mode", ["conversation", "review", "investigate"])
+    def test_typed_text_passes_where_writ_leaves_writes_open(self, tmp_path, writ_cache, mode):
+        writ_cache({"mode": mode})
+        plugin = _any_script(tmp_path)
+        assert _handle(plugin, "pre_tool", _write(tmp_path, {"text": "print(1)\n"})) == ""
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("command", _USER_ONLY_COMMANDS)
+    def test_user_command_typed_into_a_process_is_denied_in_any_mode(self, tmp_path,
+                                                                     writ_cache, command):
+        writ_cache({"mode": "conversation"})
+        plugin = _any_script(tmp_path)
+        out = _handle(plugin, "pre_tool", _write(tmp_path, {"text": f"{command}\n"}),
+                      resolver=_no_lookup)
+        assert "!mistty" in _deny_reason(out)
+        assert plugin.runs("all") == []
+
+    def test_typed_input_without_a_session_gets_the_no_session_deny(self, tmp_path, writ_cache):
+        writ_cache({"mode": "conversation"})
+        plugin = _any_script(tmp_path)
+        typed = _handle(plugin, "pre_tool", _write(tmp_path, {"text": "print(1)\n"}), sid=None)
+        shell = _handle(plugin, "pre_tool",
+                        _pre(tmp_path, "file_system.bash", {"command": "ls"}), sid=None)
+        assert _deny_reason(typed) == _deny_reason(shell)
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("tool_input", [{"text": "print(1)\n"}, {"control": ["ctrl_c"]}])
+    def test_post_tool_returns_nothing_and_runs_no_script(self, tmp_path, writ_cache,
+                                                          tool_input):
+        writ_cache({"mode": "work"})
+        plugin = _any_script(tmp_path)
+        envelope = _post(tmp_path, "process.write", {"processId": "p1", **tool_input},
+                         output={"ok": True})
+        assert _handle(plugin, "post_tool", envelope, resolver=_no_lookup) == ""
+        assert plugin.runs("all") == []
+        assert plugin.runs("post") == []
 
 
 # --------------------------------------------------------------------------- #

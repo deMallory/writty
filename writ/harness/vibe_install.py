@@ -22,7 +22,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-from writ.harness.vibe import _TOOLS, PLUGIN_ROOT, POST, PRE
+from writ.harness.vibe import _BRIDGE_TOOLS, _TOOLS, PLUGIN_ROOT, POST, PRE
 
 HOOK = Path(PLUGIN_ROOT) / "bin" / "writ-vibe-hook"
 LAUNCHER = Path(PLUGIN_ROOT) / "bin" / "mistty"
@@ -41,9 +41,9 @@ _LOAD = (
 
 
 def matcher() -> str:
-    """Exactly the tools the bridge maps. Vibe fullmatches `re:` patterns, ignoring case,
-    so a tool the bridge would pass through never pays for starting it."""
-    return "re:" + "|".join(re.escape(name) for name in sorted(_TOOLS))
+    """Exactly the tools the bridge maps or decides itself. Vibe fullmatches `re:` patterns,
+    ignoring case, so a tool the bridge would pass through never pays for starting it."""
+    return "re:" + "|".join(re.escape(name) for name in sorted({*_TOOLS, *_BRIDGE_TOOLS}))
 
 
 def render_hooks() -> str:

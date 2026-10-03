@@ -128,13 +128,19 @@ def test_matcher_covers_every_bridge_tool_in_any_case():
     pattern = vibe_install.matcher()
     assert pattern.startswith("re:")
     rx = re.compile(pattern.removeprefix("re:"), re.IGNORECASE)
-    for name in vibe._TOOLS:
+    for name in [*vibe._TOOLS, *vibe._BRIDGE_TOOLS]:
         assert rx.fullmatch(name), name
         assert rx.fullmatch(name.upper()), name
 
 
+@pytest.mark.parametrize("name", ["process.write", "PROCESS.WRITE", "Process.Write"])
+def test_matcher_covers_process_write_which_the_bridge_decides_itself(name):
+    rx = re.compile(vibe_install.matcher().removeprefix("re:"), re.IGNORECASE)
+    assert rx.fullmatch(name)
+
+
 @pytest.mark.parametrize("name", [
-    "subagent.spawn", "subagent.send_message", "task", "skill.read", "process.write",
+    "subagent.spawn", "subagent.send_message", "task", "skill.read",
     "file_system.read_file_extra", "xbash",
 ])
 def test_matcher_rejects_tools_the_bridge_does_not_map(name):

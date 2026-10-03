@@ -3,9 +3,11 @@
 Vibe calls `bin/writ-vibe-hook pre_tool|post_tool` with its own envelope on stdin. This
 module translates that envelope to the Claude envelope the scripts in hooks/hooks.json
 read, runs the scripts that match, and translates their answers back to Vibe's output.
-Every verdict still comes from the scripts.
+Every verdict still comes from the scripts, except two Vibe has and Claude lacks: the
+user's own `!mistty` commands and typed input to a running process (`process.write`).
 
-Stdlib-only, like envelope.py, so the shim runs under any python3.
+Stdlib-only, like envelope.py, so the shim runs under any python3. writ.shared.state_root
+imports only os.
 
 Vibe's contract (2.25.8, mistralai_vibe_local_harness/vibe/_foreign_hooks.py): exit 0 and
 JSON on stdout. `{"decision": "deny", "reason": ...}` blocks a pre_tool call, and in
@@ -29,6 +31,8 @@ from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
+
+from writ.shared.state_root import session_dir
 
 PRE = "pre_tool"
 POST = "post_tool"
@@ -63,6 +67,22 @@ _USER_ONLY_REASON = (
     "Writ refuses them to the model. Ask the user to type the one you need themselves, "
     "with the `!` prefix: `!mistty approve`, `!mistty replan`, `!mistty grant manual-test` "
     "or `!mistty mode <mode>`."
+)
+
+# process.write types into a process that process.start began. Writ's shell checks read
+# shell syntax, so code typed into a REPL, or a command split across writes, passes them.
+# The bridge decides it itself, mirroring _can_write_check (writ/session/gates.py): no
+# mode, work and debug gate writes, every other mode allows them. Safe keys stop or answer
+# a process but cannot type a command; up and down replay shell history, tab completes one.
+_PROCESS_WRITE = "process.write"
+_SAFE_KEYS = frozenset({"ctrl_c", "ctrl_d", "ctrl_z", "esc", "enter"})
+_GATED_MODES = frozenset({"work", "debug"})
+# Tools the bridge decides without a Writ script. The installer matches them too.
+_BRIDGE_TOOLS = (_PROCESS_WRITE,)
+
+_NO_SESSION_REASON = (
+    "Writ could not tell which Vibe session made this call, so it is denied (fail-closed). "
+    "Check that this Vibe session's lock is in $VIBE_HOME/logs/session/active."
 )
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
@@ -466,6 +486,49 @@ def _render(output: Any) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Typed input to a running process
+# --------------------------------------------------------------------------- #
+def _session_mode(sid: str) -> str | None:
+    """The session's Writ mode from its cache, or None when unset or unreadable."""
+    if not _SAFE_ID.match(sid):
+        return None
+    try:
+        with open(os.path.join(session_dir(), f"writ-session-{sid}.json")) as handle:
+            mode = json.load(handle).get("mode")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return mode if isinstance(mode, str) and mode else None
+
+
+def _process_write(event: str, envelope: dict,
+                   session_resolver: Callable[[dict], str | None]) -> str:
+    if event != PRE:
+        return ""
+    args = _as_dict(envelope.get("tool_input"))
+    if _USER_ONLY.search(str(args.get("text") or "")):
+        return _deny(_USER_ONLY_REASON)
+    keys = args.get("control")
+    # Vibe reads text first, then control, then bytesBase64, which it requires when the
+    # other two are absent.
+    if ("text" not in args and "bytesBase64" not in args and isinstance(keys, list)
+            and set(map(str, keys)) <= _SAFE_KEYS):
+        return ""
+    sid = session_resolver(envelope)
+    if not sid:
+        return _deny(_NO_SESSION_REASON)
+    mode = _session_mode(sid)
+    if mode is not None and mode not in _GATED_MODES:
+        return ""
+    where = f"in {mode} mode" if mode else "while no Writ mode is set"
+    return _deny(
+        f"Writ refuses typed input to a running process {where}: its shell checks cannot "
+        "see what the process does with it. Only the keys ctrl_c, ctrl_d, ctrl_z, esc and "
+        "enter go through. Pass the input as a flag (`--yes`) or pipe it in through bash "
+        "(`printf 'y\\n' | cmd`), which Writ checks."
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Entry
 # --------------------------------------------------------------------------- #
 def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, str] | None,
@@ -480,7 +543,10 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
         if event == PRE:
             return _deny("Writ could not read Vibe's hook input, so this call is denied (fail-closed).")
         return ""
-    tool = _TOOLS.get(str(envelope.get("tool_name") or ""))
+    name = str(envelope.get("tool_name") or "")
+    if name == _PROCESS_WRITE:
+        return _process_write(event, envelope, session_resolver)
+    tool = _TOOLS.get(name)
     if tool is None:
         return ""
     if event == PRE and tool == "Bash":
@@ -490,9 +556,7 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
     sid = session_resolver(envelope)
     if not sid:
         if event == PRE:
-            return _deny("Writ could not tell which Vibe session made this call, so it is "
-                         "denied (fail-closed). Check that this Vibe session's lock is in "
-                         "$VIBE_HOME/logs/session/active.")
+            return _deny(_NO_SESSION_REASON)
         return ""
 
     claude_envs = to_claude(envelope, event, sid)
