@@ -3,8 +3,10 @@
 Vibe calls `bin/writ-vibe-hook pre_tool|post_tool` with its own envelope on stdin. This
 module translates that envelope to the Claude envelope the scripts in hooks/hooks.json
 read, runs the scripts that match, and translates their answers back to Vibe's output.
-Every verdict still comes from the scripts, except two Vibe has and Claude lacks: the
-user's own `!mistty` commands and typed input to a running process (`process.write`).
+Every verdict still comes from the scripts, except three Vibe has and Claude lacks: the
+user's own `!mistty` commands, typed input to a running process (`process.write`), and
+Writ's state file in the scratchpad, which the bridge rewrites after each tool call
+(vibe_context.py).
 
 Stdlib-only, like envelope.py, so the shim runs under any python3. writ.shared.state_root
 imports only os.
@@ -32,7 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
-from writ.shared.state_root import session_dir
+from writ.harness import vibe_context
 
 PRE = "pre_tool"
 POST = "post_tool"
@@ -77,8 +79,20 @@ _USER_ONLY_REASON = (
 _PROCESS_WRITE = "process.write"
 _SAFE_KEYS = frozenset({"ctrl_c", "ctrl_d", "ctrl_z", "esc", "enter"})
 _GATED_MODES = frozenset({"work", "debug"})
+
+# Writ's state file (vibe_context.py). The post_tool refresh overwrites a forged one at once,
+# and Writ's gates never read it, so this refusal only spares the model a misleading file.
+# A command that builds the name at run time slips past the text match.
+_SCRATCHPAD = "vibe.unified_harness_scratchpad"
+_WRIT_FILE = re.compile(re.escape(vibe_context.WRIT_FILE), re.IGNORECASE)
+_WRIT_FILE_REASON = (
+    f"`{vibe_context.WRIT_FILE}` in your scratchpad is Writ's state file: Writ rewrites it "
+    "after each tool call and refuses any other call that names it. Its contents are "
+    "already in your context. Keep your own notes in another scratchpad file."
+)
+
 # Tools the bridge decides without a Writ script. The installer matches them too.
-_BRIDGE_TOOLS = (_PROCESS_WRITE,)
+_BRIDGE_TOOLS = (_PROCESS_WRITE, _SCRATCHPAD)
 
 _NO_SESSION_REASON = (
     "Writ could not tell which Vibe session made this call, so it is denied (fail-closed). "
@@ -490,13 +504,7 @@ def _render(output: Any) -> str:
 # --------------------------------------------------------------------------- #
 def _session_mode(sid: str) -> str | None:
     """The session's Writ mode from its cache, or None when unset or unreadable."""
-    if not _SAFE_ID.match(sid):
-        return None
-    try:
-        with open(os.path.join(session_dir(), f"writ-session-{sid}.json")) as handle:
-            mode = json.load(handle).get("mode")
-    except (OSError, ValueError, AttributeError):
-        return None
+    mode = vibe_context.read_session_cache(sid).get("mode")
     return mode if isinstance(mode, str) and mode else None
 
 
@@ -529,6 +537,35 @@ def _process_write(event: str, envelope: dict,
 
 
 # --------------------------------------------------------------------------- #
+# Writ's state file in the scratchpad
+# --------------------------------------------------------------------------- #
+def _names_writ_file(name: str, tool: str | None, args: Mapping, cwd: str) -> bool:
+    """Whether a pre_tool call would write Writ's state file, or names it in shell text."""
+    if name == _SCRATCHPAD:
+        # Vibe resolves the path inside the scratchpad; a nested 0-writ.md is another file.
+        path = str(args.get("path") or "")
+        return (args.get("action") == "write" and bool(path)
+                and os.path.normpath(path).casefold() == vibe_context.WRIT_FILE)
+    if tool in ("Write", "Edit"):
+        parent, base = os.path.split(_abs(args.get(_path_key(args)), cwd))
+        return (base.casefold() == vibe_context.WRIT_FILE
+                and os.path.basename(parent).casefold() == "scratchpad")
+    if tool == "Bash":
+        return bool(_WRIT_FILE.search(str(args.get("command") or "")))
+    if name == _PROCESS_WRITE:
+        return bool(_WRIT_FILE.search(str(args.get("text") or "")))
+    return False
+
+
+def _refresh_state(sid: str, plugin_root: str, base_env: Mapping[str, str] | None) -> None:
+    # The verdict is already out: a failure here must not cost the tool call its result.
+    try:
+        vibe_context.refresh(sid, plugin_root=plugin_root, base_env=base_env)
+    except Exception:  # noqa: BLE001, S110 -- fail quiet is the contract
+        pass
+
+
+# --------------------------------------------------------------------------- #
 # Entry
 # --------------------------------------------------------------------------- #
 def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, str] | None,
@@ -544,9 +581,12 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
             return _deny("Writ could not read Vibe's hook input, so this call is denied (fail-closed).")
         return ""
     name = str(envelope.get("tool_name") or "")
+    tool = _TOOLS.get(name)
+    if event == PRE and _names_writ_file(name, tool, _as_dict(envelope.get("tool_input")),
+                                         str(envelope.get("cwd") or "")):
+        return _deny(_WRIT_FILE_REASON)
     if name == _PROCESS_WRITE:
         return _process_write(event, envelope, session_resolver)
-    tool = _TOOLS.get(name)
     if tool is None:
         return ""
     if event == PRE and tool == "Bash":
@@ -600,6 +640,7 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
         result = {"decision": "deny", "reason": _render(outputs[-1])}
     if context:
         result["hook_specific_output"] = {"additional_context": context}
+    _refresh_state(sid, plugin_root, base_env)
     return json.dumps(result) if len(result) > 1 else ""
 
 

@@ -5,6 +5,7 @@ Typed inside Vibe as `!mistty approve`, `!mistty replan`, `!mistty grant manual-
 no hook, and shows the output to the model. So each command stands in for the Claude
 prompt turn it replaces: it hands Writ's own UserPromptSubmit hook the phrase the user
 would have typed there, or runs Writ's mode command. Every decision stays in those scripts.
+Then it rewrites Writ's state file in the session's scratchpad (vibe_context.py).
 
 Vibe keeps no Claude transcript, so `approve` sends the override phrase: the hook skips its
 "did the assistant ask" check and logs approval_evidence_override. The bridge (vibe.py)
@@ -20,7 +21,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping
 
-from writ.harness import vibe
+from writ.harness import vibe, vibe_context
 
 sys.path.insert(0, os.path.join(vibe.PLUGIN_ROOT, "bin", "lib"))
 # The phrases come from the modules that match them, so a drift cannot send one that no
@@ -113,6 +114,8 @@ def main(
             # The grant hook prints only after it reads a minted grant back from disk.
             rc, out = 1, "mistty: no manual-testing grant was minted; Writ's gate log has the reason.\n"
     sys.stdout.write(out)
+    # A `!` command runs between turns, so the next turn starts with the new state.
+    vibe_context.refresh(sid, plugin_root=plugin_root, base_env=base_env)
     return rc
 
 

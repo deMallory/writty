@@ -16,11 +16,17 @@ from pathlib import Path
 
 import pytest
 
-from writ.harness import vibe
+from writ.harness import vibe, vibe_context
 
 REPO = Path(__file__).resolve().parent.parent
 SHIM = REPO / "bin" / "writ-vibe-hook"
 FIXTURES = REPO / "tests" / "fixtures" / "vibe" / "envelopes.jsonl"
+
+
+@pytest.fixture(autouse=True)
+def _vibe_home(tmp_path, monkeypatch):
+    """Keeps every state refresh off the developer's own Vibe sessions."""
+    monkeypatch.setenv("VIBE_HOME", str(tmp_path / "vibe-home"))
 
 # Every stub logs what it received, so a test can read back the envelope and env.
 _PRELUDE = """#!/bin/bash
@@ -685,6 +691,185 @@ class TestProcessWrite:
         assert _handle(plugin, "post_tool", envelope, resolver=_no_lookup) == ""
         assert plugin.runs("all") == []
         assert plugin.runs("post") == []
+
+
+# --------------------------------------------------------------------------- #
+# Writ's state file in the scratchpad: refreshed after each tool call
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def refreshes(monkeypatch):
+    """Records every state refresh instead of running it."""
+    calls: list[tuple[str, dict]] = []
+
+    def fake(sid, **kwargs):
+        calls.append((sid, kwargs))
+        return True
+    monkeypatch.setattr(vibe_context, "refresh", fake)
+    return calls
+
+
+def _bash_post(cwd: Path) -> dict:
+    return _post(cwd, "file_system.bash", {"command": "ls"}, output={"stdout": "x"},
+                 text="stdout: x")
+
+
+class TestStateRefresh:
+    def test_post_tool_refreshes_after_the_scripts_ran(self, tmp_path, monkeypatch):
+        plugin = Plugin(tmp_path, {"PostToolUse": [{"matcher": "Bash", "scripts": {"p": ALLOW}}]})
+        seen = []
+
+        def fake(sid, **kwargs):
+            seen.append((sid, kwargs["plugin_root"], len(plugin.runs("p"))))
+            return True
+        monkeypatch.setattr(vibe_context, "refresh", fake)
+        _handle(plugin, "post_tool", _bash_post(tmp_path))
+        assert seen == [("sid-1", str(plugin.root), 1)]
+
+    @pytest.mark.parametrize("tool, tool_input", [
+        ("file_system.write_file", {"path": "a.py", "content": ""}),
+        ("file_system.read_file", {"path": "a.py"}),
+        ("grep", {"pattern": "x"}),
+        ("process.start", {"command": "make"}),
+    ])
+    def test_every_mapped_tool_refreshes(self, tmp_path, refreshes, tool, tool_input):
+        plugin = _any_script(tmp_path)
+        _handle(plugin, "post_tool", _post(tmp_path, tool, tool_input, output={"ok": True}))
+        assert [sid for sid, _ in refreshes] == ["sid-1"]
+
+    def test_pre_tool_does_not_refresh(self, tmp_path, refreshes):
+        plugin = _any_script(tmp_path)
+        _handle(plugin, "pre_tool", _pre(tmp_path, "file_system.bash", {"command": "ls"}))
+        assert refreshes == []
+
+    @pytest.mark.parametrize("tool, tool_input", [
+        ("subagent.spawn", {"agentName": "h", "message": "m"}),
+        ("process.write", {"processId": "p1", "text": "y\n"}),
+        ("vibe.unified_harness_scratchpad", {"action": "write", "path": "n.md", "content": "x"}),
+    ])
+    def test_unmapped_tools_do_not_refresh(self, tmp_path, refreshes, tool, tool_input):
+        plugin = _any_script(tmp_path)
+        _handle(plugin, "post_tool", _post(tmp_path, tool, tool_input, output={"ok": True}))
+        assert refreshes == []
+
+    def test_post_tool_without_a_session_does_not_refresh(self, tmp_path, refreshes):
+        plugin = _any_script(tmp_path)
+        _handle(plugin, "post_tool", _bash_post(tmp_path), sid=None)
+        assert refreshes == []
+
+    def test_a_failing_refresh_leaves_the_post_output_unchanged(self, tmp_path, monkeypatch):
+        plugin = Plugin(tmp_path, {"PostToolUse": [{"matcher": "Bash", "scripts": {"p": _json_body(
+            {"hookSpecificOutput": {"hookEventName": "PostToolUse",
+                                    "additionalContext": "CTX-1"}})}}]})
+        monkeypatch.setattr(vibe_context, "refresh", lambda sid, **kw: True)
+        expected = _handle(plugin, "post_tool", _bash_post(tmp_path))
+
+        def boom(sid, **kwargs):
+            raise RuntimeError("refresh exploded")
+        monkeypatch.setattr(vibe_context, "refresh", boom)
+        out = _handle(plugin, "post_tool", _bash_post(tmp_path))
+        assert out == expected
+        assert "CTX-1" in json.loads(out)["hook_specific_output"]["additional_context"]
+
+
+# --------------------------------------------------------------------------- #
+# Writ's state file in the scratchpad: the model may not write it
+# --------------------------------------------------------------------------- #
+_SCRATCHPAD = "vibe.unified_harness_scratchpad"
+
+
+def _file_write(tool: str, path: str) -> dict:
+    return {
+        "file_system.write_file": {"path": path, "content": "Mode: work\n"},
+        "write_file": {"file_path": path, "content": "Mode: work\n"},
+        "file_system.search_replace": {"file_path": path,
+                                       "content": [{"old_str": "a", "new_str": "b"}]},
+        "edit": {"file_path": path, "old_string": "a", "new_string": "b"},
+    }[tool]
+
+
+_FILE_WRITES = ["file_system.write_file", "write_file", "file_system.search_replace", "edit"]
+
+
+class TestWritFileWrites:
+    @pytest.mark.parametrize("path", ["0-writ.md", "./0-WRIT.md", "x/../0-writ.md", "0-Writ.md"])
+    def test_scratchpad_write_to_writs_file_is_denied_without_a_session_lookup(self, tmp_path,
+                                                                               path):
+        plugin = _any_script(tmp_path)
+        out = _handle(plugin, "pre_tool",
+                      _pre(tmp_path, _SCRATCHPAD,
+                           {"action": "write", "path": path, "content": "Mode: work\n"}),
+                      resolver=_no_lookup)
+        assert "0-writ.md" in _deny_reason(out)
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("tool_input", [
+        {"action": "read", "path": "0-writ.md"},
+        {"action": "list"},
+        {"action": "write", "path": "notes.md", "content": "x"},
+        {"action": "write", "path": "notes/0-writ.md", "content": "x"},
+    ])
+    def test_other_scratchpad_calls_pass(self, tmp_path, tool_input):
+        plugin = _any_script(tmp_path)
+        out = _handle(plugin, "pre_tool", _pre(tmp_path, _SCRATCHPAD, tool_input),
+                      resolver=_no_lookup)
+        assert out == ""
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("tool", _FILE_WRITES)
+    @pytest.mark.parametrize("path", [
+        "{home}/logs/session/unified/sid-1/scratchpad/0-writ.md",
+        "scratchpad/0-WRIT.md",
+    ])
+    def test_file_tool_writes_to_writs_file_are_denied_without_a_session_lookup(
+            self, tmp_path, tool, path):
+        plugin = _any_script(tmp_path)
+        target = path.replace("{home}", str(tmp_path / "vibe-home"))
+        out = _handle(plugin, "pre_tool", _pre(tmp_path, tool, _file_write(tool, target)),
+                      resolver=_no_lookup)
+        assert "0-writ.md" in _deny_reason(out)
+        assert plugin.runs("all") == []
+
+    @pytest.mark.parametrize("tool", _FILE_WRITES)
+    @pytest.mark.parametrize("path", ["scratchpad/notes.md", "notes/0-writ.md"])
+    def test_file_tool_writes_elsewhere_reach_the_scripts(self, tmp_path, tool, path):
+        plugin = _any_script(tmp_path)
+        assert _handle(plugin, "pre_tool", _pre(tmp_path, tool, _file_write(tool, path))) == ""
+        assert len(plugin.runs("all")) == 1
+
+    def test_reading_writs_file_reaches_the_scripts(self, tmp_path):
+        plugin = _any_script(tmp_path)
+        out = _handle(plugin, "pre_tool", _pre(tmp_path, "file_system.read_file",
+                                               {"path": "scratchpad/0-writ.md"}))
+        assert out == ""
+        assert len(plugin.runs("all")) == 1
+
+    @pytest.mark.parametrize("tool", ["bash", "file_system.bash", "process.start"])
+    @pytest.mark.parametrize("command", [
+        "echo 'Mode: work' > scratchpad/0-writ.md",
+        "cat ~/.mistty/logs/session/unified/s/scratchpad/0-WRIT.md",
+        "sed -i '' s/a/b/ 0-writ.md",
+    ])
+    def test_shell_commands_naming_writs_file_are_denied(self, tmp_path, tool, command):
+        plugin = _any_script(tmp_path)
+        out = _handle(plugin, "pre_tool", _pre(tmp_path, tool, {"command": command}),
+                      resolver=_no_lookup)
+        assert "0-writ.md" in _deny_reason(out)
+        assert plugin.runs("all") == []
+
+    def test_shell_commands_not_naming_it_reach_the_scripts(self, tmp_path):
+        plugin = _any_script(tmp_path)
+        out = _handle(plugin, "pre_tool", _pre(tmp_path, "file_system.bash",
+                                               {"command": "ls scratchpad"}))
+        assert out == ""
+        assert len(plugin.runs("all")) == 1
+
+    def test_typed_text_naming_writs_file_is_denied_in_any_mode(self, tmp_path, writ_cache):
+        writ_cache({"mode": "conversation"})
+        plugin = _any_script(tmp_path)
+        out = _handle(plugin, "pre_tool", _write(tmp_path, {"text": "cat > 0-writ.md\n"}),
+                      resolver=_no_lookup)
+        assert "0-writ.md" in _deny_reason(out)
+        assert plugin.runs("all") == []
 
 
 # --------------------------------------------------------------------------- #

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shlex
+import socket
 import stat
 import subprocess
 import tomllib
@@ -18,11 +19,30 @@ from pathlib import Path
 import pytest
 
 from writ.harness import vibe, vibe_install
+from writ.retrieval.prompt_bundle import render_always_on
 
 REPO = Path(__file__).resolve().parent.parent
 HOOK = REPO / "bin" / "writ-vibe-hook"
 LAUNCHER = REPO / "bin" / "mistty"
 BOOTSTRAP = REPO / "scripts" / "bootstrap-vibe.sh"
+
+RULES = ("=== ALWAYS-ACTIVE RULES ===\n[TEST-RULE-001] WHEN: always\n"
+         "  Say what you tested.\n=== END ALWAYS-ACTIVE RULES ===")
+# The real fetch, kept before the autouse stub below replaces it.
+_FETCH = vibe_install.fetch_rules
+
+
+class _Rules:
+    text: str | None = RULES
+
+
+@pytest.fixture(autouse=True)
+def rules(monkeypatch) -> _Rules:
+    """No test reaches the live daemon: fetch_rules answers from here. Set .text to None
+    for a daemon that is down."""
+    stub = _Rules()
+    monkeypatch.setattr(vibe_install, "fetch_rules", lambda: stub.text)
+    return stub
 
 
 @pytest.fixture
@@ -140,12 +160,112 @@ def test_matcher_covers_process_write_which_the_bridge_decides_itself(name):
 
 
 @pytest.mark.parametrize("name", [
+    "vibe.unified_harness_scratchpad", "VIBE.UNIFIED_HARNESS_SCRATCHPAD",
+])
+def test_matcher_covers_the_scratchpad_tool_which_holds_writs_state_file(name):
+    rx = re.compile(vibe_install.matcher().removeprefix("re:"), re.IGNORECASE)
+    assert rx.fullmatch(name)
+
+
+@pytest.mark.parametrize("name", [
     "subagent.spawn", "subagent.send_message", "task", "skill.read",
     "file_system.read_file_extra", "xbash",
 ])
 def test_matcher_rejects_tools_the_bridge_does_not_map(name):
     rx = re.compile(vibe_install.matcher().removeprefix("re:"), re.IGNORECASE)
     assert rx.fullmatch(name) is None
+
+
+# --------------------------------------------------------------------------- #
+# AGENTS.md
+# --------------------------------------------------------------------------- #
+def _agents(home: Path) -> str:
+    return (home / "AGENTS.md").read_text()
+
+
+def test_install_writes_agents_md_with_the_commands_and_the_rules(dirs, capsys):
+    rc, out = _install(dirs, capsys)
+    assert rc == 0
+    text = _agents(dirs["home"])
+    assert text.splitlines()[0] == vibe_install.AGENTS_MARKER
+    for needle in ("!mistty approve", "!mistty replan", "!mistty grant manual-test",
+                   "!mistty mode", "0-writ.md",
+                   "tool_skipped: Tool execution was skipped by Runtime policy.",
+                   "process.write", RULES):
+        assert needle in text, needle
+    assert f"write {dirs['home'] / 'AGENTS.md'}" in out
+
+
+def test_a_rerun_picks_up_changed_rules(dirs, capsys, rules):
+    assert _install(dirs, capsys)[0] == 0
+    rules.text = RULES.replace("TEST-RULE-001", "TEST-RULE-002")
+    assert _install(dirs, capsys)[0] == 0
+    text = _agents(dirs["home"])
+    assert "TEST-RULE-002" in text
+    assert "TEST-RULE-001" not in text
+
+
+def test_daemon_down_keeps_an_owned_agents_md(dirs, capsys, rules):
+    assert _install(dirs, capsys)[0] == 0
+    before = _agents(dirs["home"])
+    rules.text = None
+    rc, out = _install(dirs, capsys)
+    assert rc == 0
+    assert _agents(dirs["home"]) == before
+    assert "rules not refreshed" in out
+
+
+def test_daemon_down_on_a_first_install_writes_agents_md_without_rules(dirs, capsys, rules):
+    rules.text = None
+    rc, out = _install(dirs, capsys)
+    assert rc == 0
+    text = _agents(dirs["home"])
+    assert text.splitlines()[0] == vibe_install.AGENTS_MARKER
+    assert "!mistty approve" in text
+    assert "ALWAYS-ACTIVE" not in text
+    [line] = [li for li in out.splitlines() if "AGENTS.md" in li]
+    assert "rules" in line
+    assert "skipped" in line
+
+
+@pytest.mark.parametrize("content", ["my own notes\n", ""])
+def test_foreign_agents_md_stops_the_install_before_any_write(dirs, capsys, content):
+    dirs["home"].mkdir(mode=0o700)
+    (dirs["home"] / "AGENTS.md").write_text(content)
+    before = _snapshot(dirs["home"], dirs["bin"])
+    rc, out = _install(dirs, capsys)
+    assert rc == 1
+    assert "AGENTS.md" in out
+    assert _snapshot(dirs["home"], dirs["bin"]) == before
+
+
+class _Daemon:
+    def __init__(self, status: int, body: str):
+        self.status, self.body = status, body
+        self.calls: list[tuple[str, float]] = []
+
+    def __call__(self, path, socket_path=None, base_url=None, timeout=0.5):
+        self.calls.append((path, timeout))
+        return self.status, self.body
+
+
+_ALWAYS_ON = {"rules": [{"rule_id": "TEST-RULE-001", "trigger": "always",
+                         "statement": "Say what you tested."}], "total_tokens": 10}
+
+
+def test_fetch_rules_renders_the_daemons_always_on_bundle(monkeypatch):
+    daemon = _Daemon(200, json.dumps(_ALWAYS_ON))
+    monkeypatch.setattr(vibe_install.writ_daemon_client, "get_json", daemon)
+    assert _FETCH() == render_always_on(_ALWAYS_ON)[0]
+    assert daemon.calls == [("/always-on", 5.0)]
+
+
+@pytest.mark.parametrize("status, body", [
+    (0, ""), (500, "boom"), (200, "not json"), (200, "[]"), (200, json.dumps({"rules": []})),
+])
+def test_fetch_rules_is_none_when_the_daemon_gives_no_rules(monkeypatch, status, body):
+    monkeypatch.setattr(vibe_install.writ_daemon_client, "get_json", _Daemon(status, body))
+    assert _FETCH() is None
 
 
 # --------------------------------------------------------------------------- #
@@ -275,18 +395,32 @@ def test_check_is_skipped_when_vibe_is_not_on_path(dirs, capsys, tmp_path, monke
 # --------------------------------------------------------------------------- #
 # Bootstrap script
 # --------------------------------------------------------------------------- #
+def _no_daemon(tmp_path: Path) -> dict:
+    """The bootstrap runs in a subprocess, out of the stub's reach, so the daemon client
+    gets a socket and a port that nothing listens on."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    finally:
+        s.close()
+    return {**os.environ, "WRIT_SOCKET": str(tmp_path / "no-daemon.sock"),
+            "WRIT_SESSION_BASE": f"http://127.0.0.1:{port}"}
+
+
 def test_bootstrap_runs_from_any_cwd_and_forwards_flags(dirs, tmp_path):
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    proc = subprocess.run(["bash", str(BOOTSTRAP), *_flags(dirs)],
+    proc = subprocess.run(["bash", str(BOOTSTRAP), *_flags(dirs)], env=_no_daemon(tmp_path),
                           cwd=elsewhere, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert set(_hooks(dirs["home"])) == {"writ-pre", "writ-post"}
+    assert _agents(dirs["home"]).splitlines()[0] == vibe_install.AGENTS_MARKER
 
 
 def test_bootstrap_forwards_the_installer_exit_code(dirs, tmp_path):
     dirs["bin"].mkdir()
     (dirs["bin"] / "mistty").write_text("#!/bin/sh\n")
-    proc = subprocess.run(["bash", str(BOOTSTRAP), *_flags(dirs)],
+    proc = subprocess.run(["bash", str(BOOTSTRAP), *_flags(dirs)], env=_no_daemon(tmp_path),
                           cwd=tmp_path, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 1

@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from tests.test_harness_vibe import Plugin
-from writ.harness import vibe_user
+from writ.harness import vibe_context, vibe_user
 
 REPO = Path(__file__).resolve().parent.parent
 LAUNCHER = REPO / "bin" / "mistty"
@@ -28,6 +28,12 @@ import approval_match  # noqa: E402
 import manual_test_grant  # noqa: E402
 
 HEADER = "[mistty: Vibe session sid-1]"
+
+
+@pytest.fixture(autouse=True)
+def _vibe_home(tmp_path, monkeypatch):
+    """Keeps every state refresh off the developer's own Vibe sessions."""
+    monkeypatch.setenv("VIBE_HOME", str(tmp_path / "vibe-home"))
 
 
 def _stub(say: str = "", code: int = 0) -> str:
@@ -193,6 +199,55 @@ def test_invalid_mode_passes_writs_refusal_through(tmp_path, capsys):
     rc, out = _run(plugin, capsys, "mode", "bogus")
     assert rc != 0
     assert "Invalid mode: bogus" in out
+
+
+# --------------------------------------------------------------------------- #
+# Writ's state file in the scratchpad
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def refreshes(monkeypatch):
+    """Records every state refresh instead of running it."""
+    calls: list[tuple[str, dict]] = []
+
+    def fake(sid, **kwargs):
+        calls.append((sid, kwargs))
+        return True
+    monkeypatch.setattr(vibe_context, "refresh", fake)
+    return calls
+
+
+@pytest.mark.parametrize("argv, ran", [
+    (["approve"], "auto-approve-gate"),
+    (["replan"], "auto-approve-gate"),
+    (["grant", "manual-test"], "writ-manual-test-grant"),
+    (["mode", "work"], "mode"),
+])
+def test_each_command_refreshes_the_state_file_after_it_runs(tmp_path, capsys, monkeypatch,
+                                                             argv, ran):
+    plugin = _plugin(tmp_path)
+    seen = []
+
+    def fake(sid, **kwargs):
+        done = ((plugin.log / "mode.argv.json").exists() if ran == "mode"
+                else bool(plugin.runs(ran)))
+        seen.append((sid, kwargs["plugin_root"], kwargs["base_env"], done))
+        return True
+    monkeypatch.setattr(vibe_context, "refresh", fake)
+    _run(plugin, capsys, *argv)
+    assert seen == [("sid-1", str(plugin.root), plugin.env(), True)]
+
+
+def test_a_failed_command_still_refreshes(tmp_path, capsys, refreshes):
+    plugin = _plugin(tmp_path)
+    rc, _ = _run(plugin, capsys, "mode", "bogus")
+    assert rc != 0
+    assert [sid for sid, _ in refreshes] == ["sid-1"]
+
+
+def test_no_live_session_refreshes_nothing(tmp_path, capsys, refreshes):
+    plugin = _plugin(tmp_path)
+    _run(plugin, capsys, "approve", sid=None)
+    assert refreshes == []
 
 
 # --------------------------------------------------------------------------- #

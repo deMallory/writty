@@ -4,6 +4,12 @@
 those sessions only. Plain `vibe` and ~/.vibe stay ungoverned for non-coding use. The
 home shares `.env` and `config.toml` with ~/.vibe by symlink and nothing else.
 
+The home's AGENTS.md tells the model how Writ governs the session. Vibe loads it into the
+system instructions once, when a session starts, and caps nothing, so it also carries
+Writ's always-on rules: they need the authority of instructions and twice the room the
+scratchpad has (vibe_context.py carries the per-turn state). The rules are a snapshot
+taken from the daemon at install time; a rule change reaches mistty on the next bootstrap.
+
 Every conflict is found before the first write, so a refused install leaves no trace.
 Run it through scripts/bootstrap-vibe.sh. Stdlib-only, like the bridge.
 """
@@ -23,11 +29,70 @@ import tomllib
 from pathlib import Path
 
 from writ.harness.vibe import _BRIDGE_TOOLS, _TOOLS, PLUGIN_ROOT, POST, PRE
+from writ.harness.vibe_context import WRIT_FILE
+from writ.retrieval.prompt_bundle import render_always_on
+
+sys.path.insert(0, os.path.join(PLUGIN_ROOT, "bin", "lib"))
+import writ_daemon_client  # type: ignore[import-not-found]  # noqa: E402
 
 HOOK = Path(PLUGIN_ROOT) / "bin" / "writ-vibe-hook"
 LAUNCHER = Path(PLUGIN_ROOT) / "bin" / "mistty"
 SHARED = (".env", "config.toml")
 _OWNED = "writ-"
+AGENTS_MARKER = "<!-- Written by writty's scripts/bootstrap-vibe.sh, which owns this file. -->"
+_RULES_TIMEOUT_S = 5.0
+
+_AGENTS = f"""\
+{AGENTS_MARKER}
+# Writ governs this session
+
+mistty is Mistral Vibe under Writ. Writ checks each file write, edit and shell command
+before it runs, and refuses the ones the session's mode and gates do not allow yet.
+
+## Modes
+
+The user sets the mode with `!mistty mode <mode>`. With no mode set, Writ refuses every
+write.
+
+- `work`: plan, then tests, then code. Write plan.md and capabilities.md in the session's
+  plan folder and stop for approval. Then write the test files the plan names and stop for
+  approval. Only then edit source files.
+- `debug`: source edits stay refused until the session's debug.md records the root cause.
+- `review`: evaluate code against Writ's rules and report findings.
+- `conversation`: no code changes are expected.
+- `investigate`: explore, audit or research, with every finding grounded in evidence.
+
+## Only the user moves Writ
+
+Writ advances when the user types one of these in mistty:
+
+- `!mistty approve`: approve the pending gate (the plan, then the tests).
+- `!mistty replan`: send a session in implementation back to planning.
+- `!mistty grant manual-test`: concede manual testing for 30 minutes.
+- `!mistty mode <mode>`: set the mode, which restarts its workflow.
+
+You cannot run them: Writ refuses them in your shell calls. When you need one, stop and
+ask the user to type it. A chat message does not advance Writ, even one that says
+"approved"; if the user approves in chat, ask them to type `!mistty approve`.
+
+## Writ's state
+
+`{WRIT_FILE}` in your scratchpad holds the session's mode, phase, pending gate, plan
+folder and next step. Writ rewrites it after each tool call and each `!mistty` command.
+Read it there and never write it; keep your own notes in other scratchpad files. A new
+session has none until the first tool call or `!mistty` command.
+
+## Refusals
+
+A direct tool call that Writ refuses fails with Writ's reason. Inside `run_typescript`, a
+refused call fails as `tool_skipped: Tool execution was skipped by Runtime policy.` and
+Vibe drops the reason. Treat it as a Writ refusal: do not work around it with another
+call. To see the reason, make the same call directly, outside `run_typescript`, or tell
+the user what was refused.
+
+`process.write` text is refused in work mode, in debug mode and with no mode set. Pass
+the input as a flag (`--yes`) or pipe it in through bash (`printf 'y\\n' | cmd`).
+"""
 
 # Runs under Vibe's own interpreter: the same loader a session uses, in strict mode.
 _LOAD = (
@@ -73,10 +138,20 @@ def _conflicts(home: Path, bin_dir: Path) -> list[str]:
             if foreign:
                 found.append(f"{hooks} holds hooks this installer does not own: "
                              f"{', '.join(foreign)}")
+    agents = home / "AGENTS.md"
+    if (agents.exists() or agents.is_symlink()) and not _owns_agents(agents):
+        found.append(f"{agents} was not written by this installer; move it aside and rerun")
     link = bin_dir / "mistty"
     if (link.exists() or link.is_symlink()) and not _links_to(link, LAUNCHER):
         found.append(f"{link} exists and is not a link to {LAUNCHER}")
     return found
+
+
+def _owns_agents(path: Path) -> bool:
+    try:
+        return path.read_text().split("\n", 1)[0] == AGENTS_MARKER
+    except (OSError, UnicodeDecodeError):
+        return False
 
 
 def _links_to(link: Path, target: Path) -> bool:
@@ -95,14 +170,52 @@ def _share(home: Path, source_home: Path, name: str) -> str:
     return f"link {name} -> {src}"
 
 
+def _replace(path: Path, text: str) -> None:
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
 def _write_hooks(home: Path) -> str:
     path, text = home / "hooks.toml", render_hooks()
     if path.exists() and path.read_text() == text:
         return "keep hooks.toml: up to date"
-    fd, tmp = tempfile.mkstemp(dir=home, prefix=".hooks.toml.")
-    with os.fdopen(fd, "w") as f:
-        f.write(text)
-    os.replace(tmp, path)
+    _replace(path, text)
+    return f"write {path}"
+
+
+def fetch_rules() -> str | None:
+    """Writ's always-on rules, rendered as the prompt hook renders them, or None when the
+    daemon gave none."""
+    status, body = writ_daemon_client.get_json("/always-on", timeout=_RULES_TIMEOUT_S)
+    if status != 200:
+        return None
+    try:
+        bundle = json.loads(body)
+    except ValueError:
+        return None
+    if not isinstance(bundle, dict):
+        return None
+    return render_always_on(bundle)[0] or None
+
+
+def render_agents(rules: str | None) -> str:
+    if not rules:
+        return _AGENTS
+    return f"{_AGENTS}\n## Writ's always-active rules\n\n{rules}\n"
+
+
+def _write_agents(home: Path) -> str:
+    path, rules = home / "AGENTS.md", fetch_rules()
+    if rules is None and path.exists():
+        return f"keep {path}: the Writ daemon gave no rules, so rules not refreshed"
+    text = render_agents(rules)
+    if path.exists() and path.read_text() == text:
+        return "keep AGENTS.md: up to date"
+    _replace(path, text)
+    if rules is None:
+        return f"write {path}: rules skipped, the Writ daemon gave none; rerun once it runs"
     return f"write {path}"
 
 
@@ -161,6 +274,7 @@ def main(argv: list[str] | None = None) -> int:
     for name in SHARED:
         print(_share(home, source_home, name))
     print(_write_hooks(home))
+    print(_write_agents(home))
     bin_dir.mkdir(parents=True, exist_ok=True)
     if not _links_to(bin_dir / "mistty", LAUNCHER):
         (bin_dir / "mistty").symlink_to(LAUNCHER)
