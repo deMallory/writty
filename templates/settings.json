@@ -443,6 +443,15 @@
         ]
       },
       {
+        "matcher": "Write|Edit|write|search_replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-validate-plan-draft.sh\""
+          }
+        ]
+      },
+      {
         "matcher": "Write|write",
         "hooks": [
           {

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Mistral Vibe under Writ. Vibe reads its whole config from VIBE_HOME, so the hooks.toml
+# that scripts/bootstrap-vibe.sh writes there governs these sessions only. Plain `vibe`
+# with ~/.vibe stays ungoverned.
+VIBE_HOME="${MISTTY_HOME:-$HOME/.mistty}"
+export VIBE_HOME
+case "${1:-}" in
+    approve|replan|grant|mode)
+        # Writ commands only the user may run, typed as `!mistty <verb>` in a session.
+        # The bridge refuses them to the model. $0 is the ~/.local/bin link, so resolve it.
+        root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+        PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m writ.harness.vibe_user "$@"
+        ;;
+esac
+exec vibe "$@"

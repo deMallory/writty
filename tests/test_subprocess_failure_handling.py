@@ -38,6 +38,14 @@ HANDLED_SITES = {
     "writ/session/git_identity.py": "raises NotInRepoError carrying the returncode",
     "writ/analysis/pair_ledger.py": "check=False, then each caller reads returncode; "
                                     "a failed git reads as untracked or undated",
+    "writ/harness/vibe.py": "keeps each hook script's returncode for the caller to read; "
+                            "a failed ps reads as no parent process",
+    "writ/harness/vibe_context.py": "a non-zero current-phase exit returns None, and the "
+                                    "state file is not rewritten",
+    "writ/harness/vibe_install.py": "a non-zero loader exit is an install issue that fails "
+                                    "the install",
+    "writ/harness/vibe_user.py": "returns the helper's returncode; a failed hook script "
+                                 "exits 1 naming its code",
 }
 
 

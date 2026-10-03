@@ -9,7 +9,7 @@ Four source-derived counts:
   node types  -- len(NODE_ID_FIELDS)  == 13
   edge types  -- len(ALLOWED_EDGE_TYPES) == 24
   modes       -- len(MODE_CONFIG)     == 5
-  hooks       -- json.load hooks/hooks.json, count "command" leaves == 50
+  hooks       -- json.load hooks/hooks.json, count "command" leaves == 51
   endpoints   -- regex @app/@router route decorators across writ/server/**.py == 52
 """
 from __future__ import annotations
@@ -120,8 +120,8 @@ class TestDocCounts:
         # tests/plugin/test_hooks_routing, and a HANDBOOK sentence's worth of drift), so a
         # deliberate change now edits one assertion instead of four.
         source_count = _count_hooks_json_entries()
-        assert source_count == 50, (
-            f"hooks/hooks.json has {source_count} 'command' entries; expected 50. "
+        assert source_count == 51, (
+            f"hooks/hooks.json has {source_count} 'command' entries; expected 51. "
             "Bump this (and HANDBOOK 'registers **N hook scripts**') when adding or "
             "removing a registration."
         )

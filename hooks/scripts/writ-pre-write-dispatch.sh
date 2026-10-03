@@ -34,6 +34,10 @@ source "$_WRIT_BOOTSTRAP_DIR/../../bin/lib/common.sh"
 # TestSkillDirResolvedWithoutDirname), not assumed.
 SKILL_DIR="$_WRIT_SKILL_DIR"
 SESSION_HELPER="$SKILL_DIR/bin/lib/writ-session.py"
+# The translator below imports writ.harness.decisions from $WRIT_DIR. No harness sets it,
+# and an empty entry puts the hook's cwd on sys.path, so outside this repo the import
+# failed and every verdict turned into an ENF-DECIDER-INCOMPLETE ask.
+export WRIT_DIR="${WRIT_DIR:-$SKILL_DIR}"
 
 # WRIT_HOOK_LOG stderr breadcrumb sink, gated by WRIT_DEBUG: /dev/null when unset,
 # ${WRIT_HOOK_LOG:-/tmp/writ-hooks.log} when WRIT_DEBUG=1 (single source: common.sh).
@@ -429,6 +433,7 @@ else
     # file path + content match their trigger_keywords. Same plain-stdout mechanism as the
     # file-context rules below. Off => no fetch, no behavior change.
     AO_WRITE_BLOCK=""
+    AO_WRITE_IDS=""
     # Applicability filter DEFAULT ON (#N2): write-time injection now delivers via
     # hookSpecificOutput.additionalContext (#2 -- the allow-path block below was moved off bare
     # stdout), so the deferred write-scoped rules reach the model at the write moment. Parity
@@ -442,23 +447,31 @@ else
             --data-urlencode "at=write" \
             --data-urlencode "context=${WRITE_CTX}" \
             "http://${WRIT_SESSION_HOST}:${WRIT_SESSION_PORT}/always-on" 2>/dev/null) || true
-        AO_WRITE_BLOCK=$(printf '%s' "$AO_WRITE_JSON" | python3 -c "
+        _AO_OUT=$(printf '%s' "$AO_WRITE_JSON" | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)
 except Exception:
     raise SystemExit
 rules = d.get('rules') or []
+shown = []
+out = []
 if rules:
-    out = ['=== APPLICABLE RULES (this write) ===']
+    out.append('=== APPLICABLE RULES (this write) ===')
     for r in rules:
         rid = r.get('rule_id', ''); trig = (r.get('trigger') or '').strip(); stmt = (r.get('statement') or '').strip()
         if rid and trig and stmt:
+            shown.append(rid)
             out.append(f'[{rid}] WHEN: {trig}')
             out.append(f'  {stmt}')
     out.append('=== END APPLICABLE RULES ===')
+# First line: the IDs the model is shown, for the session cache. The rest: the block.
+print(json.dumps(shown))
+if out:
     print('\n'.join(out))
 " 2>/dev/null)
+        AO_WRITE_IDS="${_AO_OUT%%$'\n'*}"
+        case "$_AO_OUT" in *$'\n'*) AO_WRITE_BLOCK="${_AO_OUT#*$'\n'}" ;; esac
     fi
     # RAG_RULES_RAW arrives flattened (newlines collapsed to spaces) so the
     # 6-field transport above stays single-line per field. Render as-is.
@@ -498,9 +511,16 @@ PY
     # `update ""` creates a REAL cache file named for the empty string and files this
     # turn's rules under a session that can never be read back. The critical error was
     # already recorded up top; this is the no-op that follows it.
+    # Write-time always-on IDs go to always_on_rule_ids, never loaded_rule_ids (the ranked
+    # query's exclude list), so the approval accepts a citation of a rule shown here.
+    _AO_ARGS=()
+    if [ -n "$AO_WRITE_IDS" ] && [ "$AO_WRITE_IDS" != "[]" ]; then
+        _AO_ARGS=(--add-always-on-rules "$AO_WRITE_IDS")
+    fi
     if [ -n "$SESSION_ID" ] && [ -n "$NEW_RULE_IDS" ] && [ "$NEW_RULE_IDS" != "[]" ]; then
         _writ_session update "$SESSION_ID" \
             --add-rules "$NEW_RULE_IDS" \
+            ${_AO_ARGS[@]+"${_AO_ARGS[@]}"} \
             --cost "${COST:-0}" \
             --inc-queries 2>>"$WRIT_HOOK_LOG_SINK" || true
         if [ -n "$DECISION_FILE" ]; then
@@ -513,6 +533,8 @@ PY
         # `writ analyze-friction`; flip mechanism to additionalContext when #2
         # moves this emit into hookSpecificOutput.
         log_rag_query_event "$SESSION_ID" "${MODE:-}" "file-write-pre" "${COST:-0}" "$NEW_RULE_IDS" "" "PreToolUse" "additionalContext"
+    elif [ -n "$SESSION_ID" ] && [ ${#_AO_ARGS[@]} -gt 0 ]; then
+        _writ_session update "$SESSION_ID" "${_AO_ARGS[@]}" 2>>"$WRIT_HOOK_LOG_SINK" || true
     fi
 fi
 
