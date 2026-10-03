@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Vibe hook entry point: `writ-vibe-hook pre_tool|post_tool`, Vibe's envelope on stdin.
+
+All logic lives in writ/harness/vibe.py. Register the pre_tool hook with strict = true,
+so a crash before this prints still denies the call.
+"""
+
+import os
+import sys
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from writ.harness.vibe import main  # noqa: E402
+
+sys.exit(main())
