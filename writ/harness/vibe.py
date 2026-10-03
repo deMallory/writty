@@ -52,6 +52,19 @@ _TOOLS: dict[str, str] = {
     "grep": "Grep",
 }
 
+# The user's own Writ commands (vibe_user.py) in a model shell call. Vibe gives a `!`
+# command and a model shell call the same environment and the same ancestry (both are
+# new-session children of the Vibe process), so the command text is the only signal, and
+# a command assembled at run time slips past. Case-insensitive because macOS volumes are.
+_USER_ONLY = re.compile(r"\bmistty\s+(?:approve|replan|grant|mode)\b|\bvibe_user\b",
+                        re.IGNORECASE)
+_USER_ONLY_REASON = (
+    "`mistty approve`, `replan`, `grant` and `mode` are the user's own Writ commands, so "
+    "Writ refuses them to the model. Ask the user to type the one you need themselves, "
+    "with the `!` prefix: `!mistty approve`, `!mistty replan`, `!mistty grant manual-test` "
+    "or `!mistty mode <mode>`."
+)
+
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _SCRIPT_NAME = re.compile(r"([\w.-]+)\.(?:sh|py)\b")
 _MAX_WALK = 30
@@ -467,8 +480,13 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
         if event == PRE:
             return _deny("Writ could not read Vibe's hook input, so this call is denied (fail-closed).")
         return ""
-    if str(envelope.get("tool_name") or "") not in _TOOLS:
+    tool = _TOOLS.get(str(envelope.get("tool_name") or ""))
+    if tool is None:
         return ""
+    if event == PRE and tool == "Bash":
+        command = str(_as_dict(envelope.get("tool_input")).get("command") or "")
+        if _USER_ONLY.search(command):
+            return _deny(_USER_ONLY_REASON)
     sid = session_resolver(envelope)
     if not sid:
         if event == PRE:

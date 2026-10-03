@@ -525,6 +525,54 @@ class TestSessionId:
 
 
 # --------------------------------------------------------------------------- #
+# User-only commands (`!mistty approve` and the rest)
+# --------------------------------------------------------------------------- #
+_USER_ONLY_COMMANDS = [
+    "mistty approve",
+    "mistty replan",
+    "mistty grant manual-test",
+    "mistty mode work",
+    "~/.local/bin/mistty approve",
+    "MISTTY approve",
+    "python3 -m writ.harness.vibe_user approve",
+]
+
+
+def _no_session_lookup(_env):
+    raise AssertionError("the user-only deny must not need a session")
+
+
+class TestUserOnlyCommands:
+    @pytest.mark.parametrize("tool", ["bash", "file_system.bash", "process.start"])
+    @pytest.mark.parametrize("command", _USER_ONLY_COMMANDS)
+    def test_model_shell_call_running_a_user_command_is_denied(self, tmp_path, tool, command):
+        plugin = Plugin(tmp_path, {"PreToolUse": [{"matcher": "Bash", "scripts": {"b": ALLOW}}]})
+        out = _handle(plugin, "pre_tool", _pre(tmp_path, tool, {"command": command}),
+                      resolver=_no_session_lookup)
+        assert "!mistty" in _deny_reason(out)
+        assert plugin.runs("b") == []
+
+    @pytest.mark.parametrize("command", [
+        "ls ~/dev/mistty",
+        "mistty --version",
+        ".venv/bin/python -m pytest tests/test_harness_vibe_user.py -q",
+    ])
+    def test_other_commands_naming_mistty_reach_the_scripts(self, tmp_path, command):
+        plugin = Plugin(tmp_path, {"PreToolUse": [{"matcher": "Bash", "scripts": {"b": ALLOW}}]})
+        out = _handle(plugin, "pre_tool", _pre(tmp_path, "file_system.bash", {"command": command}))
+        assert out == ""
+        assert [r["tool_input"]["command"] for r in plugin.runs("b")] == [command]
+
+    def test_a_write_mentioning_the_command_is_not_refused(self, tmp_path):
+        plugin = Plugin(tmp_path, {"PreToolUse": [{"matcher": "Write", "scripts": {"w": ALLOW}}]})
+        out = _handle(plugin, "pre_tool", _pre(
+            tmp_path, "file_system.write_file",
+            {"path": "notes.md", "content": "Type `!mistty approve` to advance.\n"}))
+        assert out == ""
+        assert len(plugin.runs("w")) == 1
+
+
+# --------------------------------------------------------------------------- #
 # Captured envelopes
 # --------------------------------------------------------------------------- #
 _CAPTURED = [json.loads(line) for line in FIXTURES.read_text().splitlines() if line.strip()]
