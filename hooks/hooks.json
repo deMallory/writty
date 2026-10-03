@@ -442,6 +442,15 @@
         ]
       },
       {
+        "matcher": "Write|Edit|write|search_replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-validate-plan-draft.sh\""
+          }
+        ]
+      },
+      {
         "matcher": "Write|write",
         "hooks": [
           {

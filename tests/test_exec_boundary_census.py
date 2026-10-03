@@ -58,15 +58,16 @@ BOUNDED = "bounded"
 # looked up in ITS OWN derived population below rather than a merged one, so a
 # site moving between the two roots is still caught by the per-root lookup.
 # The ONE canonical count of exec-boundary payload crossings the detector finds across both
-# roots, 65 under hooks/scripts and 2 under bin/lib. The extra hooks site against upstream's
-# 64 is the fork spec-done argv crossing in writ-subagent-stop.sh (session ids, bounded).
+# roots, 66 under hooks/scripts and 2 under bin/lib. The two extra hooks sites against
+# upstream's 64 are the fork spec-done argv crossing in writ-subagent-stop.sh (session ids,
+# bounded) and the plan-draft check's argv in writ-validate-plan-draft.sh (a path, bounded).
 # Was 68 until the per-Read session-id/file_path parse in writ-read-rag.sh and the
 # SubagentStart extractions moved off two crossings. Held here and nowhere
 # else: a duplicated count pin is what this repo's "a broken count pin is usually a
 # DUPLICATE" lesson is about. Most of these carry values bounded by construction, which is
 # why the map below classifies only the ones that matter while this number forces a look at
 # anything new. Lower it when a crossing is removed; add a CENSUS entry when one appears.
-DERIVED_SITE_COUNT = 67
+DERIVED_SITE_COUNT = 68
 
 
 class CensusSite(NamedTuple):
@@ -254,6 +255,18 @@ CENSUS: dict[str, CensusSite] = {
             "characters, so this is not the review payload: the sibling record call "
             "puts that message on stdin. A failure here loses the spec-done flag and "
             "writes a friction row; the stop outcome stays fire-and-forget"
+        ),
+    ),
+    "plan-draft-check-argv": CensusSite(
+        script="writ-validate-plan-draft.sh",
+        anchor='"$SESSION_ID" "$CWD" "$HOOK_FILE_PATH"',
+        status=BOUNDED,
+        reason=(
+            "the PostToolUse plan check passes the session id, the cwd and the written "
+            "plan path on argv. The id is at most 128 characters and both paths are "
+            "bounded by PATH_MAX (4096); the plan text itself is read from disk by "
+            "_validate_phase_a, never passed. A failure here drops the context line "
+            "only: the hook decides nothing"
         ),
     ),
 }

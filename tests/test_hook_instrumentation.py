@@ -61,6 +61,7 @@ TIMING_ONLY_HOOKS = [
     "writ-bible-authoring-push.sh",
     "writ-blackbox-capture.sh",
     "writ-quality-judge.sh",
+    "writ-validate-plan-draft.sh",
     "writ-web-capture.sh",
 ]
 
