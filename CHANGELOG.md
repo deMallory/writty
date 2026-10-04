@@ -4,6 +4,10 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **A chat `approved` in Mistty can advance a gate.** Mistty's `user_prompt` envelope carries `last_assistant_message`, the reply the prompt answers, or null once the user has written since. `bin/lib/approval_evidence.py` reads the approval request from that field when present, and from the transcript as before when not. Before this, Mistty's transcript gave no evidence and every approval took the ask path. The `approval_evidence_missing` row gains `had_last_assistant_message`.
+
 ### Fixed
 
 - **The test suite stops writing into the real session store.** `tests/conftest.py` kept an already-set `WRIT_CACHE_DIR`, and Claude Code pins it to `~/.cache/writ/session`; the Python hook client also fell back to the live daemon's socket, which wrote test sessions into the same folder (516 leftovers found on 2026-10-03). The addopts plugin `tests/_log_isolation.py` now assigns a throwaway cache folder and socket path, `--noconftest` runs included.

@@ -96,6 +96,18 @@ evidence, because a whole-prompt destructive phrase IS its own referent, and bec
 `cmd_reopen_planning` re-reads mode, phase and the pending gate authoritatively before it
 resets anything.
 
+**Addendum (MTY-33, 2026-10-04): a host may send the evidence in the envelope.** Mistty's
+transcript is not in Claude Code's shape, so the reader above finds nothing there and
+every Mistty approval took the ask path. Mistty's `user_prompt` envelope now carries
+`last_assistant_message`: the newest assistant text since the user last wrote, or null
+once the user has written since. The host applies the adjacency rule, not Writ. When the
+field is present, `envelope_evidence_flags` matches the marker set against it and does not
+read the transcript; a null is no evidence. The forgery residual above narrows here: the
+host builds the field from its own session state, so no file sits between it and the hook
+for an agent to append to. The `approval_evidence_missing` row records
+`had_last_assistant_message`, so a Mistty session (no transcript path, field present) is
+not mistaken for a transcript failure.
+
 ## Decision 2: the token check for `--promote` lives IN THE CLI, not behind a daemon route
 
 `typer.confirm` is DELETED from the promote path and replaced by the same gate token the
