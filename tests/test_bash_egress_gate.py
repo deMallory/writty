@@ -136,6 +136,16 @@ class TestEgressExtraction:
         result = _extract_egress("wget --post-data='a=1' https://example.com/x")
         assert any(host == "example.com" for host, _ in result), result
 
+    @pytest.mark.parametrize("flag", ["--unix-socket", "--abstract-unix-socket"])
+    def test_unix_socket_value_is_not_mistaken_for_the_url(self, flag):
+        # Consumed as a VALUE, the socket path leaves the URL naming localhost,
+        # and an allowlisted host emits no egress row at all: the `egress\t`
+        # output is per NON-allowlisted destination. Misparsed, the socket path
+        # shadows the URL and an empty-host row comes back.
+        cmd = (f"curl {flag} /home/u/.cache/writ/run/writ.sock "
+               "-d '{\"a\":1}' http://localhost/session/x")
+        assert _extract_egress(cmd) == set(), cmd
+
     @pytest.mark.parametrize("cmd", [
         "curl https://api.example.com/x",
         "curl -o out.json https://api.example.com/x",
@@ -257,6 +267,18 @@ class TestEgressAskDecision:
 
     def test_curl_post_payload_asks_naming_host(self, tmp_path: Path):
         out = self._ask(CURL_JSON_POST, tmp_path)
+        assert out is not None and out.get("permissionDecision") == "ask"
+        assert "api.example.com" in out.get("permissionDecisionReason", "")
+
+    def test_unix_socket_value_before_the_url_does_not_prompt(self, tmp_path: Path):
+        cmd = ("curl --unix-socket /home/u/.cache/writ/run/writ.sock "
+               "-d '{\"a\":1}' http://localhost/session/x")
+        assert self._ask(cmd, tmp_path) is None
+
+    def test_unix_socket_flag_does_not_silence_a_remote_payload(self, tmp_path: Path):
+        cmd = ("curl --unix-socket /home/u/.cache/writ/run/writ.sock "
+               "-d 'a=1' https://api.example.com/x")
+        out = self._ask(cmd, tmp_path)
         assert out is not None and out.get("permissionDecision") == "ask"
         assert "api.example.com" in out.get("permissionDecisionReason", "")
 
