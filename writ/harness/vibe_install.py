@@ -35,6 +35,8 @@ from writ.harness.vibe import (
     PLUGIN_ROOT,
     POST,
     PRE,
+    PROMPT,
+    START,
     STOP_SCRIPT_TIMEOUT_S,
 )
 from writ.harness.vibe_context import WRIT_FILE
@@ -61,8 +63,10 @@ before it runs, and refuses the ones the session's mode and gates do not allow y
 
 ## Modes
 
-The user sets the mode with `!mistty mode <mode>`. With no mode set, Writ refuses every
-write.
+With no mode set, Writ refuses every write. Set the mode the task needs yourself: run
+`mistty mode <mode>` in your shell, or the `writ mode set <mode> <session_id>` that
+Writ's context names. Setting a mode restarts its workflow, so never set the mode already
+in force. The user can also type `!mistty mode <mode>`.
 
 - `work`: plan, then tests, then code. Write plan.md and capabilities.md in the session's
   plan folder and stop for approval. Then write the test files the plan names and stop for
@@ -72,25 +76,28 @@ write.
 - `conversation`: no code changes are expected.
 - `investigate`: explore, audit or research, with every finding grounded in evidence.
 
-## Only the user moves Writ
+## Only the user moves the gates
 
 Writ advances when the user types one of these in mistty:
 
 - `!mistty approve`: approve the pending gate (the plan, then the tests).
 - `!mistty replan`: send a session in implementation back to planning.
 - `!mistty grant manual-test`: concede manual testing for 30 minutes.
-- `!mistty mode <mode>`: set the mode, which restarts its workflow.
 
 You cannot run them: Writ refuses them in your shell calls. When you need one, stop and
-ask the user to type it. A chat message does not advance Writ, even one that says
-"approved"; if the user approves in chat, ask them to type `!mistty approve`.
+ask the user to type it.
+
+The user can also approve the pending gate in chat, by replying `approved` to your
+request. Writ counts that reply only when your previous message asked for it, so end the
+message that presents the plan or the tests with `Say approved to proceed.` Writ advances
+the gate before your turn starts and says so in its context for that prompt.
 
 ## Writ's state
 
 `{WRIT_FILE}` in your scratchpad holds the session's mode, phase, pending gate, plan
-folder and next step. Writ rewrites it after each tool call and each `!mistty` command.
-Read it there and never write it; keep your own notes in other scratchpad files. A new
-session has none until the first tool call or `!mistty` command.
+folder and next step. Writ rewrites it after each prompt, each tool call and each
+`!mistty` command. Read it there and never write it; keep your own notes in other
+scratchpad files. A new session has none until its first prompt.
 
 ## End of turn
 
@@ -145,10 +152,14 @@ def render_hooks() -> str:
         if strict:
             # A bridge that crashes before printing still denies the call.
             out += "strict = true\n"
-    # Vibe's loader refuses match and strict on post_agent.
+    # Vibe's loader refuses match and strict on post_agent, user_prompt and session_start.
     out += (f'\n[[hooks]]\nname = "writ-stop"\ntype = "{AGENT}"\n'
             f"command = {json.dumps(f'{shlex.quote(str(HOOK))} {AGENT}')}\n"
             f"timeout = {_STOP_TIMEOUT_S}\n")
+    # Vibe's default timeout, 60 s, outlasts the bridge's 30 s per script.
+    for name, event in (("writ-prompt", PROMPT), ("writ-session-start", START)):
+        out += (f'\n[[hooks]]\nname = "{name}"\ntype = "{event}"\n'
+                f"command = {json.dumps(f'{shlex.quote(str(HOOK))} {event}')}\n")
     return out
 
 

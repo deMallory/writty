@@ -4,11 +4,16 @@
 # with ~/.vibe stays ungoverned.
 VIBE_HOME="${MISTTY_HOME:-$HOME/.mistty}"
 export VIBE_HOME
+# $0 is the ~/.local/bin link, so resolve it.
+root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+# Claude Code puts the plugin's bin/ on the Bash tool's PATH, and Writ's context tells the
+# model to run `writ mode set <mode> <sid>`. Another `writ` on PATH has no mode command.
+PATH="$root/bin:$PATH"
+export PATH
 case "${1:-}" in
     approve|replan|grant|mode)
-        # Writ commands only the user may run, typed as `!mistty <verb>` in a session.
-        # The bridge refuses them to the model. $0 is the ~/.local/bin link, so resolve it.
-        root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+        # Writ commands, typed as `!mistty <verb>` in a session. The bridge refuses all
+        # but mode to the model.
         PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m writ.harness.vibe_user "$@"
         ;;
 esac

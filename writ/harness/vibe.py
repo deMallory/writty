@@ -1,9 +1,10 @@
-"""Run Writ's Claude hook scripts for Mistral Vibe tool calls and turn ends.
+"""Run Writ's Claude hook scripts for Mistral Vibe tool calls, prompts and turn ends.
 
-Vibe calls `bin/writ-vibe-hook pre_tool|post_tool|post_agent` with its own envelope on
-stdin. This module translates that envelope to the Claude envelope the scripts in
-hooks/hooks.json read, runs the scripts that match, and translates their answers back to
-Vibe's output. post_agent runs the Stop scripts at the end of a turn.
+Vibe calls `bin/writ-vibe-hook pre_tool|post_tool|post_agent|user_prompt|session_start`
+with its own envelope on stdin. This module translates that envelope to the Claude
+envelope the scripts in hooks/hooks.json read, runs the scripts that match, and translates
+their answers back to Vibe's output. post_agent runs the Stop scripts at the end of a
+turn, user_prompt the UserPromptSubmit scripts and session_start the SessionStart scripts.
 Every verdict still comes from the scripts, except three Vibe has and Claude lacks: the
 user's own `!mistty` commands, typed input to a running process (`process.write`), and
 Writ's state file in the scratchpad, which the bridge rewrites after each tool call
@@ -16,8 +17,9 @@ Vibe's contract (2.25.8, mistralai_vibe_local_harness/vibe/_foreign_hooks.py): e
 JSON on stdout. `{"decision": "deny", "reason": ...}` blocks a pre_tool call, and in
 post_tool replaces the result the model sees, and in post_agent re-runs the turn with the
 reason as a user message, at most 3 times per turn. `hook_specific_output.tool_input`
-rewrites pre_tool arguments. `hook_specific_output.additional_context` is read in post_tool
-only.
+rewrites pre_tool arguments. `hook_specific_output.additional_context` is read in
+post_tool, user_prompt and session_start. Mistty adds the last two (its ADR 0023): a deny
+blocks a user_prompt, and session_start never blocks.
 """
 
 from __future__ import annotations
@@ -42,6 +44,9 @@ from writ.harness import vibe_context
 PRE = "pre_tool"
 POST = "post_tool"
 AGENT = "post_agent"
+PROMPT = "user_prompt"
+START = "session_start"
+_EVENTS = (PRE, POST, AGENT, PROMPT, START)
 
 DEFAULT_SCRIPT_TIMEOUT_S = 30.0
 # writ-run-pending-tests.sh gives each of its three runners 60 s.
@@ -68,13 +73,13 @@ _TOOLS: dict[str, str] = {
 # command and a model shell call the same environment and the same ancestry (both are
 # new-session children of the Vibe process), so the command text is the only signal, and
 # a command assembled at run time slips past. Case-insensitive because macOS volumes are.
-_USER_ONLY = re.compile(r"\bmistty\s+(?:approve|replan|grant|mode)\b|\bvibe_user\b",
+# `mistty mode` is not among them: the model sets the mode, as it does under Claude Code.
+_USER_ONLY = re.compile(r"\bmistty\s+(?:approve|replan|grant)\b|\bvibe_user\b",
                         re.IGNORECASE)
 _USER_ONLY_REASON = (
-    "`mistty approve`, `replan`, `grant` and `mode` are the user's own Writ commands, so "
-    "Writ refuses them to the model. Ask the user to type the one you need themselves, "
-    "with the `!` prefix: `!mistty approve`, `!mistty replan`, `!mistty grant manual-test` "
-    "or `!mistty mode <mode>`."
+    "`mistty approve`, `replan` and `grant` are the user's own Writ commands, so Writ "
+    "refuses them to the model. Ask the user to type the one you need themselves, with the "
+    "`!` prefix: `!mistty approve`, `!mistty replan` or `!mistty grant manual-test`."
 )
 
 # process.write types into a process that process.start began. Writ's shell checks read
@@ -652,11 +657,64 @@ def _stop(envelope: dict, *, plugin_root: str, base_env: Mapping[str, str] | Non
 
 
 # --------------------------------------------------------------------------- #
+# Prompts and session starts
+# --------------------------------------------------------------------------- #
+def _prompt_answer(run: _Run) -> _Answer:
+    """One UserPromptSubmit or SessionStart script's answer: Claude also reads exit-0
+    stdout that is not a JSON object as context, which is how Writ's scripts answer."""
+    answer = _read(run)
+    if run.returncode == 0:
+        try:
+            parsed = json.loads(run.stdout)
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, dict):
+            answer.context = run.stdout.strip()
+    return answer
+
+
+def _prompt(event: str, envelope: dict, *, plugin_root: str,
+            base_env: Mapping[str, str] | None,
+            session_resolver: Callable[[dict], str | None]) -> str:
+    sid = session_resolver(envelope)
+    if not sid:
+        return ""
+    claude: dict[str, Any] = {"session_id": sid, "transcript_path": "",
+                              "cwd": str(envelope.get("cwd") or "")}
+    if event == PROMPT:
+        claude_event, match = "UserPromptSubmit", ""
+        claude["prompt"] = str(envelope.get("prompt") or "")
+        # Writ's approval gate reads this in place of a transcript, and a null is its
+        # answer too: the user has written since the last reply.
+        if "last_assistant_message" in envelope:
+            claude["last_assistant_message"] = envelope["last_assistant_message"]
+    else:
+        claude_event = "SessionStart"
+        match = claude["source"] = str(envelope.get("source") or "")
+    claude["hook_event_name"] = claude_event
+    with open(os.path.join(plugin_root, "hooks", "hooks.json")) as handle:
+        config = json.load(handle)
+    jobs = [(claude, command, timeout)
+            for command, timeout in select_commands(config, claude_event, match)]
+    answers = [_prompt_answer(run)
+               for run in _run_all(jobs, plugin_root=plugin_root, base_env=base_env)]
+    if event == PROMPT:
+        # A chat approval can advance Writ's phase, so the state file is rewritten whatever
+        # the scripts answered.
+        _refresh_state(sid, plugin_root, base_env)
+        blocks = [a.block for a in answers if a.block]
+        if blocks:
+            return _deny("\n\n".join(blocks))
+    context = "\n\n".join(a.context for a in answers if a.context)
+    return json.dumps({"hook_specific_output": {"additional_context": context}}) if context else ""
+
+
+# --------------------------------------------------------------------------- #
 # Entry
 # --------------------------------------------------------------------------- #
 def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, str] | None,
             session_resolver: Callable[[dict], str | None], context_dir: str) -> str:
-    if event not in (PRE, POST, AGENT):
+    if event not in _EVENTS:
         raise ValueError(f"unknown Vibe hook event {event!r}")
     try:
         envelope = json.loads(raw)
@@ -669,6 +727,9 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
     if event == AGENT:
         return _stop(envelope, plugin_root=plugin_root, base_env=base_env,
                      session_resolver=session_resolver)
+    if event in (PROMPT, START):
+        return _prompt(event, envelope, plugin_root=plugin_root, base_env=base_env,
+                       session_resolver=session_resolver)
     name = str(envelope.get("tool_name") or "")
     tool = _TOOLS.get(name)
     if event == PRE and _names_writ_file(name, tool, _as_dict(envelope.get("tool_input")),
@@ -747,8 +808,9 @@ def handle(
     """Vibe's stdout for one hook call: "" for a plain allow, else one JSON object.
 
     pre_tool fails closed: any error denies the call. post_tool fails quiet: the tool
-    already ran, and blanking its result would hide output the model needs. post_agent
-    fails open: a broken check must not trap the turn.
+    already ran, and blanking its result would hide output the model needs. post_agent,
+    user_prompt and session_start fail open: a broken check must not trap the turn or
+    the user's prompt.
     """
     try:
         return _handle(event, raw, plugin_root=plugin_root, base_env=base_env,
@@ -766,13 +828,13 @@ def _event_from(raw: str) -> str:
         event = json.loads(raw).get("hook_event_name")
     except (ValueError, AttributeError):
         return ""
-    return event if event in (PRE, POST, AGENT) else ""
+    return event if event in _EVENTS else ""
 
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     raw = sys.stdin.read()
-    event = args[0] if args and args[0] in (PRE, POST, AGENT) else _event_from(raw)
+    event = args[0] if args and args[0] in _EVENTS else _event_from(raw)
     if not event:
         return 0
     out = handle(event, raw)

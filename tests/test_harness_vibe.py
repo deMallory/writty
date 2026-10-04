@@ -537,7 +537,6 @@ _USER_ONLY_COMMANDS = [
     "mistty approve",
     "mistty replan",
     "mistty grant manual-test",
-    "mistty mode work",
     "~/.local/bin/mistty approve",
     "MISTTY approve",
     "python3 -m writ.harness.vibe_user approve",
@@ -562,6 +561,9 @@ class TestUserOnlyCommands:
         "ls ~/dev/mistty",
         "mistty --version",
         ".venv/bin/python -m pytest tests/test_harness_vibe_user.py -q",
+        # The model sets the mode itself, as it does under Claude Code.
+        "mistty mode work",
+        "writ mode set work sid-1",
     ])
     def test_other_commands_naming_mistty_reach_the_scripts(self, tmp_path, command):
         plugin = Plugin(tmp_path, {"PreToolUse": [{"matcher": "Bash", "scripts": {"b": ALLOW}}]})
@@ -1110,6 +1112,212 @@ class TestStop:
     def test_shim_accepts_garbage_and_exits_zero(self):
         proc = subprocess.run([sys.executable, str(SHIM), "post_agent"], input="garbage",
                               capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 0
+        assert proc.stdout.strip() == ""
+
+
+# --------------------------------------------------------------------------- #
+# user_prompt and session_start: Writ's UserPromptSubmit and SessionStart scripts
+# --------------------------------------------------------------------------- #
+def _prompt(cwd: Path, prompt: str = "add a dry-run flag", **extra) -> dict:
+    return {"cwd": str(cwd), "hook_event_name": "user_prompt", "prompt": prompt,
+            "last_assistant_message": None, **extra}
+
+
+def _start(cwd: Path, source: str = "startup") -> dict:
+    return {"cwd": str(cwd), "hook_event_name": "session_start", "source": source}
+
+
+def _context(out: str) -> str:
+    return json.loads(out)["hook_specific_output"]["additional_context"]
+
+
+def _echo(*lines: str) -> str:
+    return "".join(f"echo '{line}'\n" for line in lines) + "exit 0\n"
+
+
+class TestPrompt:
+    def test_every_prompt_script_runs_once_with_a_claude_envelope(self, tmp_path, refreshes):
+        work = tmp_path / "proj"
+        work.mkdir()
+        plugin = Plugin(tmp_path, {
+            "UserPromptSubmit": [{"matcher": "", "scripts": {"u1": ALLOW}},
+                                 {"matcher": "", "scripts": {"u2": ALLOW}}],
+            "SessionStart": [{"matcher": "", "scripts": {"start": ALLOW}}],
+            "Stop": [{"matcher": "", "scripts": {"stop": ALLOW}}],
+        })
+        reply = "Plan written to plan.md.\n\nSay approved to proceed."
+        envelope = _prompt(work, "approved", last_assistant_message=reply)
+        assert _handle(plugin, "user_prompt", envelope) == ""
+        for name in ("u1", "u2"):
+            assert plugin.runs(name) == [{
+                "session_id": "sid-1", "transcript_path": "", "cwd": str(work),
+                "prompt": "approved", "last_assistant_message": reply,
+                "hook_event_name": "UserPromptSubmit",
+            }]
+        assert plugin.runs("start") == plugin.runs("stop") == []
+        [[root, strict, cwd]] = plugin.envs("u1")
+        assert root == str(plugin.root)
+        assert strict == "1"
+        assert os.path.realpath(cwd) == os.path.realpath(work)
+
+    def test_a_null_previous_reply_stays_null_and_a_missing_one_stays_missing(
+            self, tmp_path, refreshes):
+        plugin = Plugin(tmp_path, {"UserPromptSubmit": [{"matcher": "", "scripts": {"u": ALLOW}}]})
+        without = _prompt(tmp_path)
+        del without["last_assistant_message"]
+        _handle(plugin, "user_prompt", _prompt(tmp_path))
+        _handle(plugin, "user_prompt", without)
+        runs = plugin.runs("u")
+        assert sorted("last_assistant_message" in run for run in runs) == [False, True]
+        assert [run["last_assistant_message"] for run in runs
+                if "last_assistant_message" in run] == [None]
+
+    def test_plain_stdout_and_additional_context_join_in_hooks_json_order(
+            self, tmp_path, refreshes):
+        plugin = Plugin(tmp_path, {"UserPromptSubmit": [
+            {"matcher": "", "scripts": {"rules": _echo("--- WRIT RULES ---", "RULE-1")}},
+            {"matcher": "", "scripts": {"quiet": ALLOW}},
+            {"matcher": "", "scripts": {"json": _json_body({"hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit", "additionalContext": "CTX-2"}})}},
+        ]})
+        out = _handle(plugin, "user_prompt", _prompt(tmp_path))
+        assert json.loads(out) == {"hook_specific_output": {
+            "additional_context": "--- WRIT RULES ---\nRULE-1\n\nCTX-2"}}
+
+    @pytest.mark.parametrize("body", [
+        _json_body({"continue": True}),
+        _json_body({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit"}}),
+    ])
+    def test_a_json_answer_without_context_adds_nothing(self, tmp_path, refreshes, body):
+        plugin = Plugin(tmp_path, {"UserPromptSubmit": [{"matcher": "", "scripts": {"u": body}}]})
+        assert _handle(plugin, "user_prompt", _prompt(tmp_path)) == ""
+
+    @pytest.mark.parametrize("body, reason", [
+        (_refusing("R-EXIT2", 2), "R-EXIT2"),
+        (_json_body({"decision": "block", "reason": "R-BLOCK"}), "R-BLOCK"),
+        ("exit 2\n", "gate blocked the call"),
+    ])
+    def test_a_blocking_script_denies_the_prompt_and_drops_the_context(
+            self, tmp_path, refreshes, body, reason):
+        plugin = Plugin(tmp_path, {"UserPromptSubmit": [
+            {"matcher": "", "scripts": {"gate": body}},
+            {"matcher": "", "scripts": {"rules": _echo("RULES")}},
+        ]})
+        out = _handle(plugin, "user_prompt", _prompt(tmp_path))
+        assert json.loads(out) == {"decision": "deny", "reason": reason}
+
+    @pytest.mark.parametrize("body", [_refusing("crashed", 1), _refusing("not found", 127)])
+    def test_a_failing_script_is_dropped_and_the_others_still_answer(
+            self, tmp_path, refreshes, body):
+        plugin = Plugin(tmp_path, {"UserPromptSubmit": [
+            {"matcher": "", "scripts": {"broken": "echo LOST\n" + body}},
+            {"matcher": "", "scripts": {"rules": _echo("RULES")}},
+        ]})
+        assert _context(_handle(plugin, "user_prompt", _prompt(tmp_path))) == "RULES"
+
+    def test_a_timed_out_script_passes_the_prompt_without_waiting_it_out(
+            self, tmp_path, refreshes):
+        plugin = Plugin(tmp_path, {"UserPromptSubmit": [
+            {"matcher": "", "timeout": 1, "scripts": {"slow": "sleep 5\nexit 2\n"}}]})
+        start = time.monotonic()
+        assert _handle(plugin, "user_prompt", _prompt(tmp_path)) == ""
+        assert time.monotonic() - start < 4
+
+    def test_the_state_file_is_rewritten_after_the_scripts_ran_even_on_a_block(
+            self, tmp_path, monkeypatch):
+        plugin = Plugin(tmp_path, {"UserPromptSubmit": [
+            {"matcher": "", "scripts": {"gate": _refusing("R")}}]})
+        seen = []
+
+        def fake(sid, **kwargs):
+            seen.append((sid, kwargs["plugin_root"], len(plugin.runs("gate"))))
+            return True
+        monkeypatch.setattr(vibe_context, "refresh", fake)
+        assert _deny_reason(_handle(plugin, "user_prompt", _prompt(tmp_path))) == "R"
+        assert seen == [("sid-1", str(plugin.root), 1)]
+
+
+class TestSessionStart:
+    def test_every_start_script_runs_once_with_a_claude_envelope(self, tmp_path, refreshes):
+        plugin = Plugin(tmp_path, {
+            "SessionStart": [{"matcher": "", "scripts": {"s1": ALLOW}},
+                             {"matcher": "", "scripts": {"s2": ALLOW}}],
+            "UserPromptSubmit": [{"matcher": "", "scripts": {"prompt": ALLOW}}],
+        })
+        assert _handle(plugin, "session_start", _start(tmp_path, "fork")) == ""
+        for name in ("s1", "s2"):
+            assert plugin.runs(name) == [{
+                "session_id": "sid-1", "transcript_path": "", "cwd": str(tmp_path),
+                "source": "fork", "hook_event_name": "SessionStart",
+            }]
+        assert plugin.runs("prompt") == []
+        assert refreshes == []
+
+    def test_a_matcher_is_compared_against_the_source(self, tmp_path, refreshes):
+        plugin = Plugin(tmp_path, {"SessionStart": [
+            {"matcher": "resume|fork", "scripts": {"later": ALLOW}},
+            {"matcher": "startup", "scripts": {"first": ALLOW}},
+        ]})
+        _handle(plugin, "session_start", _start(tmp_path, "resume"))
+        assert len(plugin.runs("later")) == 1
+        assert plugin.runs("first") == []
+
+    def test_stdout_and_additional_context_become_context(self, tmp_path, refreshes):
+        plugin = Plugin(tmp_path, {"SessionStart": [
+            {"matcher": "", "scripts": {"boot": _echo("DAEMON-UP")}},
+            {"matcher": "", "scripts": {"json": _json_body({"hookSpecificOutput": {
+                "hookEventName": "SessionStart", "additionalContext": "CTX-2"}})}},
+        ]})
+        assert _context(_handle(plugin, "session_start", _start(tmp_path))) == "DAEMON-UP\n\nCTX-2"
+
+    @pytest.mark.parametrize("body", [
+        _refusing("R-EXIT2", 2),
+        _json_body({"decision": "block", "reason": "R-BLOCK"}),
+    ])
+    def test_a_refusing_script_never_blocks_the_session(self, tmp_path, refreshes, body):
+        plugin = Plugin(tmp_path, {"SessionStart": [{"matcher": "", "scripts": {"s": body}}]})
+        assert _handle(plugin, "session_start", _start(tmp_path)) == ""
+
+
+_PROMPT_EVENTS = [("user_prompt", "UserPromptSubmit", _prompt),
+                  ("session_start", "SessionStart", _start)]
+
+
+@pytest.mark.parametrize("event, claude_event, envelope", _PROMPT_EVENTS)
+class TestPromptEventsFailOpen:
+    def test_no_session_runs_nothing(self, tmp_path, refreshes, event, claude_event, envelope):
+        plugin = Plugin(tmp_path, {claude_event: [{"matcher": "", "scripts": {"s": _refusing("R")}}]})
+        assert _handle(plugin, event, envelope(tmp_path), sid=None) == ""
+        assert plugin.runs("s") == []
+        assert refreshes == []
+
+    @pytest.mark.parametrize("raw", ["garbage", "[]", ""])
+    def test_unreadable_input_runs_nothing(self, tmp_path, event, claude_event, envelope, raw):
+        plugin = Plugin(tmp_path, {claude_event: [{"matcher": "", "scripts": {"s": _refusing("R")}}]})
+        assert _handle(plugin, event, raw) == ""
+        assert plugin.runs("s") == []
+
+    def test_a_bridge_exception_passes(self, tmp_path, event, claude_event, envelope):
+        plugin = Plugin(tmp_path, {claude_event: [{"matcher": "", "scripts": {"s": _refusing("R")}}]})
+        assert _handle(plugin, event, envelope(tmp_path), resolver=_raise) == ""
+
+    @pytest.mark.parametrize("argv", [True, False])
+    def test_main_routes_the_event_from_argv_and_from_the_payload(
+            self, monkeypatch, event, claude_event, envelope, argv):
+        seen = []
+
+        def fake(routed, raw):
+            seen.append(routed)
+            return ""
+        monkeypatch.setattr(vibe, "handle", fake)
+        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(envelope(Path("/")))))
+        assert vibe.main([event] if argv else []) == 0
+        assert seen == [event]
+
+    def test_shim_accepts_garbage_and_exits_zero(self, event, claude_event, envelope):
+        proc = subprocess.run([sys.executable, str(SHIM), event], input="garbage",
+                              capture_output=True, text=True, timeout=30, check=False)
         assert proc.returncode == 0
         assert proc.stdout.strip() == ""
 

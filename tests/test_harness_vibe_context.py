@@ -60,6 +60,7 @@ class TestRender:
     def test_header_says_writ_rewrites_the_file_and_owns_it(self):
         header = _render(PHASE_A).split("\n\n")[0]
         assert header.startswith("Writ state for this session.")
+        assert "each prompt" in header
         assert "!mistty" in header
         assert "other files" in header
 
@@ -68,7 +69,8 @@ class TestRender:
         assert "Mode: none" in text.splitlines()
         nxt = _next(text)
         assert "refuses every write" in nxt
-        assert "!mistty mode" in nxt
+        assert "`mistty mode work`" in nxt
+        assert "!mistty" not in nxt
         for mode in MODES:
             assert mode in nxt, mode
 
