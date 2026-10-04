@@ -68,9 +68,10 @@ try:
            or data.get('agent_id') or data.get('agentId') or '')
     agent_id = data.get('agent_id') or data.get('agentId') or ''
     prompt = data.get('prompt', data.get('message', data.get('content', '')))
-    print(f'{sid}\n{prompt}\n{agent_id}\n{data.get(\"transcript_path\", \"\")}')
+    last = json.dumps(data['last_assistant_message']) if 'last_assistant_message' in data else ''
+    print(f'{sid}\n{prompt}\n{agent_id}\n{data.get(\"transcript_path\", \"\")}\n{last}')
 except Exception:
-    print('\n\n\n')
+    print('\n\n\n\n')
 " 2>/dev/null) || true
 
 SESSION_ID=$(echo "$PARSED" | head -1)
@@ -83,6 +84,10 @@ AGENT_ID=$(echo "$PARSED" | sed -n '3p')
 # fail-closed direction. Reordering the parse to put the prompt last would change which
 # prompts classify as exact, which is a separate decision with its own justification.
 TRANSCRIPT_PATH=$(echo "$PARSED" | sed -n '4p')
+# The envelope's last_assistant_message (Mistty's user_prompt envelope), JSON-encoded so
+# its newlines stay on one line; empty when the key is absent, as it is from Claude Code.
+# Same quirk as field 4: a multi-line prompt garbles it, and garbled is no evidence.
+LAST_ASSISTANT_JSON=$(echo "$PARSED" | sed -n '5p')
 
 # Fallback session ID
 # NO SYNTHESIZED SESSION ID. This used to fall back to the parent PID and then to
@@ -250,13 +255,14 @@ fi
 #
 # SEC-INJ-CMD-001: TRANSCRIPT_PATH is payload-derived, so it is passed as an ARGV element
 # and never interpolated into the python program text. A path containing a quote would
-# otherwise execute.
+# otherwise execute. LAST_ASSISTANT_JSON goes on stdin for the same reason, and because a
+# long reply could exceed the argument size limit.
 #
 # A MISSING TIER, NOT A FAILED ONE: the outcome is TIER=noevidence, which has its own arm
 # below rather than an early exit, so the turn still reaches the debug prompt log at the
 # tail exactly as every other tier does.
 if [ "$TIER" = "exact" ]; then
-    EVIDENCE_OUT=$(python3 -c "import sys; sys.path.insert(0, '$WRIT_DIR/bin/lib'); from approval_evidence import evidence_flags; asked, saw_text = evidence_flags(sys.argv[1]); print('1' if asked else ''); print('1' if saw_text else '')" "$TRANSCRIPT_PATH" 2>/dev/null || printf '\n\n')
+    EVIDENCE_OUT=$(printf '%s' "$LAST_ASSISTANT_JSON" | python3 -c "import sys; sys.path.insert(0, '$WRIT_DIR/bin/lib'); from approval_evidence import envelope_evidence_flags; asked, saw_text = envelope_evidence_flags(sys.argv[1], sys.stdin.read()); print('1' if asked else ''); print('1' if saw_text else '')" "$TRANSCRIPT_PATH" 2>/dev/null || printf '\n\n')
     EVIDENCE=${EVIDENCE_OUT%%$'\n'*}
     case "$EVIDENCE_OUT" in
         *$'\n'*) EVIDENCE_SAW_TEXT=${EVIDENCE_OUT#*$'\n'} ;;
@@ -646,8 +652,9 @@ noevidence)
     # computed and NEXT_GATE is a MODE_CONFIG gate name, so nothing here is tool input.
     if [ -n "$TRANSCRIPT_PATH" ]; then HAD_TRANSCRIPT_PATH=true; else HAD_TRANSCRIPT_PATH=false; fi
     if [ -n "$EVIDENCE_SAW_TEXT" ]; then HAD_ASSISTANT_TEXT=true; else HAD_ASSISTANT_TEXT=false; fi
+    if [ -n "$LAST_ASSISTANT_JSON" ]; then HAD_LAST_ASSISTANT_MESSAGE=true; else HAD_LAST_ASSISTANT_MESSAGE=false; fi
     log_friction_event "$SESSION_ID" "${CURRENT_MODE:-}" "approval_evidence_missing" \
-        "{\"gate\":\"${NEXT_GATE:-}\",\"had_transcript_path\":${HAD_TRANSCRIPT_PATH},\"had_assistant_text\":${HAD_ASSISTANT_TEXT}}"
+        "{\"gate\":\"${NEXT_GATE:-}\",\"had_transcript_path\":${HAD_TRANSCRIPT_PATH},\"had_last_assistant_message\":${HAD_LAST_ASSISTANT_MESSAGE},\"had_assistant_text\":${HAD_ASSISTANT_TEXT}}"
     if [ -n "$NEXT_GATE" ]; then
         cat <<DIRECTIVE
 [Writ: approval detected with no request in front of it, nothing was advanced]

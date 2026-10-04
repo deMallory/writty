@@ -530,6 +530,86 @@ class TestReplanTierRequiresNoEvidence:
 
 
 # ---------------------------------------------------------------------------
+# The envelope's last_assistant_message (Mistty's user_prompt envelope)
+# ---------------------------------------------------------------------------
+
+
+class TestEnvelopeEvidenceReader:
+    """A host that sends last_assistant_message has applied the adjacency rule itself,
+    so the field, when present, is the whole answer and the transcript is not read."""
+
+    def test_a_marker_in_the_field_is_evidence_with_no_transcript(self, tmp_path):
+        mod = _evidence_reader()
+        flags = mod.envelope_evidence_flags("", json.dumps("Say `approved` to proceed."))
+        assert flags == (True, True)
+
+    def test_a_null_field_outranks_a_request_in_the_transcript(self, tmp_path):
+        mod = _evidence_reader()
+        tp = write_transcript_jsonl(tmp_path, [assistant_text_row("Say approved to proceed.")])
+        assert mod.envelope_evidence_flags(tp, "null") == (False, False)
+
+    def test_a_field_with_no_marker_saw_text_but_is_not_evidence(self, tmp_path):
+        mod = _evidence_reader()
+        assert mod.envelope_evidence_flags("", json.dumps("I refactored the parser.")) == (
+            False,
+            True,
+        )
+
+    def test_an_absent_field_reads_the_transcript(self, tmp_path):
+        mod = _evidence_reader()
+        tp = write_transcript_jsonl(tmp_path, [assistant_text_row("Say approved to proceed.")])
+        assert mod.envelope_evidence_flags(tp, "") == (True, True)
+
+    def test_garbled_json_is_not_evidence(self, tmp_path):
+        mod = _evidence_reader()
+        assert mod.envelope_evidence_flags("", '"Say approved') == (False, False)
+
+
+class TestHookReadsTheEnvelopeField:
+    def test_a_request_in_the_field_mints_a_bound_token(self, tmp_path):
+        """The MTY-33 done-when: a chat `approved` after a turn that asked for it is
+        exact, not noevidence. The reply spans lines, so this also pins that the JSON
+        encoding keeps it on one line of the hook's payload parse."""
+        from writ.session.gate_token import gate_token_path
+
+        sid = _sid("envelope-mints")
+        cache_dir = tmp_path / "cache"
+        _seed_pending_phase_a(cache_dir, sid)
+        reply = "Plan written to plan.md.\n\nSay approved to proceed."
+        with _mint_cleanup(sid):
+            r = _run_hook(
+                {"session_id": sid, "prompt": "approved", "transcript_path": "",
+                 "last_assistant_message": reply},
+                cwd=tmp_path, cache_dir=cache_dir, fake_home=tmp_path / "home",
+            )
+            assert os.path.exists(gate_token_path(sid)), (
+                f"a request in last_assistant_message must mint a token; stdout={r.stdout!r}"
+            )
+            with open(gate_token_path(sid)) as f:
+                assert f.read().split("\n")[1] == "phase-a"
+
+    def test_a_null_field_mints_nothing_and_records_it(self, tmp_path):
+        from writ.session.gate_token import gate_token_path
+
+        sid = _sid("envelope-null")
+        cache_dir = tmp_path / "cache"
+        _seed_pending_phase_a(cache_dir, sid)
+        with _mint_cleanup(sid):
+            _run_hook(
+                {"session_id": sid, "prompt": "approved", "transcript_path": "",
+                 "last_assistant_message": None},
+                cwd=tmp_path, cache_dir=cache_dir, fake_home=tmp_path / "home",
+                extra_env={"WRIT_LOG_ROOT": str(tmp_path / "logs"), "WRIT_LOG_PROJECT": "envelope-null-project"},
+            )
+            assert not os.path.exists(gate_token_path(sid))
+        rows = _read_stream_rows("envelope-null-project", "audit")
+        matches = [r for r in rows if r.get("event") == "approval_evidence_missing"]
+        assert len(matches) == 1, rows
+        assert matches[0].get("had_last_assistant_message") is True, matches[0]
+        assert matches[0].get("had_transcript_path") is False, matches[0]
+
+
+# ---------------------------------------------------------------------------
 # Capabilities 15-16: the audit trail
 # ---------------------------------------------------------------------------
 

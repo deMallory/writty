@@ -145,6 +145,33 @@ def evidence_flags(transcript_path: str) -> tuple[bool, bool]:
     return (user_rows_after <= 1 and has_request_marker(last_text)), True
 
 
+def envelope_evidence_flags(
+    transcript_path: str, last_assistant_json: str
+) -> tuple[bool, bool]:
+    """evidence_flags, read from the envelope's `last_assistant_message` when it has one.
+
+    `last_assistant_json` is that field JSON-encoded, or "" when the envelope has no such
+    key, in which case the transcript is read exactly as before.
+
+    A HOST THAT SENDS THE FIELD HAS ALREADY APPLIED THE ADJACENCY RULE. Mistty's
+    user_prompt envelope sets it to the newest assistant text since the user last wrote,
+    and to null once the user has written since. So when present it is the whole answer
+    and the transcript is not consulted: Mistty's transcript is not in Claude Code's
+    shape, and a stale request found there would bypass the host's adjacency rule. The
+    host writes the field, not the agent, which is the same guarantee the transcript
+    gives. Null, a non-string, an empty string or undecodable JSON is no evidence.
+    """
+    if not last_assistant_json:
+        return evidence_flags(transcript_path)
+    try:
+        message = json.loads(last_assistant_json)
+    except Exception:
+        return False, False
+    if not isinstance(message, str) or not message:
+        return False, False
+    return has_request_marker(message), True
+
+
 def request_was_asked(transcript_path: str) -> bool:
     """True only when the preceding assistant turn asked for this approval.
 
