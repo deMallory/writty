@@ -5,10 +5,8 @@ those sessions only. Plain `vibe` and ~/.vibe stay ungoverned for non-coding use
 home shares `.env` and `config.toml` with ~/.vibe by symlink and nothing else.
 
 The home's AGENTS.md tells the model how Writ governs the session. Vibe loads it into the
-system instructions once, when a session starts, and caps nothing, so it also carries
-Writ's always-on rules: they need the authority of instructions and twice the room the
-scratchpad has (vibe_context.py carries the per-turn state). The rules are a snapshot
-taken from the daemon at install time; a rule change reaches mistty on the next bootstrap.
+system instructions once, when a session starts. Writ's rules are not in it: Writ's prompt
+script attaches them to each prompt, as under Claude Code, so they never go stale.
 
 Every conflict is found before the first write, so a refused install leaves no trace.
 Run it through scripts/bootstrap-vibe.sh. Stdlib-only, like the bridge.
@@ -40,17 +38,12 @@ from writ.harness.vibe import (
     STOP_SCRIPT_TIMEOUT_S,
 )
 from writ.harness.vibe_context import WRIT_FILE
-from writ.retrieval.prompt_bundle import render_always_on
-
-sys.path.insert(0, os.path.join(PLUGIN_ROOT, "bin", "lib"))
-import writ_daemon_client  # type: ignore[import-not-found]  # noqa: E402
 
 HOOK = Path(PLUGIN_ROOT) / "bin" / "writ-vibe-hook"
 LAUNCHER = Path(PLUGIN_ROOT) / "bin" / "mistty"
 SHARED = (".env", "config.toml")
 _OWNED = "writ-"
 AGENTS_MARKER = "<!-- Written by writty's scripts/bootstrap-vibe.sh, which owns this file. -->"
-_RULES_TIMEOUT_S = 5.0
 # Vibe accepts the turn when its own timeout fires, so it waits past the bridge's.
 _STOP_TIMEOUT_S = STOP_SCRIPT_TIMEOUT_S + 20
 
@@ -59,7 +52,8 @@ _AGENTS = f"""\
 # Writ governs this session
 
 mistty is Mistral Vibe under Writ. Writ checks each file write, edit and shell command
-before it runs, and refuses the ones the session's mode and gates do not allow yet.
+before it runs, and refuses the ones the session's mode and gates do not allow yet. Writ
+attaches its rules to your prompts as context; follow them.
 
 ## Modes
 
@@ -224,37 +218,11 @@ def _write_hooks(home: Path) -> str:
     return f"write {path}"
 
 
-def fetch_rules() -> str | None:
-    """Writ's always-on rules, rendered as the prompt hook renders them, or None when the
-    daemon gave none."""
-    status, body = writ_daemon_client.get_json("/always-on", timeout=_RULES_TIMEOUT_S)
-    if status != 200:
-        return None
-    try:
-        bundle = json.loads(body)
-    except ValueError:
-        return None
-    if not isinstance(bundle, dict):
-        return None
-    return render_always_on(bundle)[0] or None
-
-
-def render_agents(rules: str | None) -> str:
-    if not rules:
-        return _AGENTS
-    return f"{_AGENTS}\n## Writ's always-active rules\n\n{rules}\n"
-
-
 def _write_agents(home: Path) -> str:
-    path, rules = home / "AGENTS.md", fetch_rules()
-    if rules is None and path.exists():
-        return f"keep {path}: the Writ daemon gave no rules, so rules not refreshed"
-    text = render_agents(rules)
-    if path.exists() and path.read_text() == text:
+    path = home / "AGENTS.md"
+    if path.exists() and path.read_text() == _AGENTS:
         return "keep AGENTS.md: up to date"
-    _replace(path, text)
-    if rules is None:
-        return f"write {path}: rules skipped, the Writ daemon gave none; rerun once it runs"
+    _replace(path, _AGENTS)
     return f"write {path}"
 
 

@@ -7,8 +7,8 @@ after each prompt and each tool call, and vibe_user.py after each `!mistty` comm
 
 Vibe reads the files in name order and cuts the block at 8,000 characters, so the name
 sorts first and the text stays short. Vibe frames the block as the model's own saved data,
-never instructions, so the rules go in the mistty home's AGENTS.md (vibe_install.py) and
-this file carries only the state.
+never instructions, so this file carries only the state. Writ's rules reach the model
+with each prompt, from Writ's prompt script.
 
 Stdlib-only and Python 3.9-safe, like the bridge.
 """

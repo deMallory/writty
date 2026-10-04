@@ -12,6 +12,7 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 ### Changed
 
 - **The Mistty model sets Writ's mode itself, as under Claude Code.** Writ's prompt context now asks it to run `writ mode set <mode> <session_id>`, so `bin/mistty` puts this checkout's `bin/` first on the session's PATH, as Claude Code does with a plugin's `bin/`. The bridge stops refusing `mistty mode` to the model; `approve`, `replan` and `grant` stay the user's. The home's AGENTS.md and the state file tell the model to set the mode.
+- **The Mistty home's AGENTS.md no longer copies Writ's always-on rules.** Writ's prompt script now attaches them to each prompt, as under Claude Code, so the install-time copy only doubled them and went stale between bootstraps. `scripts/bootstrap-vibe.sh` no longer reads the daemon, and a rerun drops the rules section an older install wrote.
 
 ### Fixed
 
