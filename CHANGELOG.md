@@ -13,6 +13,7 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 - **The Mistty model sets Writ's mode itself, as under Claude Code.** Writ's prompt context now asks it to run `writ mode set <mode> <session_id>`, so `bin/mistty` puts this checkout's `bin/` first on the session's PATH, as Claude Code does with a plugin's `bin/`. The bridge stops refusing `mistty mode` to the model; `approve`, `replan` and `grant` stay the user's. The home's AGENTS.md and the state file tell the model to set the mode.
 - **The Mistty home's AGENTS.md no longer copies Writ's always-on rules.** Writ's prompt script now attaches them to each prompt, as under Claude Code, so the install-time copy only doubled them and went stale between bootstraps. `scripts/bootstrap-vibe.sh` no longer reads the daemon, and a rerun drops the rules section an older install wrote.
+- **A Mistty session does its work-mode steps itself instead of orchestrating.** Vibe has no writ-planner or other Writ worker agent, so the bridge sets `WRIT_WORKER_AGENTS=none` for Writ's scripts. With it, `hooks/scripts/writ-rag-inject.sh` routes a build prompt to work mode without the orchestrator mark, so the session keeps Writ's ranked rules. Its work, restore and investigate announcements tell the session to plan, test, code and explore itself, where they named `writ:writ-planner` and the other roles.
 
 ### Fixed
 

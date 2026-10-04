@@ -127,6 +127,18 @@ def test_the_first_prompt_carries_writs_rules(tmp_path, isolated_daemon):  # noq
     assert context.rstrip().endswith("--- END WRIT RULES ---"), out
 
 
+def test_an_auto_routed_work_prompt_keeps_writs_rules(tmp_path, isolated_daemon):  # noqa: F811
+    (tmp_path / ".git").mkdir()
+    sid = f"vibe-{uuid.uuid4().hex[:8]}"
+    out = _run(isolated_daemon, sid, "user_prompt", _prompt(
+        tmp_path, sid, "implement the export endpoint from the approved plan", None))
+    context = _context(out)
+    assert "do each step yourself" in context, out
+    assert "--- WRIT RULES (" in context, out
+    cache = Path(isolated_daemon["health"]["cache_dir"]) / f"writ-session-{sid}.json"
+    assert json.loads(cache.read_text())["is_orchestrator"] is False
+
+
 def test_the_model_sets_the_mode_writs_context_asks_for(tmp_path, isolated_daemon):  # noqa: F811
     sid = f"vibe-{uuid.uuid4().hex[:8]}"
     command = f"writ mode set work {sid}"

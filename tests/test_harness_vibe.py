@@ -33,7 +33,7 @@ def _vibe_home(tmp_path, monkeypatch):
 _PRELUDE = """#!/bin/bash
 IN=$(cat)
 printf '%s' "$IN" > "$VIBE_TEST_LOG/{name}.$$.in.json"
-printf '%s\\n%s\\n%s\\n' "$CLAUDE_PLUGIN_ROOT" "$WRIT_STRICT" "$(pwd -P)" > "$VIBE_TEST_LOG/{name}.$$.env"
+printf '%s\\n%s\\n%s\\n%s\\n' "$CLAUDE_PLUGIN_ROOT" "$WRIT_STRICT" "$(pwd -P)" "$WRIT_WORKER_AGENTS" > "$VIBE_TEST_LOG/{name}.$$.env"
 """
 
 
@@ -223,14 +223,15 @@ class TestDispatch:
         assert len(plugin.runs("fail")) == 1
         assert plugin.runs("ok") == []
 
-    def test_scripts_get_plugin_root_strict_flag_and_envelope_cwd(self, tmp_path):
+    def test_scripts_get_plugin_root_strict_flag_cwd_and_no_worker_agents(self, tmp_path):
         work = tmp_path / "proj"
         work.mkdir()
         plugin = Plugin(tmp_path, {"PreToolUse": [{"matcher": "Bash", "scripts": {"b": ALLOW}}]})
         _handle(plugin, "pre_tool", _pre(work, "file_system.bash", {"command": "ls"}))
-        [[root, strict, cwd]] = plugin.envs("b")
+        [[root, strict, cwd, workers]] = plugin.envs("b")
         assert root == str(plugin.root)
         assert strict == "1"
+        assert workers == "none"
         assert os.path.realpath(cwd) == os.path.realpath(work)
 
     def test_scripts_run_in_parallel(self, tmp_path):
@@ -1009,7 +1010,7 @@ class TestStop:
                 "hook_event_name": "Stop", "stop_hook_active": False,
             }]
         assert plugin.runs("pre") == plugin.runs("post") == []
-        [[root, strict, cwd]] = plugin.envs("s1")
+        [[root, strict, cwd, _]] = plugin.envs("s1")
         assert root == str(plugin.root)
         assert strict == "1"
         assert os.path.realpath(cwd) == os.path.realpath(work)
@@ -1156,7 +1157,7 @@ class TestPrompt:
                 "hook_event_name": "UserPromptSubmit",
             }]
         assert plugin.runs("start") == plugin.runs("stop") == []
-        [[root, strict, cwd]] = plugin.envs("u1")
+        [[root, strict, cwd, _]] = plugin.envs("u1")
         assert root == str(plugin.root)
         assert strict == "1"
         assert os.path.realpath(cwd) == os.path.realpath(work)
