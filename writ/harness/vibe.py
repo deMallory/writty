@@ -370,6 +370,9 @@ def _run_all(jobs: list[tuple[dict, str, float]], *, plugin_root: str,
     env = dict(os.environ if base_env is None else base_env)
     env["CLAUDE_PLUGIN_ROOT"] = plugin_root
     env["WRIT_STRICT"] = "1"
+    # Vibe has no writ-planner or other Writ worker agent, so Writ's prompt script routes
+    # work mode to the session itself rather than to an orchestrator that dispatches them.
+    env["WRIT_WORKER_AGENTS"] = "none"
     if not jobs:
         return []
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:

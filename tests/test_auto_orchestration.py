@@ -16,6 +16,8 @@ BUILD = "implement the export endpoint from the approved plan"
 AUDIT = "audit the codebase for security issues"
 WORKERS = ("writ-planner", "writ-test-writer", "writ-implementer", "writ-reviewer")
 AGENT_FILES = ("writ-explorer",) + WORKERS
+# What the Mistty bridge sets: Vibe cannot dispatch Writ's roles.
+NO_WORKERS = {"WRIT_WORKER_AGENTS": "none"}
 
 
 def _home(tmp_path: Path) -> Path:
@@ -51,9 +53,9 @@ def _helper(tmp_path, *args):
                    capture_output=True, text=True, cwd=str(_sandbox(tmp_path)))
 
 
-def _hook(tmp_path, sid, prompt) -> subprocess.CompletedProcess:
+def _hook(tmp_path, sid, prompt, host_env=None) -> subprocess.CompletedProcess:
     r = subprocess.run(["bash", str(HOOK)], input=json.dumps({"session_id": sid, "prompt": prompt}),
-                       env=_env(tmp_path), capture_output=True, text=True, timeout=30,
+                       env={**_env(tmp_path), **(host_env or {})}, capture_output=True, text=True, timeout=30,
                        cwd=str(_sandbox(tmp_path)))
     assert r.returncode == 0, r.stderr
     return r
@@ -107,7 +109,7 @@ class TestTheHookOrchestratesWork:
         assert "writ mode set conversation ao-restore" in out
 
 
-def _restore_announcement(tmp_path, sid) -> str:
+def _restore_announcement(tmp_path, sid, host_env=None) -> str:
     sandbox = _sandbox(tmp_path)
     (sandbox / "plan.md").write_text("# Plan: unchanged across the detour\n")
     _helper(tmp_path, "mode", "set", "work", sid)
@@ -115,8 +117,8 @@ def _restore_announcement(tmp_path, sid) -> str:
     data = json.loads(path.read_text())
     data["gates_approved"] = ["phase-a"]
     path.write_text(json.dumps(data))
-    _hook(tmp_path, sid, AUDIT)
-    return _hook(tmp_path, sid, BUILD).stdout
+    _hook(tmp_path, sid, AUDIT, host_env)
+    return _hook(tmp_path, sid, BUILD, host_env).stdout
 
 
 class TestAnnouncementsNameTheDispatchableRoles:
@@ -145,6 +147,40 @@ class TestAnnouncementsNameTheDispatchableRoles:
         assert "writ-explorer" in inv and "writ:writ-" not in inv
         assert all(w in work for w in WORKERS) and "writ:writ-" not in work
         assert "writ-reviewer" in restore and "writ:writ-" not in restore
+
+
+class TestAHostWithoutWorkerAgents:
+    """The session does the work itself, so it is no orchestrator and is told no role."""
+
+    def test_a_first_route_into_work_does_not_mark_the_session_orchestrator(self, tmp_path):
+        _hook(tmp_path, "nw-first", BUILD, NO_WORKERS)
+        cache = _cache(tmp_path, "nw-first")
+        assert cache["mode"] == "work" and cache["is_orchestrator"] is False
+
+    def test_a_switch_into_work_does_not_either(self, tmp_path):
+        _helper(tmp_path, "mode", "set", "investigate", "nw-switch")
+        _hook(tmp_path, "nw-switch", BUILD, NO_WORKERS)
+        cache = _cache(tmp_path, "nw-switch")
+        assert cache["mode"] == "work" and cache["is_orchestrator"] is False
+
+    @pytest.mark.parametrize("prompt", [BUILD, AUDIT])
+    def test_the_announcement_names_no_role(self, tmp_path, prompt):
+        out = _hook(tmp_path, "nw-names", prompt, NO_WORKERS).stdout
+        assert "mode set automatically" in out
+        assert not any(role in out for role in AGENT_FILES), out
+
+    def test_the_work_announcement_hands_each_step_to_the_session(self, tmp_path):
+        out = _hook(tmp_path, "nw-steps", BUILD, NO_WORKERS).stdout
+        assert "do each step yourself" in out
+        assert "/templates/plan-template.md" in out
+        assert "present them for approval and stop" in out
+        assert "writ mode set conversation nw-steps" in out
+
+    def test_the_restore_announcement_names_no_role(self, tmp_path):
+        out = _restore_announcement(tmp_path, "nw-restore", NO_WORKERS)
+        assert "paused work mode restored automatically" in out
+        assert "Continue that cycle yourself" in out
+        assert not any(role in out for role in AGENT_FILES), out
 
 
 class TestTheModeEngineHonoursTheFlag:

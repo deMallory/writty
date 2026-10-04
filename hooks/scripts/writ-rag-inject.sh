@@ -257,7 +257,16 @@ if [ -z "$AGENT_ID" ] && [ -n "$MODE_HINT" ]; then
   # that; an auto-routed one never did, because nobody typed the flag. The flag only ever SETS
   # the field. Investigate is not orchestrated: its worker is writ-explorer, which its own
   # announcement names.
-  if [ "$MODE_HINT" = "work" ]; then ROUTE_ORCH_FLAG="--orchestrator"; else ROUTE_ORCH_FLAG=""; fi
+  #
+  # WRIT_WORKER_AGENTS=none is a host with no Writ worker agents (the Mistty bridge sets it).
+  # There the session does the work itself, so it is not stamped an orchestrator: that stamp
+  # would name agents the host cannot dispatch and withhold the ranked rules the session
+  # needs to write the code.
+  if [ "$MODE_HINT" = "work" ] && [ "${WRIT_WORKER_AGENTS:-}" != "none" ]; then
+    ROUTE_ORCH_FLAG="--orchestrator"
+  else
+    ROUTE_ORCH_FLAG=""
+  fi
   if [ -z "$PRIOR_MODE" ]; then
     # `mode init` (not `mode set`): authoritatively sets the mode ONLY if still
     # unset (checked inside the helper's own cache read), so a spurious re-fire on
@@ -365,7 +374,46 @@ if [ -z "$AGENT_ID" ] && [ -n "$MODE_HINT" ]; then
     WRIT_TEST_WRITER_AGENT=$(writ_agent_dispatch_name writ-test-writer)
     WRIT_IMPLEMENTER_AGENT=$(writ_agent_dispatch_name writ-implementer)
     WRIT_REVIEWER_AGENT=$(writ_agent_dispatch_name writ-reviewer)
-    if [ "$MODE_HINT" = "investigate" ]; then
+    if [ "${WRIT_WORKER_AGENTS:-}" = "none" ] && [ "$MODE_HINT" = "investigate" ]; then
+      cat << AUTOROUTE
+
+[Writ: audit/explore request -> investigate mode set automatically]
+This reads as an audit / exploration / research task, so the mode is now 'investigate'
+(the evidence-grounded audit/explore/research engine). This host has no Writ worker agents,
+so do the exploration yourself, read-only. To override:
+  writ mode set <conversation|debug|review|work|investigate> $SESSION_ID
+AUTOROUTE
+    elif [ "${WRIT_WORKER_AGENTS:-}" = "none" ] && [ -n "$RESTORED_GATES" ] && [ "$RESTORED_GATES" != "0" ]; then
+      cat << WORKRESTORE
+
+[Writ: implementation request -> paused work mode restored automatically]
+This reads as a build/implementation task, so the mode is back to 'work'. The plan did not
+change during the detour, so the paused phase and $RESTORED_GATES already-approved gate(s)
+were restored with it. Continue that cycle yourself: write the test skeletons while they are
+unapproved, make them pass once they are approved, then review the result. Do not rewrite
+plan.md and do not re-request an approval you already hold. If this is a trivial edit that
+needs no workflow, override with:
+  writ mode set conversation $SESSION_ID
+WORKRESTORE
+    elif [ "${WRIT_WORKER_AGENTS:-}" = "none" ]; then
+      cat << WORKROUTE
+
+[Writ: implementation request -> work mode set automatically]
+This reads as a build/implementation task, so the mode is now 'work' (the full gated
+workflow). This host has no Writ worker agents, so do each step yourself, in order:
+  1. Write plan.md and capabilities.md to .claude/plans/$SESSION_ID/, each by filling in
+     $WRIT_DIR/templates/plan-template.md and $WRIT_DIR/templates/capabilities-template.md
+     (they encode the gate's exact format, including the ## Files line grammar). The
+     directory is session-scoped, so a second session working this same project cannot
+     revoke your approvals by saving its own plan. Then present them for approval and stop.
+  2. Write the test skeletons once the plan is approved; present those for approval and stop.
+  3. Make those tests pass once they are approved.
+  4. Review the result against Writ's rules before you report the work done.
+Source writes are BLOCKED by the gate until the plan and test-skeleton gates are approved. If
+this is a trivial edit that needs no workflow, override with:
+  writ mode set conversation $SESSION_ID
+WORKROUTE
+    elif [ "$MODE_HINT" = "investigate" ]; then
       cat << AUTOROUTE
 
 [Writ: audit/explore request -> investigate mode set automatically]
