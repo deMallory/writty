@@ -2510,6 +2510,7 @@ CURL_VALUE_FLAGS = {
     "--interface", "-y", "-Y", "-z", "--time-cond", "--connect-to", "--preproxy",
     "--socks4", "--socks4a", "--socks5", "--socks5-hostname", "--proxy1.0",
     "--proxy-user", "-U",
+    "--unix-socket", "--abstract-unix-socket",
 }
 WGET_VALUE_FLAGS = {
     "--post-data", "--post-file", "--body-data", "--body-file", "--method",
