@@ -128,11 +128,12 @@ def test_existing_target_is_left_alone_and_reported(dirs, capsys):
 # --------------------------------------------------------------------------- #
 # hooks.toml and the matcher
 # --------------------------------------------------------------------------- #
-def test_hooks_file_holds_exactly_the_three_writ_entries(dirs, capsys):
+def test_hooks_file_holds_exactly_the_five_writ_entries(dirs, capsys):
     rc, _ = _install(dirs, capsys)
     assert rc == 0
     hooks = _hooks(dirs["home"])
-    assert set(hooks) == {"writ-pre", "writ-post", "writ-stop"}
+    assert set(hooks) == {"writ-pre", "writ-post", "writ-stop", "writ-prompt",
+                          "writ-session-start"}
 
     pre, post = hooks["writ-pre"], hooks["writ-post"]
     assert pre["type"] == "pre_tool"
@@ -154,6 +155,21 @@ def test_the_stop_entry_runs_the_bridge_at_every_turn_end(dirs, capsys):
     assert "strict" not in stop
     # Vibe accepts the turn when its own timeout fires, so it must outlast the bridge's.
     assert stop["timeout"] > vibe.STOP_SCRIPT_TIMEOUT_S
+
+
+@pytest.mark.parametrize("name, event", [("writ-prompt", "user_prompt"),
+                                         ("writ-session-start", "session_start")])
+def test_the_prompt_and_session_start_entries_run_the_bridge(dirs, capsys, name, event):
+    assert _install(dirs, capsys)[0] == 0
+    entry = _hooks(dirs["home"])[name]
+    assert entry["type"] == event
+    assert entry["command"] == f"{shlex.quote(str(HOOK))} {event}"
+    # Vibe's loader refuses both on these types.
+    assert "match" not in entry
+    assert "strict" not in entry
+    # Vibe's default timeout, 60 s, must outlast the bridge's per-script one.
+    assert "timeout" not in entry
+    assert vibe.DEFAULT_SCRIPT_TIMEOUT_S < 60
 
 
 def test_matcher_covers_every_bridge_tool_in_any_case():
@@ -214,6 +230,28 @@ def test_install_writes_agents_md_with_the_commands_and_the_rules(dirs, capsys):
                    "process.write", RULES):
         assert needle in text, needle
     assert f"write {dirs['home'] / 'AGENTS.md'}" in out
+
+
+def test_agents_md_tells_the_model_to_set_the_mode_itself(dirs, capsys):
+    assert _install(dirs, capsys)[0] == 0
+    text = _agents(dirs["home"])
+    section = text[text.index("## Modes"):]
+    section = section[:section.index("\n## ", 1)]
+    for needle in ("yourself", "`mistty mode <mode>`", "`writ mode set <mode> <session_id>`",
+                   "never set the mode already"):
+        assert needle in section, needle
+    gates = text[text.index("## Only the user moves the gates"):]
+    assert "mistty mode" not in gates[:gates.index("\n## ", 1)]
+
+
+def test_agents_md_says_a_chat_reply_to_a_request_advances_the_gate(dirs, capsys):
+    assert _install(dirs, capsys)[0] == 0
+    text = _agents(dirs["home"])
+    section = text[text.index("## Only the user moves the gates"):]
+    section = section[:section.index("\n## ", 1)]
+    for needle in ("in chat", "`Say approved to proceed.`", "before your turn starts"):
+        assert needle in section, needle
+    assert "A chat message does not advance Writ" not in text
 
 
 def test_agents_md_says_a_failing_end_of_turn_check_sends_the_turn_back(dirs, capsys):
@@ -410,7 +448,8 @@ def test_generated_file_passes_vibes_own_loader(dirs, capsys):
     assert proc.returncode == 0, proc.stderr
     result = json.loads(proc.stdout)
     assert result["issues"] == []
-    assert sorted(result["names"]) == ["writ-post", "writ-pre", "writ-stop"]
+    assert sorted(result["names"]) == ["writ-post", "writ-pre", "writ-prompt",
+                                       "writ-session-start", "writ-stop"]
 
 
 def test_installer_check_reports_zero_issues_with_real_vibe(dirs, capsys):
@@ -471,7 +510,8 @@ def test_bootstrap_runs_from_any_cwd_and_forwards_flags(dirs, tmp_path):
     proc = subprocess.run(["bash", str(BOOTSTRAP), *_flags(dirs)], env=_no_daemon(tmp_path),
                           cwd=elsewhere, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert set(_hooks(dirs["home"])) == {"writ-pre", "writ-post", "writ-stop"}
+    assert set(_hooks(dirs["home"])) == {"writ-pre", "writ-post", "writ-stop", "writ-prompt",
+                                         "writ-session-start"}
     assert _agents(dirs["home"]).splitlines()[0] == vibe_install.AGENTS_MARKER
 
 

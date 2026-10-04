@@ -1,10 +1,9 @@
 """Writ's state file in a Vibe session's scratchpad.
 
-Vibe has no prompt hook, so nothing hands the model Writ's state at the start of a turn.
 The scratchpad is the one channel Vibe re-reads every user turn: it re-states
 `$VIBE_HOME/logs/session/unified/<sid>/scratchpad/` to the model whenever the files change
 (2.25.8, vibe/app_server/_unified_scratchpad.py). The bridge rewrites `0-writ.md` there
-after each tool call, and vibe_user.py after each `!mistty` command.
+after each prompt and each tool call, and vibe_user.py after each `!mistty` command.
 
 Vibe reads the files in name order and cuts the block at 8,000 characters, so the name
 sorts first and the text stays short. Vibe frames the block as the model's own saved data,
@@ -33,11 +32,11 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _PHASE_TIMEOUT_S = 10
 
 _HEADER = (
-    "Writ state for this session. Writ rewrites this file after each tool call and each\n"
+    "Writ state for this session. Writ rewrites it after each prompt, tool call and\n"
     "`!mistty` command. It is Writ's file: keep your own notes in other files."
 )
 _APPROVE = "The user approves with `!mistty approve`."
-_MODES = "`!mistty mode work`, `debug`, `review`, `conversation` or `investigate`"
+_MODES = "`mistty mode work`, `debug`, `review`, `conversation` or `investigate`"
 
 
 def scratchpad_dir(vibe_home: str, sid: str) -> str:
@@ -68,7 +67,7 @@ def _plan_folder(project_root: str | None, sid: str) -> str:
 
 def _next_step(mode: str | None, pending: str | None) -> str:
     if mode is None:
-        return f"Writ refuses every write. Ask the user to set a mode: {_MODES}."
+        return f"Writ refuses every write. Set the mode the task needs in your shell: {_MODES}."
     if mode == "work":
         if pending == "phase-a":
             return ("Write plan.md in the plan folder in one write, with four sections: "

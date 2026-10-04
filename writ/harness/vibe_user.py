@@ -1,4 +1,4 @@
-"""Writ commands only the user may run in a mistty session.
+"""Writ commands for the user of a mistty session.
 
 Typed inside Vibe as `!mistty approve`, `!mistty replan`, `!mistty grant manual-test` or
 `!mistty mode <mode>`. Vibe runs a `!` command as a child of the session's process, fires
@@ -9,7 +9,8 @@ Then it rewrites Writ's state file in the session's scratchpad (vibe_context.py)
 
 Vibe keeps no Claude transcript, so `approve` sends the override phrase: the hook skips its
 "did the assistant ask" check and logs approval_evidence_override. The bridge (vibe.py)
-refuses these commands to the model. Stdlib-only, like the bridge.
+refuses all but `mode` to the model, which sets the mode itself as it does under Claude
+Code. Stdlib-only, like the bridge.
 """
 
 from __future__ import annotations

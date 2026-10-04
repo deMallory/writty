@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Vibe hook entry point: `writ-vibe-hook pre_tool|post_tool|post_agent`, Vibe's envelope on stdin.
+"""Vibe hook entry point: `writ-vibe-hook <event>`, Vibe's envelope on stdin.
 
-All logic lives in writ/harness/vibe.py. Register the pre_tool hook with strict = true,
-so a crash before this prints still denies the call.
+<event> is pre_tool, post_tool, post_agent, user_prompt or session_start. All logic
+lives in writ/harness/vibe.py. Register the pre_tool hook with strict = true, so a crash
+before this prints still denies the call.
 """
 
 import os

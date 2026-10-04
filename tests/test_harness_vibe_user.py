@@ -356,3 +356,16 @@ def test_launcher_sends_anything_else_to_vibe(tmp_path, arg):
                           capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.splitlines() == ["FAKE-VIBE", arg]
+
+
+def test_launcher_puts_writs_own_bin_first_for_the_session(tmp_path):
+    # Writ's context tells the model to run `writ mode set`; only this checkout's writ has it.
+    link, env = _launcher_env(tmp_path)
+    shadow = tmp_path / "bin" / "writ"
+    shadow.write_text("#!/bin/sh\n")
+    shadow.chmod(0o755)
+    Path(env["MISTTY_RUST_BIN"]).write_text("#!/bin/sh\ncommand -v writ\n")
+    proc = subprocess.run([str(link)], cwd=tmp_path, env=env,
+                          capture_output=True, text=True, timeout=30, check=False)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == str(REPO / "bin" / "writ")

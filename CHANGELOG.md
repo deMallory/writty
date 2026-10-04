@@ -7,6 +7,11 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 ### Added
 
 - **A chat `approved` in Mistty can advance a gate.** Mistty's `user_prompt` envelope carries `last_assistant_message`, the reply the prompt answers, or null once the user has written since. `bin/lib/approval_evidence.py` reads the approval request from that field when present, and from the transcript as before when not. Before this, Mistty's transcript gave no evidence and every approval took the ask path. The `approval_evidence_missing` row gains `had_last_assistant_message`.
+- **Mistty runs Writ's prompt and session-start scripts.** `bin/writ-vibe-hook` gains `user_prompt` and `session_start`, and `scripts/bootstrap-vibe.sh` writes both into the mistty home's `hooks.toml`. The bridge runs the `UserPromptSubmit` and `SessionStart` scripts of `hooks/hooks.json` unchanged, with Claude-shaped envelopes. Their stdout and `additionalContext` reach the model as context; a block or exit 2 refuses the prompt; session start never blocks. So the daemon starts with the session, every prompt carries Writ's rules, and a requested chat `approved` advances the gate in that turn. The state file `0-writ.md` is now rewritten after each prompt too.
+
+### Changed
+
+- **The Mistty model sets Writ's mode itself, as under Claude Code.** Writ's prompt context now asks it to run `writ mode set <mode> <session_id>`, so `bin/mistty` puts this checkout's `bin/` first on the session's PATH, as Claude Code does with a plugin's `bin/`. The bridge stops refusing `mistty mode` to the model; `approve`, `replan` and `grant` stay the user's. The home's AGENTS.md and the state file tell the model to set the mode.
 
 ### Fixed
 
