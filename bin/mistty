@@ -4,6 +4,10 @@
 # with ~/.vibe stays ungoverned.
 VIBE_HOME="${MISTTY_HOME:-$HOME/.mistty}"
 export VIBE_HOME
+# The writ-* hooks govern these sessions, so Mistty's native gates stay off. With both
+# armed, the native work-mode gate refused the model's own `writ mode set` (MTY-139).
+VIBE_NATIVE_GOVERNANCE_ENABLED=false
+export VIBE_NATIVE_GOVERNANCE_ENABLED
 # $0 is the ~/.local/bin link, so resolve it.
 root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 # Claude Code puts the plugin's bin/ on the Bash tool's PATH, and Writ's context tells the
