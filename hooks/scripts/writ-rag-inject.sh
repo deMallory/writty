@@ -410,8 +410,9 @@ workflow). This host has no Writ worker agents, so do each step yourself, in ord
   3. Make those tests pass once they are approved.
   4. Review the result against Writ's rules before you report the work done.
 Source writes are BLOCKED by the gate until the plan and test-skeleton gates are approved. If
-this is a trivial edit that needs no workflow, override with:
-  writ mode set conversation $SESSION_ID
+the change touches at most 3 files and migrates no schema, protocol or config, switch to
+patch mode instead: no approvals, and Writ refuses a 4th file.
+  writ mode set patch $SESSION_ID
 WORKROUTE
     elif [ "$MODE_HINT" = "investigate" ]; then
       cat << AUTOROUTE
@@ -455,8 +456,9 @@ than writing source yourself, the way an audit dispatches $WRIT_EXPLORER_AGENT.
   3. $WRIT_IMPLEMENTER_AGENT makes those tests pass once they are approved.
   4. $WRIT_REVIEWER_AGENT reviews the result before you report the work done.
 Source writes are BLOCKED by the gate until the plan and test-skeleton gates are approved. If
-this is a trivial edit that needs no workflow, override with:
-  writ mode set conversation $SESSION_ID
+the change touches at most 3 files and migrates no schema, protocol or config, switch to
+patch mode instead: no approvals, and Writ refuses a 4th file.
+  writ mode set patch $SESSION_ID
 WORKROUTE
     fi
   fi

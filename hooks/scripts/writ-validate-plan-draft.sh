@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PostToolUse on plan.md: run the phase-a check at write time. At approval a failed
 # check spends the user's token; here it costs the model one edit. Context only, never
-# a decision. _validate_phase_a writes no state and claims no token.
+# a decision. _gate_precheck (the phase-a validator plus the test-file look-ahead)
+# writes no state and claims no token.
 set -euo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRIT_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
@@ -34,8 +35,8 @@ gate_plan = mod._find_plan_md(root, sid)
 if gate_plan and os.path.realpath(gate_plan) != os.path.realpath(written):
     text = f'The approval reads {gate_plan}, not {written}. Write the plan there.'
 else:
-    error = mod._validate_phase_a(root, sid)
-    text = (f'{error} The approval runs this same check, so fix it before presenting.'
+    error = mod._gate_precheck(root, sid, 'phase-a')
+    text = (f'{error} Writ checks this again before the approval, so fix it before presenting.'
             if error else 'plan.md passes the phase-a structure check.')
 print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse',
                                          'additionalContext': '[Writ: plan check] ' + text}}))

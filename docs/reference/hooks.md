@@ -3,7 +3,7 @@
 
 # Hook registration matrix
 
-51 registrations across 12 events wiring 47 scripts under `hooks/scripts/`, generated from `hooks/hooks.json` (the single source; `templates/settings.json` is rendered from the same file). `writ-statusline.sh` is wired through the settings `statusLine` channel, not a hook event. Behavior and blocking semantics: `HANDBOOK.md` section 14.
+52 registrations across 12 events wiring 48 scripts under `hooks/scripts/`, generated from `hooks/hooks.json` (the single source; `templates/settings.json` is rendered from the same file). `writ-statusline.sh` is wired through the settings `statusLine` channel, not a hook event. Behavior and blocking semantics: `HANDBOOK.md` section 14.
 
 ## SessionStart
 
@@ -42,6 +42,7 @@
 | `(all)` | `writ-verify-before-claim.sh` |
 | `(all)` | `writ-run-pending-tests.sh` |
 | `(all)` | `writ-comms-output-gate.sh` |
+| `(all)` | `writ-gate-precheck.sh` |
 
 ## PostToolUseFailure
 

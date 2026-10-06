@@ -218,6 +218,29 @@ class TestEvidenceReaderMarkerNormalization:
         assert mod.request_was_asked(tp) is False
 
 
+class TestTheMisttyCommandCountsAsARequest:
+    """Writ's Mistty state file used to tell the model "The user approves with
+    `!mistty approve`". Replies written that way held no marker, so a typed approved
+    after them minted nothing. "mistty approve" meets the set's membership test: its only
+    use is asking the user for the approval."""
+
+    @pytest.mark.parametrize("text", [
+        "Plan written. Run `!mistty approve` to proceed.",
+        "Plan written. The user approves with `!mistty approve`.",
+    ])
+    def test_a_reply_naming_the_command_is_evidence(self, tmp_path, text):
+        mod = _evidence_reader()
+        assert mod.has_request_marker(text) is True
+        tp = write_transcript_jsonl(tmp_path, [assistant_text_row(text)])
+        assert mod.request_was_asked(tp) is True
+        assert mod.envelope_evidence_flags("", json.dumps(text)) == (True, True)
+
+    def test_a_reply_naming_neither_phrase_is_still_not_evidence(self):
+        mod = _evidence_reader()
+        assert mod.has_request_marker("Plan written. Run `!mistty replan` to change it.") is False
+        assert mod.has_request_marker("Plan written. Let me know.") is False
+
+
 class TestEvidenceReaderTrailingToolCallDoesNotErase:
     def test_trailing_tool_call_only_row_keeps_the_earlier_texts_evidence(self, tmp_path):
         mod = _evidence_reader()
@@ -260,6 +283,17 @@ class TestEvidenceReaderUserRowTolerance:
             user_row("approved"),
         ])
         assert mod.request_was_asked(tp) is False
+
+    def test_a_stop_reader_allows_no_trailing_user_row(self, tmp_path):
+        # At Stop the prompt is already written, so a trailing row means the newest text
+        # is the previous turn's request, not the reply being judged.
+        mod = _evidence_reader()
+        asked = [assistant_text_row("Say approved to proceed.")]
+        tp_now = write_transcript_jsonl(tmp_path, asked)
+        tp_stale = write_transcript_jsonl(tmp_path, [*asked, user_row("approved")])
+
+        assert mod.evidence_flags(tp_now, trailing_user_rows=0) == (True, True)
+        assert mod.evidence_flags(tp_stale, trailing_user_rows=0) == (False, True)
 
 
 class TestEvidenceReaderMissingOrUnreadableTranscript:

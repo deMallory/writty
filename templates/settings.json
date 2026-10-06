@@ -126,6 +126,15 @@
             "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-comms-output-gate.sh\""
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${WRIT_DIR}/hooks/scripts/writ-gate-precheck.sh\""
+          }
+        ]
       }
     ],
     "PostToolUseFailure": [

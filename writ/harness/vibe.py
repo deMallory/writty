@@ -646,10 +646,14 @@ def _stop(envelope: dict, *, plugin_root: str, base_env: Mapping[str, str] | Non
     sid = session_resolver(envelope)
     if not sid:
         return ""
-    # Vibe gives no transcript and no turn id, so the comms check reads no text and every
-    # run is a first stop; Vibe's cap of 3 re-runs ends the turn.
+    # Vibe gives no transcript and no turn id, so every run is a first stop; Vibe's cap of 3
+    # re-runs ends the turn. The reply reaches the Stop checks only through
+    # last_assistant_message, when Vibe sends it.
     claude = {"session_id": sid, "transcript_path": "", "cwd": str(envelope.get("cwd") or ""),
               "hook_event_name": "Stop", "stop_hook_active": False}
+    last = envelope.get("last_assistant_message")
+    if isinstance(last, str):
+        claude["last_assistant_message"] = last
     with open(os.path.join(plugin_root, "hooks", "hooks.json")) as handle:
         config = json.load(handle)
     jobs = [(claude, command, timeout) for command, timeout
