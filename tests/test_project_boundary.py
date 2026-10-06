@@ -37,7 +37,7 @@ TestFixturesNeverNameARealProjectRoot for the one guard this file adds, and its
 docstring for why a full runtime-instrumentation version (mirroring
 test_role_write_scope.py's fetcher-raises test) is not cleanly expressible here.
 
-Capability map (capabilities.md, 26 items; the last lives in
+Capability map (capabilities.md, 28 items; the last lives in
 tests/test_bash_write_gate.py):
   1  TestPostApprovalBoundaryDeniesOutsideAllowsInside   (mutation i)
   2  TestPreApprovalBaselineUnchanged
@@ -67,6 +67,8 @@ tests/test_bash_write_gate.py):
   24 TestCanWriteRouteMatchesDirectCall
   25 TestNoExtraPlanReadOnTheCommonPath
   26 (tests/test_bash_write_gate.py)
+  27 TestVibeWorktreeBucketIsInBounds
+  28 TestOsTempRootsAreInBounds
 """
 from __future__ import annotations
 
@@ -1440,3 +1442,139 @@ class TestProjectMemoryDirectoryIsExempt:
                                         _post_approval_cache(str(root)))
         assert result["can_write"] is False
         assert "ENF-PROJECT-BOUNDARY" in (result["reason"] or "")
+
+
+# --------------------------------------------------------------------------------- #
+# Capability 27: a worktree of the project is the project, pre- and post-approval.
+# --------------------------------------------------------------------------------- #
+
+
+class TestVibeWorktreeBucketIsInBounds:
+    """Capability 27: a worktree of the project is the project, pre- and post-approval."""
+
+    def _bucket_root(self, root: Path, home: Path) -> str:
+        import hashlib
+        real = os.path.realpath(str(root))
+        bucket = (
+            f"{os.path.basename(real)}-"
+            f"{hashlib.sha256(os.path.join(real, '.git').encode()).hexdigest()[:12]}"
+        )
+        return os.path.join(os.path.realpath(str(home)), "worktrees", bucket)
+
+    def test_a_write_in_the_project_worktree_bucket_is_in_bounds(
+        self, fake_project, monkeypatch
+    ) -> None:
+        root, _ = fake_project
+        home = root.parent / "vibe-home"
+        monkeypatch.setenv("VIBE_HOME", str(home))
+        target = os.path.join(self._bucket_root(root, home), "feature", "tests", "test_x.py")
+
+        pb = _pb_module()
+        assert pb.in_project_worktree(target, str(root)) is True
+
+    def test_the_post_approval_write_gate_allows_the_worktree(
+        self, fake_project, monkeypatch
+    ) -> None:
+        root, _ = fake_project
+        home = root.parent / "vibe-home"
+        monkeypatch.setenv("VIBE_HOME", str(home))
+        target = os.path.join(self._bucket_root(root, home), "feature", "src", "x.py")
+        cache = _post_approval_cache(str(root), project_root=str(root))
+        _write_cache_for("sess-wt", cache)
+
+        verdict = _gates_module()._can_write_check(
+            "sess-wt", _envelope(target), cache=cache
+        )
+
+        assert verdict["can_write"] is True
+
+    def test_the_pre_approval_skeleton_arm_allows_the_worktree(
+        self, fake_project, monkeypatch
+    ) -> None:
+        root, _ = fake_project
+        home = root.parent / "vibe-home"
+        monkeypatch.setenv("VIBE_HOME", str(home))
+        target = os.path.join(self._bucket_root(root, home), "feature", "tests", "test_x.py")
+        cache = _pre_approval_cache(str(root), project_root=str(root))
+        _write_cache_for("sess-wt2", cache)
+
+        verdict = _gates_module()._can_write_check(
+            "sess-wt2", _envelope(target), cache=cache
+        )
+
+        assert verdict["can_write"] is True
+
+    def test_another_repos_bucket_still_denies(
+        self, fake_project, monkeypatch
+    ) -> None:
+        root, _ = fake_project
+        # A home OUTSIDE the OS temp roots: under tmp_path (inside /private/var on
+        # macOS) the new /var exemption would allow the write, which is the plan's
+        # accepted trade-off, not the sloppy-prefix match this test pins.
+        home = Path("/opt/vibe-home-fixture")
+        monkeypatch.setenv("VIBE_HOME", str(home))
+        target = os.path.join(self._bucket_root(root, home) + "x", "feature", "src", "x.py")
+        cache = _post_approval_cache(str(root), project_root=str(root))
+        _write_cache_for("sess-wt3", cache)
+
+        verdict = _gates_module()._can_write_check(
+            "sess-wt3", _envelope(target), cache=cache
+        )
+
+        assert verdict["can_write"] is False
+        assert "ENF-PROJECT-BOUNDARY" in verdict["reason"]
+
+    def test_no_vibe_home_fails_closed(
+        self, fake_project, monkeypatch
+    ) -> None:
+        root, _ = fake_project
+        monkeypatch.delenv("VIBE_HOME", raising=False)
+        monkeypatch.setattr(
+            "os.path.expanduser", lambda p: str(root.parent / "no-home")
+        )
+        target = os.path.join(
+            self._bucket_root(root, root.parent / "other-home"), "feature", "src", "x.py"
+        )
+
+        pb = _pb_module()
+        assert pb.in_project_worktree(target, str(root)) is False
+
+
+# --------------------------------------------------------------------------------- #
+# Capability 28: /tmp and /var are OS scratch, in bounds on every arm.
+# --------------------------------------------------------------------------------- #
+
+
+class TestOsTempRootsAreInBounds:
+    """Capability 28: /tmp and /var are OS scratch, in bounds on every arm.
+
+    The root is an envelope-only string OUTSIDE the OS temp roots: the fixtures
+    in this file root their projects under the real temp tree, where the guard
+    (mirroring `in_scratch_zone`'s) deliberately switches this exemption off.
+    """
+
+    _OUTSIDE_ROOT = "/opt/fixture-proj"
+
+    def test_a_write_under_tmp_is_in_bounds(self) -> None:
+        target = os.path.join(os.path.realpath("/tmp"), "scratch.json")
+
+        pb = _pb_module()
+        assert pb.in_os_temp_roots(target, self._OUTSIDE_ROOT) is True
+
+    def test_a_write_under_var_is_in_bounds(self) -> None:
+        target = os.path.join(os.path.realpath("/var"), "folders", "scratch.json")
+
+        pb = _pb_module()
+        assert pb.in_os_temp_roots(target, self._OUTSIDE_ROOT) is True
+
+    def test_usr_and_etc_still_deny_with_the_boundary_tag(self) -> None:
+        target = "/usr/local/etc/x.conf"
+        cache = _post_approval_cache(self._OUTSIDE_ROOT, project_root=self._OUTSIDE_ROOT)
+        _write_cache_for("sess-tmp1", cache)
+
+        verdict = _gates_module()._can_write_check(
+            "sess-tmp1", _envelope(target), cache=cache
+        )
+
+        assert verdict["can_write"] is False
+        assert "ENF-PROJECT-BOUNDARY" in verdict["reason"]

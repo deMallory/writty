@@ -27,7 +27,9 @@ from writ.session.project_boundary import (
     boundary_refusal,
     boundary_root,
     declared_absolute_paths,
+    in_os_temp_roots,
     in_project_memory_dir,
+    in_project_worktree,
     in_scratch_zone,
     is_contained,
     resolve_target,
@@ -439,6 +441,19 @@ def _check_project_boundary(session_id: str, mode, file_path: str, recorded_root
     zone = scratch_zone(recorded_zone)
     target = resolve_target(file_path, root)
     if is_contained(target, root):
+        return None
+    # THIS PROJECT'S OWN VIBE WORKTREE BUCKET, on all three kinds. A worktree of the
+    # recorded root is the repo itself for governance, and the skeleton phase runs this
+    # boundary on the pre-approval arm, which does not honor `## Files` declarations, so
+    # without this disjunct the worktree workflow deadlocks at the first out-of-project
+    # test write. Derived from the recorded root and the harness's own VIBE_HOME, so it
+    # is as self-grantable as the containment check above: not.
+    if in_project_worktree(target, root):
+        return None
+    # /tmp AND /var, the OS-designated scratch agents write beyond the stamped zone.
+    # Fixed by the OS, not chosen by the agent, so also not self-grantable; the
+    # credential deny ahead of this boundary still refuses credentials-shaped paths.
+    if in_os_temp_roots(target, root):
         return None
     if in_scratch_zone(target, root, zone):
         return None
