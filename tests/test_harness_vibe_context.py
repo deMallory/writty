@@ -117,6 +117,16 @@ class TestRender:
         assert nxt.rstrip().endswith(f'"{ASK}"')
         assert "The user approves with" not in nxt
 
+    @pytest.mark.parametrize("phase", [PHASE_A, SKELETONS, OTHER_GATE],
+                             ids=lambda p: p["next_gate"])
+    def test_a_pending_gate_asks_with_mistty_ask_and_keeps_the_phrase_as_fallback(self, phase):
+        # `mistty ask` opens Mistty's approval card; with no one to answer it, Mistty
+        # denies the call and the typed phrase is the way left.
+        nxt = _next(_render(phase))
+        assert "`mistty ask`" in nxt
+        assert nxt.index("`mistty ask`") < nxt.index(ASK)
+        assert "denied" in nxt
+
     def test_work_without_a_project_root_has_no_plan_folder_line(self):
         assert "Plan folder:" not in _render(PHASE_A, None)
 

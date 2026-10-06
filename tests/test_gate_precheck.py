@@ -19,6 +19,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -172,6 +173,58 @@ def test_writ_session_re_exports_the_precheck_for_path_loaded_hooks():
     spec.loader.exec_module(mod)
 
     assert mod._gate_precheck is _precheck()._gate_precheck
+
+
+# --------------------------------------------------------------------------- #
+# writ-session.py gate-precheck, the command the Mistty bridge asks before `mistty ask`
+# --------------------------------------------------------------------------- #
+def _gate_precheck_cli(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(BIN_LIB / "writ-session.py"), "gate-precheck",
+                           *args], capture_output=True, text=True, timeout=60, check=False)
+
+
+class TestTheGatePrecheckCommand:
+    def test_a_failing_plan_reports_the_gate_the_plan_and_the_problem(self, repo):
+        plan = _write_plan(repo, BROKEN_PLAN)
+
+        result = _gate_precheck_cli(SID)
+
+        assert result.returncode == 0, result.stderr
+        verdict = json.loads(result.stdout)
+        assert verdict["gate"] == "phase-a"
+        assert verdict["plan"] == str(plan)
+        assert verdict["problem"].startswith("plan.md validation failed")
+
+    def test_a_passing_plan_reports_no_problem(self, repo):
+        plan = _write_plan(repo, PLAN_WITH_TEST)
+
+        verdict = json.loads(_gate_precheck_cli(SID).stdout)
+
+        assert verdict == {"gate": "phase-a", "plan": str(plan),
+                           "plan_hash": plan_md_hash(str(repo), SID), "problem": None}
+        assert verdict["plan_hash"] is not None
+
+    def test_the_problem_is_the_one_the_approval_would_meet(self, repo):
+        _write_plan(repo, PLAN_NO_TEST)
+
+        verdict = json.loads(_gate_precheck_cli(SID).stdout)
+
+        assert verdict["problem"] == _precheck()._gate_precheck(str(repo), SID, "phase-a")
+
+    def test_outside_work_mode_no_gate_is_pending(self, repo):
+        _write_plan(repo, BROKEN_PLAN)
+        cache = Path(os.environ["WRIT_CACHE_DIR"]) / f"writ-session-{SID}.json"
+        cache.write_text(json.dumps({"mode": "debug", "project_root": str(repo)}))
+
+        verdict = json.loads(_gate_precheck_cli(SID).stdout)
+
+        assert verdict == {"gate": None, "plan": None, "plan_hash": None, "problem": None}
+
+    def test_without_a_session_id_it_prints_its_usage_and_fails(self):
+        result = _gate_precheck_cli()
+
+        assert result.returncode != 0
+        assert "gate-precheck <session_id>" in result.stdout + result.stderr
 
 
 # --------------------------------------------------------------------------- #

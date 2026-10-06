@@ -22,6 +22,8 @@ from writ.harness import vibe, vibe_context
 REPO = Path(__file__).resolve().parent.parent
 SHIM = REPO / "bin" / "writ-vibe-hook"
 FIXTURES = REPO / "tests" / "fixtures" / "vibe" / "envelopes.jsonl"
+sys.path.insert(0, str(REPO / "bin" / "lib"))
+import approval_match  # path-loaded, as vibe_user.py loads it
 
 
 @pytest.fixture(autouse=True)
@@ -579,6 +581,296 @@ class TestUserOnlyCommands:
             {"path": "notes.md", "content": "Type `!mistty approve` to advance.\n"}))
         assert out == ""
         assert len(plugin.runs("w")) == 1
+
+
+# --------------------------------------------------------------------------- #
+# `mistty ask`: the user approves a Writ gate on Mistty's own approval card
+# --------------------------------------------------------------------------- #
+# Answers `writ-session.py <command>` with the JSON in $VIBE_TEST_LOG/<command>.json and
+# logs every call; a missing answer file is a failed command.
+_WRIT_SESSION_STUB = """import os, sys
+log = os.environ["VIBE_TEST_LOG"]
+with open(os.path.join(log, "writ-session.calls"), "a") as handle:
+    handle.write(" ".join(sys.argv[1:]) + "\\n")
+try:
+    with open(os.path.join(log, sys.argv[1] + ".json")) as handle:
+        sys.stdout.write(handle.read())
+except OSError:
+    sys.exit(3)
+"""
+# Writ's approval hook advancing the gate: the next current-phase reads the after state.
+APPROVED = ('cp "$VIBE_TEST_LOG/after.json" "$VIBE_TEST_LOG/current-phase.json"\n'
+            "echo '[Writ: planning gate approved -> testing]'\n")
+
+
+def _work(next_gate: str | None, *approved: str) -> dict:
+    """The JSON `writ-session.py current-phase` prints for a work session."""
+    return {"phase": "testing" if approved else "planning", "mode": "work",
+            "gates_approved": list(approved), "next_gate": next_gate, "plan_hash": "h",
+            "candidate_id": "", "rule_id": ""}
+
+
+PLAN = "/work/proj/.claude/plans/sid-1/plan.md"
+PHASE_A = _work("phase-a")
+SKELETONS = _work("test-skeletons", "phase-a")
+PASSING = {"gate": "phase-a", "plan": PLAN, "plan_hash": "h", "problem": None}
+
+
+def _gate_plugin(tmp_path: Path, *, precheck: dict | None = PASSING,
+                 phase: dict | None = PHASE_A, after: dict | None = SKELETONS,
+                 approve: str = APPROVED) -> Plugin:
+    plugin = Plugin(tmp_path, {
+        "PreToolUse": [{"matcher": "Bash", "scripts": {"b": ALLOW}}],
+        "PostToolUse": [{"matcher": "Bash", "scripts": {"p": ALLOW}}],
+        "UserPromptSubmit": [{"matcher": "", "scripts": {"auto-approve-gate": approve,
+                                                          "rag": ALLOW}}],
+    })
+    lib = plugin.root / "bin" / "lib"
+    lib.mkdir(parents=True)
+    (lib / "writ-session.py").write_text(_WRIT_SESSION_STUB)
+    for name, body in (("gate-precheck", precheck), ("current-phase", phase), ("after", after)):
+        if body is not None:
+            (plugin.log / f"{name}.json").write_text(json.dumps(body))
+    return plugin
+
+
+def _calls(plugin: Plugin) -> list[str]:
+    log = plugin.log / "writ-session.calls"
+    return log.read_text().splitlines() if log.exists() else []
+
+
+def _ask(cwd: Path, tool: str = "file_system.bash", command: str = "mistty ask",
+         call_id: str = "call1") -> dict:
+    return _pre(cwd, tool, {"command": command}, call_id)
+
+
+def _answered(cwd: Path, *, call_id: str = "call1", status: str = "success",
+              command: str = "mistty ask") -> dict:
+    return _post(cwd, "file_system.bash", {"command": command}, call_id=call_id,
+                 status=status, output={"stdout": "x"}, text="stdout: x",
+                 error=None if status == "success" else "exit 1")
+
+
+def _card(out: str) -> str:
+    data = json.loads(out)
+    assert data["decision"] == "ask", data
+    return data["reason"]
+
+
+class TestAsk:
+    @pytest.mark.parametrize("tool", ["bash", "file_system.bash", "process.start"])
+    @pytest.mark.parametrize("command", ["mistty ask", "  mistty   ask \n"])
+    def test_a_passing_gate_answers_ask_with_a_card_naming_the_gate_and_the_plan(
+            self, tmp_path, tool, command):
+        plugin = _gate_plugin(tmp_path)
+
+        card = _card(_handle(plugin, "pre_tool", _ask(tmp_path, tool, command)))
+
+        assert "phase-a" in card
+        assert "plan" in card
+        assert PLAN in card
+        assert _calls(plugin) == ["gate-precheck sid-1"]
+        # The bridge decides the call itself: Writ's Bash checks have nothing to add.
+        assert plugin.runs("b") == []
+
+    def test_the_test_skeletons_card_names_the_test_files(self, tmp_path):
+        plugin = _gate_plugin(tmp_path, precheck={"gate": "test-skeletons", "plan": PLAN,
+                                                  "problem": None})
+
+        card = _card(_handle(plugin, "pre_tool", _ask(tmp_path)))
+
+        assert "test-skeletons" in card
+        assert "test files" in card
+
+    def test_with_no_pending_gate_the_ask_is_denied(self, tmp_path):
+        plugin = _gate_plugin(tmp_path, precheck={"gate": None, "plan": None, "problem": None})
+
+        reason = _deny_reason(_handle(plugin, "pre_tool", _ask(tmp_path)))
+
+        assert "no gate pending" in reason
+        assert "nothing to approve" in reason
+
+    def test_a_gate_the_precheck_would_refuse_is_denied_with_the_problem(self, tmp_path):
+        problem = "plan.md validation failed: ## Capabilities is missing."
+        plugin = _gate_plugin(tmp_path, precheck={"gate": "phase-a", "plan": PLAN,
+                                                  "problem": problem})
+
+        reason = _deny_reason(_handle(plugin, "pre_tool", _ask(tmp_path)))
+
+        assert problem in reason
+        assert "`mistty ask` again" in reason
+
+    def test_a_failing_precheck_command_denies_fail_closed(self, tmp_path):
+        plugin = _gate_plugin(tmp_path, precheck=None)
+
+        reason = _deny_reason(_handle(plugin, "pre_tool", _ask(tmp_path)))
+
+        assert "fail-closed" in reason
+
+    @pytest.mark.parametrize("answer", ["not json", "[]", '{"gate": 7}'])
+    def test_an_unreadable_precheck_answer_denies_fail_closed(self, tmp_path, answer):
+        plugin = _gate_plugin(tmp_path)
+        (plugin.log / "gate-precheck.json").write_text(answer)
+
+        reason = _deny_reason(_handle(plugin, "pre_tool", _ask(tmp_path)))
+
+        assert "fail-closed" in reason
+
+    def test_without_a_session_the_ask_is_denied(self, tmp_path):
+        plugin = _gate_plugin(tmp_path)
+
+        reason = _deny_reason(_handle(plugin, "pre_tool", _ask(tmp_path), sid=None))
+
+        assert reason == vibe._NO_SESSION_REASON
+        assert _calls(plugin) == []
+
+    @pytest.mark.parametrize("call_id", ["", "../escape", "a/b"])
+    def test_a_call_id_the_bridge_cannot_record_is_denied(self, tmp_path, call_id):
+        plugin = _gate_plugin(tmp_path)
+
+        reason = _deny_reason(_handle(plugin, "pre_tool", _ask(tmp_path, call_id=call_id)))
+
+        assert "mistty ask" in reason
+        assert not (tmp_path / "escape").exists()
+
+    @pytest.mark.parametrize("command", [
+        "mistty ask && rm -rf build",
+        "mistty ask; ls",
+        "echo mistty ask",
+        "mistty asked",
+        "mistty ask now",
+        "mistty\nask",
+    ])
+    def test_any_other_command_takes_the_normal_path(self, tmp_path, command):
+        plugin = _gate_plugin(tmp_path)
+
+        out = _handle(plugin, "pre_tool", _ask(tmp_path, command=command))
+
+        assert out == ""
+        assert [r["tool_input"]["command"] for r in plugin.runs("b")] == [command]
+        assert _calls(plugin) == []
+
+
+class TestAskAnswered:
+    def test_a_yes_advances_the_gate_and_gives_the_next_step(self, tmp_path, refreshes):
+        plugin = _gate_plugin(tmp_path)
+        _card(_handle(plugin, "pre_tool", _ask(tmp_path)))
+
+        context = _context(_handle(plugin, "post_tool", _answered(tmp_path)))
+
+        [approval] = plugin.runs("auto-approve-gate")
+        assert approval["prompt"] == approval_match.OVERRIDE_PHRASE
+        assert approval["session_id"] == "sid-1"
+        assert approval["hook_event_name"] == "UserPromptSubmit"
+        assert plugin.runs("rag") == []
+        assert "[Writ: planning gate approved -> testing]" in context
+        assert vibe_context._next_step("work", "test-skeletons") in context
+        assert [sid for sid, _ in refreshes] == ["sid-1"]
+
+    def test_the_answered_call_still_runs_writs_post_checks(self, tmp_path):
+        plugin = _gate_plugin(tmp_path)
+        _handle(plugin, "pre_tool", _ask(tmp_path))
+
+        _handle(plugin, "post_tool", _answered(tmp_path))
+
+        assert len(plugin.runs("p")) == 1
+
+    def test_a_call_advances_its_gate_once(self, tmp_path):
+        ctx = tmp_path / "ctx"
+        plugin = _gate_plugin(tmp_path)
+        _handle(plugin, "pre_tool", _ask(tmp_path), context_dir=ctx)
+
+        _handle(plugin, "post_tool", _answered(tmp_path), context_dir=ctx)
+        _handle(plugin, "post_tool", _answered(tmp_path), context_dir=ctx)
+
+        assert len(plugin.runs("auto-approve-gate")) == 1
+        assert [p for p in ctx.rglob("*") if p.is_file()] == []
+
+    def test_a_failed_call_advances_nothing_and_says_why(self, tmp_path):
+        plugin = _gate_plugin(tmp_path)
+        _handle(plugin, "pre_tool", _ask(tmp_path))
+
+        context = _context(_handle(plugin, "post_tool", _answered(tmp_path, status="failure")))
+
+        assert plugin.runs("auto-approve-gate") == []
+        assert "did not advance" in context
+        assert "phase-a" in context
+
+    def test_a_gate_that_changed_since_the_ask_advances_nothing_and_says_why(self, tmp_path):
+        plugin = _gate_plugin(tmp_path)
+        _handle(plugin, "pre_tool", _ask(tmp_path))
+        (plugin.log / "current-phase.json").write_text(json.dumps(SKELETONS))
+
+        context = _context(_handle(plugin, "post_tool", _answered(tmp_path)))
+
+        assert plugin.runs("auto-approve-gate") == []
+        assert "did not advance" in context
+        assert "test-skeletons" in context
+
+    def test_a_plan_rewritten_while_the_card_was_open_advances_nothing(self, tmp_path):
+        # Mistty runs a reply's tool calls in parallel, so a plan write can land while the
+        # user reads the card.
+        plugin = _gate_plugin(tmp_path)
+        _handle(plugin, "pre_tool", _ask(tmp_path))
+        (plugin.log / "current-phase.json").write_text(json.dumps({**PHASE_A, "plan_hash": "h2"}))
+
+        context = _context(_handle(plugin, "post_tool", _answered(tmp_path)))
+
+        assert plugin.runs("auto-approve-gate") == []
+        assert "did not advance" in context
+        assert "plan changed" in context
+
+    def test_an_approval_writ_refused_says_the_gate_is_still_pending(self, tmp_path):
+        plugin = _gate_plugin(tmp_path, approve="echo 'REFUSED: plan drifted'\nexit 0\n")
+        _handle(plugin, "pre_tool", _ask(tmp_path))
+
+        context = _context(_handle(plugin, "post_tool", _answered(tmp_path)))
+
+        assert len(plugin.runs("auto-approve-gate")) == 1
+        assert "REFUSED: plan drifted" in context
+        assert "still pending" in context
+
+    def test_an_approval_hook_that_fails_says_so(self, tmp_path):
+        plugin = _gate_plugin(tmp_path, approve="echo 'boom' >&2\nexit 1\n")
+        _handle(plugin, "pre_tool", _ask(tmp_path))
+
+        context = _context(_handle(plugin, "post_tool", _answered(tmp_path)))
+
+        assert "auto-approve-gate" in context
+        assert "exited 1" in context
+
+    def test_a_mistty_ask_the_bridge_never_asked_for_advances_nothing(self, tmp_path):
+        plugin = _gate_plugin(tmp_path)
+
+        _handle(plugin, "post_tool", _answered(tmp_path))
+
+        assert plugin.runs("auto-approve-gate") == []
+        assert len(plugin.runs("p")) == 1
+
+    def test_an_ask_for_another_call_advances_nothing(self, tmp_path):
+        plugin = _gate_plugin(tmp_path)
+        _handle(plugin, "pre_tool", _ask(tmp_path, call_id="call1"))
+
+        _handle(plugin, "post_tool", _answered(tmp_path, call_id="call2"))
+
+        assert plugin.runs("auto-approve-gate") == []
+
+    def test_a_denied_ask_leaves_nothing_a_later_call_could_advance(self, tmp_path):
+        plugin = _gate_plugin(tmp_path, precheck={"gate": "phase-a", "plan": PLAN,
+                                                  "problem": "plan.md validation failed: x"})
+        _deny_reason(_handle(plugin, "pre_tool", _ask(tmp_path)))
+
+        _handle(plugin, "post_tool", _answered(tmp_path))
+
+        assert plugin.runs("auto-approve-gate") == []
+
+    def test_a_chained_command_never_advances(self, tmp_path):
+        plugin = _gate_plugin(tmp_path)
+        _card(_handle(plugin, "pre_tool", _ask(tmp_path)))
+
+        _handle(plugin, "post_tool", _answered(tmp_path, command="mistty ask; ls"))
+
+        assert plugin.runs("auto-approve-gate") == []
 
 
 # --------------------------------------------------------------------------- #

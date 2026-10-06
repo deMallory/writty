@@ -349,7 +349,18 @@ def test_launcher_sends_approve_to_the_user_commands(tmp_path):
     assert "!mistty" in proc.stdout
 
 
-@pytest.mark.parametrize("arg", ["approver", "approve this"])
+def test_launcher_ask_prints_one_line_and_exits_0_without_starting_mistty(tmp_path):
+    # The model runs it; the bridge has already asked the user before it runs.
+    link, env = _launcher_env(tmp_path)
+    proc = subprocess.run([str(link), "ask"], cwd=tmp_path, env=env, check=False,
+                          capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    assert len(proc.stdout.splitlines()) == 1
+    assert "FAKE-VIBE" not in proc.stdout
+    assert proc.stderr == ""
+
+
+@pytest.mark.parametrize("arg", ["approver", "approve this", "asker"])
 def test_launcher_sends_anything_else_to_vibe(tmp_path, arg):
     link, env = _launcher_env(tmp_path)
     proc = subprocess.run([str(link), arg], cwd=tmp_path, env=env,
