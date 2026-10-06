@@ -2584,9 +2584,10 @@ emit_mode_directive() {
 
 [Writ: set mode before proceeding]
 Conversation: discussion, no code. Debug: investigating a problem, no code.
+Patch: small bounded code change, 3-file limit, no plan or tests gate.
 Review: evaluating code against rules, no code. Work: building/modifying code (full workflow).
 Investigate: audit / explore / research a codebase or topic (evidence-grounded, read-heavy).
-Declare: writ mode set <conversation|debug|review|work|investigate> ${session_id}
+Declare: writ mode set <conversation|debug|patch|review|work|investigate> ${session_id}
 Full definitions: see HANDBOOK.md "Mode system" section.
 MODE_DIRECTIVE
 }

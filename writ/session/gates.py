@@ -809,6 +809,54 @@ def _check_debug_gate(session_id: str, mode, file_path: str, basename: str, cach
     return {"can_write": False, "reason": reason}
 
 
+PATCH_FILE_LIMIT = 3
+
+
+def _check_patch_gate(session_id: str, mode, file_path: str, cache: dict) -> dict:
+    """Patch mode: writes allowed with no phase gates, bounded to PATCH_FILE_LIMIT
+    distinct files per session.
+
+    The bound is the tier's whole contract (ENF-ROUTE-001): a task that outgrows
+    it is not a patch, so the refusal names the exit -- mode set work and the plan
+    gate -- rather than a negotiation. Exempt writes (plan.md, scratch zone,
+    credentials) never reach this check, so the count is working-file writes only.
+
+    The project boundary applies with KIND_PRE_APPROVAL: a patch has no plan, so
+    no absolute path is pre-declared; an out-of-project write is bigger than a
+    patch and takes the standard pre-approval refusal.
+    """
+    bounded = _check_project_boundary(session_id, mode, file_path,
+                                      cache.get("project_root"),
+                                      cache.get("scratch_zone"), KIND_PRE_APPROVAL)
+    if bounded is not None:
+        return bounded
+
+    recorded = cache.get("patch_files") or []
+    if file_path not in recorded and len(recorded) >= PATCH_FILE_LIMIT:
+        reason = (
+            "[ENF-GATE-PATCH] Patch mode is bounded to "
+            f"{PATCH_FILE_LIMIT} distinct files; this write would be file "
+            f"{len(recorded) + 1}. The task has outgrown the patch tier: run "
+            f"`writ mode set work {session_id}` and pass the plan gate."
+        )
+        _log_gate_denial(session_id, cache, "patch-file-limit", file_path, reason)
+        return {"can_write": False, "reason": reason}
+
+    if file_path not in recorded:
+        # One durable cache write per NEW file, at most PATCH_FILE_LIMIT per
+        # session: repeat writes to an already-counted file stay on the
+        # in-memory path, so the write-path process budget is untouched.
+        with mutate_cache(session_id) as fresh:
+            files = fresh.get("patch_files") or []
+            if file_path not in files and len(files) < PATCH_FILE_LIMIT:
+                files.append(file_path)
+                fresh["patch_files"] = files
+
+    _log_friction_event(session_id, mode, "write_attempt",
+                        file_path=file_path, result="allow", gate_status="patch")
+    return {"can_write": True, "reason": None}
+
+
 def _check_work_gate(session_id: str, mode, file_path: str, current_phase, cache: dict, skill_dir: str) -> dict:
     """Work mode: two-gate enforcement (phase-a plan approval + test-skeletons).
 
@@ -1040,13 +1088,16 @@ def _can_write_check(session_id: str, envelope: dict, skill_dir: str = "", cache
         return {
             "can_write": False,
             "reason": "[ENF-GATE-MODE] No mode declared. Set a mode before writing code. "
-                      "Modes: conversation, debug, investigate, review, work. "
+                      "Modes: conversation, debug, investigate, patch, review, work. "
                       f"For building or modifying code run: writ mode set work {session_id} "
                       "(or put conversation, debug, investigate or review in place of work).",
         }
 
     if mode == "debug":
         return _check_debug_gate(session_id, mode, file_path, basename, cache, skill_dir)
+
+    if mode == "patch":
+        return _check_patch_gate(session_id, mode, file_path, cache)
 
     # Non-work modes: allow all writes (no gates)
     if mode != "work":

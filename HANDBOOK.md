@@ -55,13 +55,14 @@ That is one turn: relevant rules in, a hard gate on risky writes, and a durable 
 
 ## 3. The mode system
 
-You declare a mode per session. The mode decides what state initializes and whether gates apply. There are **five modes** (`writ/session/mode_engine.py`, `MODE_CONFIG` is the single source; a new mode is one dict entry, not new branches):
+You declare a mode per session. The mode decides what state initializes and whether gates apply. There are **six modes** (`writ/session/mode_engine.py`, `MODE_CONFIG` is the single source; a new mode is one dict entry, not new branches):
 
 | Mode | Purpose | Gates / blocks |
 |---|---|---|
 | `conversation` | Discussion, questions, brainstorming | None |
 | `debug` | Investigate one specific failure (the runtime lens) | Root-cause source-edit gate; evidence-first read gate (§5) |
 | `investigate` | Evidence-grounded audit / explore / research | Per-lens checks (§4), all advisory today |
+| `patch` | Small bounded code change (tier-1 routing, ENF-ROUTE-001) | No phase gates; 3-distinct-file bound, then it must become `work` |
 | `review` | Evaluate code against rules | None |
 | `work` | Build or modify code | Two phase gates (§6) |
 

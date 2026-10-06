@@ -91,9 +91,9 @@ fi
 
 # Detect "mode set <mode>" in the Bash command -- the only stdout/injection path.
 MODE=""
-if echo "$HOOK_COMMAND" | grep -qE 'mode set (conversation|debug|investigate|review|work)'; then
+if echo "$HOOK_COMMAND" | grep -qE 'mode set (conversation|debug|investigate|patch|review|work)'; then
     # sed, not grep -P: BSD grep on macOS has no -P and printed its usage instead.
-    MODE=$(echo "$HOOK_COMMAND" | sed -nE 's/.*mode set (conversation|debug|investigate|review|work).*/\1/p' | head -n1)
+    MODE=$(echo "$HOOK_COMMAND" | sed -nE 's/.*mode set (conversation|debug|investigate|patch|review|work).*/\1/p' | head -n1)
 fi
 
 if [ -z "$MODE" ]; then
@@ -120,6 +120,9 @@ case "$MODE" in
         ;;
     investigate)
         AC_TEXT="[Writ: Investigate mode. Evidence-grounded, read-heavy. Follow the investigation workflow for the selected source type (code/web/runtime); ground every claim in observed evidence. No code generation -- switch to Work mode to implement.]"
+        ;;
+    patch)
+        AC_TEXT="[Writ: Patch mode. Small bounded change: no plan gate, no test-skeleton gate. Read the relevant rule docs, write the code, run the static analysis, and run the tests you touch. Bounded to 3 distinct files: if the task outgrows that, run writ mode set work and pass the plan gate.]"
         ;;
     work)
         # Check if THIS SESSION's own plan gate already exists. The project-wide path this
