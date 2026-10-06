@@ -34,6 +34,10 @@ MODE_CONFIG: dict[str, dict] = {
         "gate_sequence": ["phase-a", "test-skeletons"],
         "phase_after_gate": {"phase-a": "testing", "test-skeletons": "implementation"},
     },
+    # Tier-1 routing (ENF-ROUTE-001, ported from Phaselock): a bounded code
+    # change with no phase gates. The bound is mechanical, in gates.py
+    # (PATCH_FILE_LIMIT); past it the session must enter work mode.
+    "patch": {"initial_phase": None, "gate_sequence": [], "phase_after_gate": {}},
     # INV-8: debug is the runtime lens of the investigation engine -- its command
     # citations are runtime evidence. gate_sequence stays [] (its gate is the
     # root-cause source-edit gate, not a phase sequence).
@@ -373,6 +377,7 @@ def _apply_mode_set(
     cache["gates_approved_plan"] = {}
     cache["paused_work_state"] = None
     cache["denial_counts"] = {}
+    cache["patch_files"] = []
 
     # Audit trail -- skip no-op transitions (e.g. repeated mode set work)
     if old_phase != new_phase:
@@ -671,7 +676,7 @@ def cmd_mode(
         sys.exit(2)
 
     if value is None:
-        print(f"Usage: writ-session.py mode {subcmd} <conversation|debug|investigate|review|work> <session_id>", file=sys.stderr)
+        print(f"Usage: writ-session.py mode {subcmd} <conversation|debug|investigate|patch|review|work> <session_id>", file=sys.stderr)
         sys.exit(2)
 
     mode = value.lower()

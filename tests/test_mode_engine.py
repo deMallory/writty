@@ -38,7 +38,7 @@ GATE_TOKEN_SESSION_PREFIX = "test-mode-engine"
 # Captured pre-refactor literals -- the parity baseline.
 EXPECTED_WORK_GATE_SEQUENCE = ["phase-a", "test-skeletons"]
 EXPECTED_WORK_PHASE_AFTER = {"phase-a": "testing", "test-skeletons": "implementation"}
-EXPECTED_VALID_MODES = {"conversation", "debug", "review", "work", "investigate"}
+EXPECTED_VALID_MODES = {"conversation", "debug", "patch", "review", "work", "investigate"}
 
 PLAN_CONTENT = """\
 ## Files

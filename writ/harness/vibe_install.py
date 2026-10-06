@@ -65,6 +65,8 @@ in force. The user can also type `!mistty mode <mode>`.
 - `work`: plan, then tests, then code. Write plan.md and capabilities.md in the session's
   plan folder and stop for approval. Then write the test files the plan names and stop for
   approval. Only then edit source files.
+- `patch`: a small bounded code change. No plan or tests gate; at most 3 distinct
+  files. Past that bound, switch to `work` and pass the plan gate.
 - `debug`: source edits stay refused until the session's debug.md records the root cause.
 - `review`: evaluate code against Writ's rules and report findings.
 - `conversation`: no code changes are expected.

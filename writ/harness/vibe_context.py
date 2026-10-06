@@ -36,7 +36,7 @@ _HEADER = (
     "`!mistty` command. It is Writ's file: keep your own notes in other files."
 )
 _APPROVE = "The user approves with `!mistty approve`."
-_MODES = "`mistty mode work`, `debug`, `review`, `conversation` or `investigate`"
+_MODES = "`mistty mode work`, `debug`, `patch`, `review`, `conversation` or `investigate`"
 
 
 def scratchpad_dir(vibe_home: str, sid: str) -> str:
@@ -86,6 +86,7 @@ def _next_step(mode: str | None, pending: str | None) -> str:
     return {
         "debug": ("Source edits stay refused until debug.md records the root cause. "
                   "Writ's refusal names the file."),
+        "patch": "Patch mode: bounded to 3 files; switch to work past it.",
         "review": "Evaluate code against Writ's rules and report findings per file.",
         "conversation": "No code changes are expected.",
     }.get(mode, "")
