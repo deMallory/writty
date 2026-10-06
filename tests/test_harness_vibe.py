@@ -1015,6 +1015,25 @@ class TestStop:
         assert strict == "1"
         assert os.path.realpath(cwd) == os.path.realpath(work)
 
+    @pytest.mark.parametrize("extra, forwarded", [
+        ({"last_assistant_message": "Say approved to proceed."}, "Say approved to proceed."),
+        ({"last_assistant_message": ""}, ""),
+        ({}, None),
+        ({"last_assistant_message": None}, None),
+        ({"last_assistant_message": ["not", "text"]}, None),
+    ], ids=["text", "empty", "absent", "null", "list"])
+    def test_the_last_assistant_message_is_forwarded_only_as_text(self, tmp_path, extra,
+                                                                  forwarded):
+        # Writ's Stop checks read the reply from this field when Vibe sends one; Vibe
+        # gives no transcript to fall back on.
+        plugin = Plugin(tmp_path, {"Stop": [{"matcher": "", "scripts": {"s": ALLOW}}]})
+        assert _handle(plugin, "post_agent", {**_agent(tmp_path), **extra}) == ""
+        [run] = plugin.runs("s")
+        if forwarded is None:
+            assert "last_assistant_message" not in run
+        else:
+            assert run["last_assistant_message"] == forwarded
+
     @pytest.mark.parametrize("body, needle", [
         (_refusing("R-EXIT2", 2), "R-EXIT2"),
         (_refusing("R-EXIT1", 1), "R-EXIT1"),

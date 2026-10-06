@@ -355,6 +355,48 @@ _GATE_VALIDATORS: dict[str, object] = {
 }
 
 
+def _gate_precheck(project_root: str, session_id: str, gate: str) -> str | None:
+    """What would refuse the user's approval of `gate`, checked before they are asked.
+
+    A refused approval spends the user's token, so the save-time plan check and the Stop
+    hook run this first. It is the gate's own validator plus one look-ahead for phase-a:
+    a plan whose ## Files names no test file passes phase-a and is refused by
+    test-skeletons one approval later, and recovering costs a replan and two fresh
+    approvals. The look-ahead lives here, not in `_validate_phase_a`, because that
+    validator promises nothing that validates today starts failing.
+
+    Writes no state and claims no token. None means nothing known would refuse it.
+    """
+    validator = _GATE_VALIDATORS.get(gate)
+    if not callable(validator):
+        return None
+    error = validator(project_root, session_id)
+    if error or gate != "phase-a":
+        return error
+    import manual_test_grant
+
+    # The grant is what lets test-skeletons pass a cycle that names no test file.
+    if manual_test_grant.active(session_id) is not None:
+        return None
+    # Deferred for the reason _validate_test_skeletons gives: plan_harvest imports from here.
+    from writ.session.plan_harvest import _extract_files
+
+    plan_path = _find_plan_md(project_root, session_id or None)
+    if not plan_path:  # phase-a refuses a missing plan above; this narrows the type
+        return None
+    with open(plan_path) as handle:
+        names_a_test = any(
+            re.search(pattern, entry["path"])
+            for entry in _extract_files(handle.read())
+            for pattern in _TEST_PATH_PATTERNS
+        )
+    if names_a_test:
+        return None
+    return (f"{plan_path} names no test file, so the test-skeletons gate will refuse it "
+            "after this approval. Add the test file to ## Files, or ask the user to reply "
+            "`manual test approved` if this cycle is verified by hand.")
+
+
 # What to tell the user when the token they hold does not authorize the gate now
 # pending. Each message names the cause and says plainly whether a fresh approval is
 # needed, because the failure mode being fixed is a refusal the user read as "no gate is

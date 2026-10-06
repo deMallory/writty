@@ -35,7 +35,9 @@ _HEADER = (
     "Writ state for this session. Writ rewrites it after each prompt, tool call and\n"
     "`!mistty` command. It is Writ's file: keep your own notes in other files."
 )
-_APPROVE = "The user approves with `!mistty approve`."
+# The ritual sentence approval_evidence.REQUEST_MARKERS accepts: a typed approved mints a
+# token only when the reply before it asks in these words.
+_APPROVE = 'End your turn with: "Say approved to proceed."'
 _MODES = "`mistty mode work`, `debug`, `patch`, `review`, `conversation` or `investigate`"
 
 
@@ -70,15 +72,15 @@ def _next_step(mode: str | None, pending: str | None) -> str:
         return f"Writ refuses every write. Set the mode the task needs in your shell: {_MODES}."
     if mode == "work":
         if pending == "phase-a":
-            return ("Write plan.md in the plan folder in one write, with four sections: "
-                    "## Files (one line per file: - `path` (change) -- reason, where change "
-                    "is create, modify or delete), ## Analysis (the design and why), "
-                    "## Rules Applied (only rule IDs Writ showed you this session, or exactly "
-                    "\"No matching rules\"), ## Capabilities (one unchecked - [ ] line per "
-                    "behavior). Writ checks plan.md each time you save it. Then write "
-                    f"capabilities.md, present both, and stop. {_APPROVE}")
+            return ("Up to 3 files with no schema, protocol or config migration: run "
+                    "`mistty mode patch`, no plan. Else write plan.md in the plan folder, "
+                    "in one write: ## Files (one line per file: - `path` (change) -- reason, "
+                    "where change is create, modify or delete), ## Analysis (design and why), "
+                    "## Rules Applied (only IDs Writ showed you, or \"No matching rules\"), "
+                    "## Capabilities (one unchecked - [ ] line per behavior). Then write "
+                    f"capabilities.md and show both. {_APPROVE}")
         if pending == "test-skeletons":
-            return f"Write the test files the plan names, present them, and stop. {_APPROVE}"
+            return f"Write the test files the plan names and show them. {_APPROVE}"
         if pending:
             return f"`{pending}` is pending. {_APPROVE}"
         return ("Plan and tests are approved: implement the files the plan lists. "

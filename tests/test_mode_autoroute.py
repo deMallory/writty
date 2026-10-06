@@ -327,6 +327,28 @@ class TestHookAutoRouteBehavior:
         assert "investigate mode set automatically" not in r.stdout
         assert "work mode set automatically" in r.stdout
 
+    @pytest.mark.parametrize("worker_agents, branch", [
+        (None, "this session is its orchestrator"),
+        ("none", "This host has no Writ worker agents"),
+    ], ids=["claude-code", "mistty"])
+    def test_the_work_notice_points_a_small_change_at_patch_mode(
+            self, tmp_path, monkeypatch, worker_agents, branch):
+        """Patch mode (ENF-ROUTE-001: at most 3 files, no gates) is the route for a small
+        change. The notice offered the ungated, unbounded conversation mode instead, so a
+        one-line fix in Mistty went through two approvals."""
+        if worker_agents is None:
+            monkeypatch.delenv("WRIT_WORKER_AGENTS", raising=False)
+        else:
+            monkeypatch.setenv("WRIT_WORKER_AGENTS", worker_agents)
+        r, mode = self._run(tmp_path, "implement the export endpoint from the approved plan")
+        assert r.returncode == 0, r.stderr
+        assert mode == "work"
+        notice = r.stdout[r.stdout.index("work mode set automatically"):]
+        assert branch in notice
+        assert "writ mode set patch autoroute-e2e" in notice
+        assert "at most 3 files" in notice
+        assert "writ mode set conversation" not in notice
+
     def test_midsession_reroute_preserves_work_state(self, tmp_path):
         """Contract change (mode-switch cycle): the auto-route MAY re-route a live
         session between work and investigate, because the original once-per-session

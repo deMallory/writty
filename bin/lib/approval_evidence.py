@@ -51,7 +51,9 @@ _TAIL_LINES = 400
 # user for the approval word. "say approved" and "approved to proceed" are the ritual
 # sentence SKL-PROC-WRIT-FAILURE-001 and PHA-WORK-002 already mandate verbatim ("Test
 # skeletons written: ClassName (N tests). Say approved to proceed."). A phrase joins this
-# set only under the same test.
+# set only under the same test. "mistty approve" meets it: the `!mistty approve` command
+# exists only to approve, and Writ's Mistty state file asked for it until 2026-10-06, so
+# replies written that way are requests too.
 #
 # GATE SPECIFICITY IS DELIBERATELY NOT REQUIRED. These prove a request was made, not
 # which gate it named. Requiring per-gate artifact tokens would multiply false negatives
@@ -62,6 +64,7 @@ REQUEST_MARKERS = (
     "reply approved",
     "type approved",
     "approved to proceed",
+    "mistty approve",
 )
 
 # Markdown decoration and quote characters, removed rather than treated as word
@@ -100,7 +103,7 @@ def _assistant_text(row: dict) -> str:
     return ""
 
 
-def evidence_flags(transcript_path: str) -> tuple[bool, bool]:
+def evidence_flags(transcript_path: str, trailing_user_rows: int = 1) -> tuple[bool, bool]:
     """(an approval was requested, any assistant text was found at all).
 
     The second flag is not a second opinion on the first: it is what the
@@ -111,6 +114,8 @@ def evidence_flags(transcript_path: str) -> tuple[bool, bool]:
     AT MOST ONE `user` ROW MAY FOLLOW THE EVIDENCE TURN. That one is the prompt being
     classified, which may or may not have been appended to the transcript yet, so both
     orderings are tolerated. Two or more mean the request belongs to an earlier exchange.
+    A Stop reader passes `trailing_user_rows=0`: its prompt is already written, so one
+    trailing row means the reply being judged is not, and the text found is the turn before.
     """
     try:
         with open(transcript_path, encoding="utf-8", errors="replace") as fh:
@@ -142,7 +147,7 @@ def evidence_flags(transcript_path: str) -> tuple[bool, bool]:
 
     if not last_text:
         return False, False
-    return (user_rows_after <= 1 and has_request_marker(last_text)), True
+    return (user_rows_after <= trailing_user_rows and has_request_marker(last_text)), True
 
 
 def envelope_evidence_flags(

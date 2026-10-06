@@ -28,6 +28,7 @@ VALID_PLAN = """\
 
 ## Files
 - `service.py` (modify) -- implement the thing
+- `tests/test_service.py` (create) -- pins the thing
 
 ## Analysis
 Implement the thing with care and verify behavior.
@@ -47,6 +48,8 @@ MISSING_SECTIONS = """\
 """
 
 INVENTED_CITATION = VALID_PLAN.replace("TEST-CI-001", "MADE-UP-999")
+NO_TEST_FILE = VALID_PLAN.replace(
+    "- `tests/test_service.py` (create) -- pins the thing\n", "")
 PASS_LINE = "[Writ: plan check] plan.md passes the phase-a structure check."
 
 
@@ -120,6 +123,23 @@ class TestFailingPlan:
         assert doc is not None
         assert "decision" not in doc
         assert "permissionDecision" not in doc["hookSpecificOutput"]
+
+
+class TestNoTestFile:
+    """A plan that passes phase-a but names no test file is refused one gate later, by
+    test-skeletons, after the user's plan approval is spent. The save-time check names
+    it while it still costs one edit."""
+
+    def test_the_test_skeletons_refusal_is_named_at_save_time(self, tmp_path):
+        iso = _iso(tmp_path)
+        plan = _write(_scoped_plan(iso), NO_TEST_FILE)
+
+        context = _context(run_hook(SCRIPT, _envelope(plan), iso))
+
+        assert context.startswith(f"[Writ: plan check] {plan} names no test file")
+        assert "test-skeletons gate" in context
+        assert "fix it before presenting" in context
+        assert context != PASS_LINE
 
 
 class TestPassingPlan:

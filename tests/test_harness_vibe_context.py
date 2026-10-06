@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,8 +19,12 @@ import pytest
 from writ.harness import vibe_context, vibe_install
 from writ.session.locators import plan_dir
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bin" / "lib"))
+import approval_evidence  # path-loaded, as auto-approve-gate.sh loads it
+
 REPO = Path(__file__).resolve().parent.parent
 SID = "sid-1"
+ASK = "Say approved to proceed."
 MODES = ("work", "debug", "review", "conversation", "investigate")
 
 
@@ -84,7 +89,7 @@ class TestRender:
         assert "Pending gate: phase-a" in lines
         assert f"Plan folder: {plan_dir(root, SID)}/" in lines
         nxt = _next(text)
-        for needle in ("plan.md", "capabilities.md", "!mistty approve"):
+        for needle in ("plan.md", "capabilities.md", ASK):
             assert needle in nxt, needle
 
     def test_phase_a_next_line_names_the_sections_and_the_files_line_grammar(self):
@@ -95,6 +100,22 @@ class TestRender:
                        "## Analysis", "## Rules Applied", '"No matching rules"',
                        "## Capabilities", "unchecked - [ ]"):
             assert needle in nxt, needle
+
+    def test_phase_a_offers_patch_mode_for_a_small_change(self):
+        nxt = _next(_render(PHASE_A))
+        assert "`mistty mode patch`" in nxt
+        assert "3 files" in nxt
+
+    @pytest.mark.parametrize("phase", [PHASE_A, SKELETONS, OTHER_GATE],
+                             ids=lambda p: p["next_gate"])
+    def test_a_pending_gate_asks_with_the_phrase_the_approval_hook_reads(self, phase):
+        # A typed approved mints a token only when the reply before it holds a
+        # REQUEST_MARKERS phrase; "The user approves with `!mistty approve`" held none,
+        # so the model copied it and the user's approved did nothing.
+        nxt = _next(_render(phase))
+        assert approval_evidence.has_request_marker(nxt)
+        assert nxt.rstrip().endswith(f'"{ASK}"')
+        assert "The user approves with" not in nxt
 
     def test_work_without_a_project_root_has_no_plan_folder_line(self):
         assert "Plan folder:" not in _render(PHASE_A, None)
@@ -108,14 +129,14 @@ class TestRender:
         assert "Pending gate: test-skeletons" in text.splitlines()
         nxt = _next(text)
         assert "test" in nxt.lower()
-        assert "!mistty approve" in nxt
+        assert ASK in nxt
 
     def test_work_with_another_gate_pending_names_it(self):
         text = _render(OTHER_GATE)
         assert "Pending gate: final-review" in text.splitlines()
         nxt = _next(text)
         assert "final-review" in nxt
-        assert "!mistty approve" in nxt
+        assert ASK in nxt
 
     def test_work_with_no_gate_pending_says_implement_and_names_replan(self):
         text = _render(NONE_PENDING)
