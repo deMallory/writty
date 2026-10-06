@@ -255,3 +255,32 @@ role-scope ADR's property that the scope is a function of the role alone. The ar
   ONE path at ONE depth and varying only the bullet was added for exactly that, and the
   depth-driven mutation was executed: capabilities 1 and 4 both stay GREEN under it and only
   the pair goes red.
+
+## Amendment: the project's own Vibe worktrees are in bounds (2026-10-06)
+
+A write is also in bounds when its resolved path sits inside the recorded
+project's Vibe worktree bucket, `$VIBE_HOME/worktrees/<bucket>`, where
+`<bucket>` is `<repo_dir_name>-<sha256(<root>/.git)[:12]>` (the layout the
+vibe:worktree skill documents). Measured motivation: a Mistty session whose
+root is the main checkout could not write its approved plan's test skeletons
+into the worktree, because the skeleton phase runs the boundary on the
+pre-approval arm, which does not honor `## Files` declarations, so the
+worktree workflow deadlocked at the first out-of-project test write.
+
+The disjunct is derived, not declared: both halves of the bucket come from
+the recorded root, and the home from the harness's environment
+(`VIBE_HOME`, default `~/.vibe`), so it is not self-grantable, mechanically,
+for the same reason containment is not. Fail-closed: no home prefix, no
+match; another repo's bucket never matches. No glob, per the module's own
+rule.
+
+A write is also in bounds when its resolved path sits under `/tmp` or `/var`
+(`realpath`-resolved, so `/private/tmp` and `/private/var` on macOS), the
+OS-designated scratch agents write temporary files to beyond the stamped
+`tempfile.gettempdir()` zone. Both roots are fixed by the OS, not chosen by
+the agent, so the disjunct is not self-grantable either; the credential deny
+still precedes the boundary, so a credentials-shaped path under `/tmp`
+stays refused. The exemption is skipped when the project root itself sits
+under a temp root, mirroring the scratch zone's own guard: a project living
+in the temp directory would otherwise exempt every sibling checkout beside
+it. No glob, per the module's own rule.

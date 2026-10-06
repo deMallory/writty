@@ -25,6 +25,7 @@ recur through this module.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -157,6 +158,63 @@ def in_scratch_zone(target: str, root: str, zone: str) -> bool:
     if is_contained(root, zone):
         return False
     return is_contained(target, zone)
+
+
+def in_project_worktree(target: str, root: str) -> bool:
+    """True when ``target`` sits in this project's Vibe worktree bucket.
+
+    Vibe isolates feature work under ``$VIBE_HOME/worktrees/<bucket>/<name>``,
+    where ``<bucket>`` is ``<repo_dir_name>-<sha256(common_git_dir)[:12]>``
+    (the layout the vibe:worktree skill documents), so a worktree of the
+    recorded project root is the project itself for boundary purposes: its
+    AGENTS.md chain, its plan and its gates are the same repo's. The home
+    resolves exactly as writ/harness/vibe.py resolves it (``VIBE_HOME``, then
+    ``~/.vibe``), so the daemon route and the CLI subprocess answer the same
+    for one path.
+
+    Both halves of the bucket derive from the recorded root (its basename and
+    its ``.git`` path) and the home from the harness's own environment, so
+    this is as self-grantable as the containment check beside it: not.
+    Fail-closed: an unresolvable home, or another repo's bucket, never
+    matches. No glob, for the reason the module docstring gives.
+    """
+    home = os.environ.get("VIBE_HOME") or os.path.expanduser("~/.vibe")
+    root_real = os.path.realpath(root)
+    common_dir = os.path.join(root_real, ".git")
+    bucket = (
+        f"{os.path.basename(root_real)}-"
+        f"{hashlib.sha256(common_dir.encode()).hexdigest()[:12]}"
+    )
+    prefix = os.path.join(
+        os.path.realpath(os.path.expanduser(home)), "worktrees", bucket
+    )
+    return target == prefix or target.startswith(prefix + os.sep)
+
+
+_OS_TEMP_ROOTS = ("/tmp", "/var")
+
+
+def in_os_temp_roots(target: str, root: str) -> bool:
+    """True when ``target`` sits under a fixed OS temporary directory.
+
+    Agents write scratch under ``/tmp`` and ``/var`` beyond the stamped
+    scratch zone (on macOS ``realpath`` resolves them to ``/private/tmp``
+    and ``/private/var``); both are OS-designated scratch, so they are in
+    bounds on every arm. Realpath-resolved and prefix-compared with the
+    ``os.sep`` discipline of ``is_contained``; fail-closed when a root does
+    not resolve. No glob, for the reason the module docstring gives.
+
+    THE EXEMPTION IS SKIPPED WHEN THE PROJECT ROOT IS ITSELF INSIDE A TEMP
+    ROOT, mirroring ``in_scratch_zone``: a project living in the temp
+    directory would otherwise exempt every sibling checkout beside it, which
+    is the whole boundary gone for that project. It is also what keeps this
+    module's own test file honest, whose fixtures root their projects under
+    the real OS temp tree.
+    """
+    reals = [os.path.realpath(temp_root) for temp_root in _OS_TEMP_ROOTS]
+    if any(is_contained(root, real) for real in reals):
+        return False
+    return any(target == real or target.startswith(real + os.sep) for real in reals)
 
 
 def in_project_memory_dir(target: str, root: str) -> bool:
