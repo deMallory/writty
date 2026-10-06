@@ -1012,14 +1012,14 @@ def _child(cwd: Path, tool: str, message: str = "Read notes.txt and summarise it
 class TestSubagent:
     @pytest.mark.parametrize("tool", _SUBAGENT_WORK)
     @pytest.mark.parametrize("state, named", [
-        ({"mode": "work"}, "in work mode"),
         ({"mode": "debug"}, "in debug mode"),
         (None, "while no Writ mode is set"),
         ({"current_phase": "planning"}, "while no Writ mode is set"),
         ("{not json", "while no Writ mode is set"),
     ])
-    def test_handing_a_child_work_is_denied_where_writ_gates_writes(self, tmp_path, writ_cache,
-                                                                    tool, state, named):
+    def test_handing_a_child_work_is_denied_in_debug_and_without_a_mode(self, tmp_path,
+                                                                        writ_cache, tool,
+                                                                        state, named):
         writ_cache(state)
         plugin = _any_script(tmp_path)
         reason = _deny_reason(_handle(plugin, "pre_tool", _child(tmp_path, tool)))
@@ -1028,8 +1028,8 @@ class TestSubagent:
         assert plugin.runs("all") == []
 
     @pytest.mark.parametrize("tool", _SUBAGENT_WORK)
-    @pytest.mark.parametrize("mode", ["conversation", "review", "investigate"])
-    def test_subagents_run_where_writ_leaves_writes_open(self, tmp_path, writ_cache, tool, mode):
+    @pytest.mark.parametrize("mode", ["work", "patch", "conversation", "review", "investigate"])
+    def test_subagents_run_in_work_and_the_open_modes(self, tmp_path, writ_cache, tool, mode):
         writ_cache({"mode": mode})
         plugin = _any_script(tmp_path)
         assert _handle(plugin, "pre_tool", _child(tmp_path, tool)) == ""
@@ -1082,7 +1082,7 @@ class TestSubagent:
         assert plugin.runs("all") == []
         assert plugin.runs("post") == []
 
-    def test_the_spikes_captured_child_calls_are_denied_in_work_mode(self, tmp_path, writ_cache):
+    def test_the_spikes_captured_child_calls_pass_in_work_mode(self, tmp_path, writ_cache):
         writ_cache({"mode": "work"})
         plugin = _any_script(tmp_path)
         rows = [r["envelope"] for r in _CAPTURED
@@ -1091,7 +1091,7 @@ class TestSubagent:
         assert {e["tool_name"] for e in rows} == set(_SUBAGENT_WORK)
         assert any("secret.txt" in e["tool_input"]["message"] for e in rows)
         for envelope in rows:
-            assert "in work mode" in _deny_reason(_handle(plugin, "pre_tool", envelope))
+            assert _handle(plugin, "pre_tool", envelope) == ""
         assert plugin.runs("all") == []
 
 
