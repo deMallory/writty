@@ -50,6 +50,15 @@ DEFAULT_WRIT_HOST = "localhost"
 # the corpus is not semantic-routed), so enabling it by default would be a
 # ranking change with no measured gain. See benchmarks/RANKING-LEVERS-2026-08-06.md.
 DEFAULT_AUTHORITY_PREFERENCE_THRESHOLD = 0.0
+# The mode a session falls back to when no mode is set and the prompt classifier
+# returns no hint. Conversation is the safe default: it refuses code changes, so a
+# defaulted session is never ungoverned, and mode init stamps mode_source=auto so
+# the first work/investigate-shaped prompt re-routes it.
+DEFAULT_SESSION_MODE = "conversation"
+# Every mode the mode engine knows (writ/session/mode_engine.py MODE_CONFIG keys).
+# Spelled here rather than imported so config.py does not depend on the session
+# package: the rag-inject hook reads get_default_mode with a bare python3 -c.
+VALID_SESSION_MODES = ("conversation", "debug", "review", "work", "investigate")
 
 # Default config file path: writ.toml in the package root (one level above writ/).
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -233,6 +242,27 @@ def get_bitbucket_token(path: str | None = None) -> str | None:
     """
     cfg = load_config(path)
     return cfg.get("bitbucket", {}).get("token") or None
+
+
+def get_default_mode(path: str | None = None) -> str:
+    """Return the mode an unset session defaults to: WRIT_DEFAULT_MODE, then
+    writ.toml [governance] default_mode, then DEFAULT_SESSION_MODE.
+
+    Mirrors _neo4j_setting's env layer (env = this process's intent, file = shared
+    install state) and get_bitbucket_email's toml-only read. An invalid value in
+    either layer falls back to DEFAULT_SESSION_MODE instead of passing through:
+    the caller (hooks/scripts/writ-rag-inject.sh) feeds this straight to
+    `mode init`, and a typo in a gitignored file must not produce a session in a
+    mode the mode engine does not know.
+    """
+    from_env = (os.environ.get("WRIT_DEFAULT_MODE") or "").strip()
+    if from_env in VALID_SESSION_MODES:
+        return from_env
+    cfg = load_config(path)
+    configured = str(cfg.get("governance", {}).get("default_mode") or "").strip()
+    if configured in VALID_SESSION_MODES:
+        return configured
+    return DEFAULT_SESSION_MODE
 
 
 def get_hnsw_cache_dir(path: str | None = None) -> str:
