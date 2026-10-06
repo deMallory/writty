@@ -266,8 +266,8 @@ def test_agents_md_says_where_subagents_are_refused(dirs, capsys):
     text = _agents(dirs["home"])
     section = text[text.index("## Subagents"):]
     section = section[:section.index("\n## ", 1)]
-    for needle in ("`subagent.spawn`", "`subagent.send_message`", "work mode", "debug mode",
-                   "no mode set", "do not retry"):
+    for needle in ("`subagent.spawn`", "`subagent.send_message`", "debug mode",
+                   "no mode set", "do not retry", "work mode and the other modes"):
         assert needle in section, needle
 
 

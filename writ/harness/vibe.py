@@ -100,6 +100,11 @@ _NO_GATE_REASON = "Writ has no gate pending, so there is nothing to approve."
 _PROCESS_WRITE = "process.write"
 _SAFE_KEYS = frozenset({"ctrl_c", "ctrl_d", "ctrl_z", "esc", "enter"})
 _GATED_MODES = frozenset({"work", "debug"})
+# The subagent refusal is narrower than the process.write one: work mode is where the
+# user wants delegation, so only the debug freeze and an ungoverned session (no mode,
+# which refuses every write anyway) refuse the dispatch. The child itself still runs
+# no Writ hook either way.
+_SUBAGENT_GATED_MODES = frozenset({"debug"})
 
 # Writ's state file (vibe_context.py). The post_tool refresh overwrites a forged one at once,
 # and Writ's gates never read it, so this refusal only spares the model a misleading file.
@@ -623,6 +628,14 @@ def _gated_where(sid: str) -> str:
     return f"in {mode} mode" if mode else "while no Writ mode is set"
 
 
+def _subagent_where(sid: str) -> str:
+    """Where Writ refuses a subagent dispatch, as a phrase for a deny reason, or "" to allow."""
+    mode = _session_mode(sid)
+    if mode is not None and mode not in _SUBAGENT_GATED_MODES:
+        return ""
+    return f"in {mode} mode" if mode else "while no Writ mode is set"
+
+
 def _process_write(event: str, envelope: dict,
                    session_resolver: Callable[[dict], str | None]) -> str:
     if event != PRE:
@@ -660,7 +673,7 @@ def _subagent(event: str, envelope: dict,
     sid = session_resolver(envelope)
     if not sid:
         return _deny(_NO_SESSION_REASON)
-    where = _gated_where(sid)
+    where = _subagent_where(sid)
     if not where:
         return ""
     return _deny(
