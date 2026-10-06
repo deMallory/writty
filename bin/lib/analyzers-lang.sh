@@ -225,36 +225,20 @@ print(json.dumps({
 }
 
 analyze_rust() {
-  local file="$1"
-  if command -v cargo &>/dev/null && [ -n "$PROJECT_ROOT" ]; then
-    local output
-    output=$(cd "$PROJECT_ROOT" && cargo check --message-format=json 2>/dev/null) || true
-
-    python3 -c '
-import json, sys
-file, output = sys.argv[1], sys.argv[2]
-for line in output.strip().split("\n"):
-    if not line.strip():
-        continue
-    try:
-        data = json.loads(line)
-        if data.get("reason") == "compiler-message":
-            msg = data.get("message", {})
-            spans = msg.get("spans", [])
-            line_num = spans[0].get("line_start", 0) if spans else 0
-            fname = spans[0].get("file_name", file) if spans else file
-            print(json.dumps({
-                "file": fname,
-                "line": line_num,
-                "severity": msg.get("level", "error"),
-                "rule": "ENF-POST-007",
-                "tool": "cargo-check",
-                "message": msg.get("message", "")
-            }))
-    except (json.JSONDecodeError, Exception):
-        pass
-' "$file" "$output" 2>/dev/null
-  fi
+  # Intentionally runs nothing. The previous body ran `cargo check` in
+  # $PROJECT_ROOT, which gated the per-write hook on the WRONG object twice
+  # over: cargo compiles the crate AS IT STANDS ON DISK, never the proposed
+  # content (the pre-write temp file lives in /tmp, outside the crate), and it
+  # compiles the WHOLE crate, so a cold build ran minutes against the hook's
+  # 30s budget (3m09s measured on mistty's vibe-rs, 2026-10-06) and a NEW file
+  # could never pass at all -- the crate cannot reference a module before the
+  # file exists, so the write was refused with the exact error the write would
+  # have fixed, and the revert was refused the same way. Rust compile feedback
+  # belongs to the end-of-turn checks and the developer's own build. The
+  # cross-language regex scanners still read the proposed content, which is
+  # where this hook's real signal comes from. The function stays because
+  # tests/test_run_analysis_split.py's census requires it to exist.
+  :
 }
 
 analyze_go() {
