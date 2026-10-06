@@ -265,6 +265,30 @@ def get_default_mode(path: str | None = None) -> str:
     return DEFAULT_SESSION_MODE
 
 
+def get_corpus_dir(path: str | None = None) -> Path | None:
+    """Return the corpus source dir: WRIT_CORPUS_DIR, then writ.toml
+    [source] corpus_dir, then None.
+
+    None keeps every default at bible/, so Wraidd standalone is unchanged. Set,
+    it points `writ import-markdown`, `writ export` and the promote write path at
+    Mistty's shipped corpus (vibe/core/governance/corpus), whose files are the
+    source of the rules (ADR 0022 in the Mistty repo): the graph becomes a
+    downstream index built by ingesting them, and a rule is edited in the corpus,
+    never in the graph. Env wins over the file for the same reason
+    WRIT_DEFAULT_MODE does: the file is shared install state, the env is this
+    process's intent. An empty value in either layer is ignored, so a placeholder
+    in the gitignored writ.toml cannot point the CLI at an empty path.
+    """
+    from_env = (os.environ.get("WRIT_CORPUS_DIR") or "").strip()
+    if from_env:
+        return Path(from_env)
+    cfg = load_config(path)
+    configured = str(cfg.get("source", {}).get("corpus_dir") or "").strip()
+    if configured:
+        return Path(configured)
+    return None
+
+
 def get_hnsw_cache_dir(path: str | None = None) -> str:
     """Return hnsw.cache_dir from config, falling back to DEFAULT_HNSW_CACHE_DIR.
 

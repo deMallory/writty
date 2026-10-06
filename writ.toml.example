@@ -2,6 +2,15 @@
 # writ.toml is gitignored so credentials never land in version control.
 # On a fresh clone:  cp writ.toml.example writ.toml   then edit the secrets.
 
+[source]
+# corpus_dir points `writ import-markdown`, `writ export` and the promotion
+# write path at Mistty's shipped rule corpus, whose files are the source of
+# the rules (Mistty repo ADR 0022). Set it to the corpus dir of a Mistty
+# checkout, absolute:
+# corpus_dir = "/path/to/mistty/vibe/core/governance/corpus"
+# Unset, every default stays this repo's bible/, which is a generated copy.
+# WRIT_CORPUS_DIR overrides this per process.
+
 [neo4j]
 uri = "bolt://localhost:7687"
 user = "neo4j"

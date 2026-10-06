@@ -1,8 +1,13 @@
 """Markdown parsing -> schema validation -> graph write.
 
-bible/*.md is the exported view of the canonical Neo4j graph, not the source
-of truth. Use `writ import-markdown` only for initial bootstrap or when
-re-importing after manual Markdown edits.
+The source of truth is Mistty's shipped rule corpus
+(vibe/core/governance/corpus in the Mistty repo), pointed at by writ.toml
+[source] corpus_dir (or WRIT_CORPUS_DIR). The graph is a downstream index,
+built by ingesting those files; a rule is edited in the corpus, never in the
+graph. Wraidd's own bible/ is a generated export copy kept for its fixtures
+and tests, not the source. Use `writ import-markdown` (default path: the
+configured corpus dir) for initial bootstrap or when re-importing after
+manual Markdown edits in the corpus.
 
 Three marker / format families are supported:
 

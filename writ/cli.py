@@ -10,11 +10,26 @@ from pathlib import Path
 
 import typer
 
-from writ.config import get_neo4j_uri, get_neo4j_user, get_neo4j_password
+from writ.config import get_corpus_dir, get_neo4j_uri, get_neo4j_user, get_neo4j_password
 
 DEFAULT_BIBLE_DIR = "bible/"
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 8765
+
+
+def resolve_source_dir(
+    argument: Path | None = None, *, config_path: str | None = None
+) -> Path:
+    """The markdown source dir a command reads or writes by default.
+
+    An explicit argument wins; then the configured corpus dir ([source]
+    corpus_dir or WRIT_CORPUS_DIR, pointing at Mistty's shipped corpus);
+    then bible/. Unset config keeps Wraidd standalone on bible/ exactly
+    as before.
+    """
+    if argument is not None:
+        return argument
+    return get_corpus_dir(config_path) or Path(DEFAULT_BIBLE_DIR)
 
 app = typer.Typer(
     name="writ",
@@ -475,7 +490,10 @@ def serve(
 
 @app.command(name="import-markdown")
 def import_markdown(
-    path: Path = typer.Argument(Path(DEFAULT_BIBLE_DIR), help="Path to Markdown source directory."),
+    path: Path | None = typer.Argument(
+        None,
+        help="Path to Markdown source directory. Default: [source] corpus_dir when set, else bible/.",
+    ),
     only: str | None = typer.Option(
         None,
         "--only",
@@ -501,12 +519,14 @@ def import_markdown(
         "Default OFF (the abstraction layer is a regenerable materialized view).",
     ),
 ) -> None:
-    """Import bible content (Rules + methodology) into the graph. Validates schema. Triggers export."""
+    """Import corpus content (Rules + methodology) into the graph. Validates schema. Triggers export."""
     from writ.graph.methodology_ingest import (
         KNOWN_NODE_TYPES,
         finish_import,
         ingest_path,
     )
+
+    path = resolve_source_dir(path)
 
     # Parse --only CSV.
     parsed_only: set[str] | None = None
@@ -539,15 +559,14 @@ def import_markdown(
             for warn in report.warnings:
                 typer.echo(str(warn), err=True)
 
-            # is_default_root is computed here (from the CLI default constant)
-            # and passed to finish_import so the ingest library stays free of
-            # the CLI default. It gates the auto-export in finish_import: on a
-            # subdirectory import the exporter would write the WHOLE graph back
-            # through a file-location lookup scoped to that subdir and create
-            # bogus duplicates.
-            is_default_root = (
-                path.resolve() == Path(DEFAULT_BIBLE_DIR).resolve()
-            )
+            # is_default_root is computed here (against resolve_source_dir, so
+            # the configured corpus dir counts as the root too) and passed to
+            # finish_import so the ingest library stays free of the CLI default.
+            # It gates the auto-export in finish_import: on a subdirectory
+            # import the exporter would write the WHOLE graph back through a
+            # file-location lookup scoped to that subdir and create bogus
+            # duplicates.
+            is_default_root = path.resolve() == resolve_source_dir().resolve()
             result = await finish_import(
                 report,
                 db,
@@ -978,10 +997,15 @@ def edit(
 
 @app.command()
 def export(
-    output: Path = typer.Argument(Path(DEFAULT_BIBLE_DIR), help="Output directory for generated Markdown."),
+    output: Path | None = typer.Argument(
+        None,
+        help="Output directory for generated Markdown. Default: [source] corpus_dir when set, else bible/.",
+    ),
 ) -> None:
     """Regenerate Markdown from graph. Overwrites output directory."""
     from writ.export import export_rules_to_markdown
+
+    output = resolve_source_dir(output)
 
     async def _run() -> None:
         async with _writ_db() as db:
@@ -1173,7 +1197,7 @@ def migrate() -> None:
     """
     from writ.graph.methodology_ingest import ingest_path
 
-    path = Path(DEFAULT_BIBLE_DIR)
+    path = resolve_source_dir()
 
     async def _run() -> int:
         async with _writ_db() as db:

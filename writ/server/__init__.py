@@ -39,6 +39,7 @@ from writ.analysis.instrumentation import Instrumentation
 from writ.analysis.llm import LlmAnalyzer
 from writ.config import (
     get_authority_preference_threshold,
+    get_corpus_dir,
     get_neo4j_uri,
     get_neo4j_user,
     get_neo4j_password,
@@ -90,9 +91,11 @@ _PKG_DIR: Path = Path(__file__).resolve().parent          # writ/server
 _WRIT_DIR: Path = _PKG_DIR.parent                          # writ
 _REPO_ROOT: Path = _WRIT_DIR.parent                        # repo root
 
-# 6.3c: canonical bible source root (repo_root/bible) -- where the human promotion gate
-# writes a graduated node's markdown home.
-_BIBLE_DIR: Path = _REPO_ROOT / "bible"
+# 6.3c: canonical source root -- where the human promotion gate writes a
+# graduated node's markdown home. With [source] corpus_dir set (MTY-53), that
+# is Mistty's shipped corpus and the graduation lands inside Mistty's tree;
+# unset, it stays the repo-local bible/ copy.
+_BIBLE_DIR: Path = get_corpus_dir() or (_REPO_ROOT / "bible")
 
 # The interactive-showcase SPA lives in a separate file so the page can be tweaked
 # without restarting the daemon (routes/explorer.py reads it at request time).
