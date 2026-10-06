@@ -20,6 +20,13 @@ case "${1:-}" in
         # but mode to the model.
         PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m writ.harness.vibe_user "$@"
         ;;
+    ask)
+        # The model asking the user to approve Writ's pending gate. The bridge put the
+        # question on Mistty's approval card before this ran, and the yes reaches Writ
+        # through the bridge's post_tool, so this only reports the call ran.
+        echo "mistty: the user answered Writ's approval card."
+        exit 0
+        ;;
 esac
 # Launch the Rust thin client: it renders the ccstatusline bottom bar and spawns
 # the Python app-server itself. VIBE_APP_SERVER_BIN points it at the installed

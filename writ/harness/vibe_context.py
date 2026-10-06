@@ -35,9 +35,11 @@ _HEADER = (
     "Writ state for this session. Writ rewrites it after each prompt, tool call and\n"
     "`!mistty` command. It is Writ's file: keep your own notes in other files."
 )
-# The ritual sentence approval_evidence.REQUEST_MARKERS accepts: a typed approved mints a
-# token only when the reply before it asks in these words.
-_APPROVE = 'End your turn with: "Say approved to proceed."'
+# `mistty ask` opens Mistty's approval card and the user's yes advances the gate in the same
+# turn (vibe.py). With no one to answer, Mistty denies the call, and the typed approved is
+# the way left: it mints a token only when the reply before it holds this ritual sentence,
+# which approval_evidence.REQUEST_MARKERS accepts.
+_APPROVE = 'Run `mistty ask`; if denied, end your turn with: "Say approved to proceed."'
 _MODES = "`mistty mode work`, `debug`, `patch`, `review`, `conversation` or `investigate`"
 
 
@@ -74,11 +76,11 @@ def _next_step(mode: str | None, pending: str | None) -> str:
         if pending == "phase-a":
             return ("Up to 3 files with no schema, protocol or config migration: run "
                     "`mistty mode patch`, no plan. Else write plan.md in the plan folder, "
-                    "in one write: ## Files (one line per file: - `path` (change) -- reason, "
-                    "where change is create, modify or delete), ## Analysis (design and why), "
+                    "in one write: ## Files (one line each: - `path` (change) -- reason; "
+                    "change is create, modify or delete), ## Analysis, "
                     "## Rules Applied (only IDs Writ showed you, or \"No matching rules\"), "
-                    "## Capabilities (one unchecked - [ ] line per behavior). Then write "
-                    f"capabilities.md and show both. {_APPROVE}")
+                    "## Capabilities (one unchecked - [ ] line per behavior). Write "
+                    f"capabilities.md, show both. {_APPROVE}")
         if pending == "test-skeletons":
             return f"Write the test files the plan names and show them. {_APPROVE}"
         if pending:
@@ -119,10 +121,12 @@ def render_state(phase: Mapping[str, Any], sid: str, project_root: str | None) -
     return "\n".join(lines) + "\n"
 
 
-def _current_phase(sid: str, plugin_root: str, base_env: Mapping[str, str] | None) -> dict | None:
+def writ_session(command: str, sid: str, *, plugin_root: str,
+                 base_env: Mapping[str, str] | None) -> dict | None:
+    """The JSON object `writ-session.py <command> <sid>` prints, or None when it fails."""
     helper = os.path.join(plugin_root, "bin", "lib", "writ-session.py")
     try:
-        proc = subprocess.run([sys.executable, helper, "current-phase", sid],
+        proc = subprocess.run([sys.executable, helper, command, sid],
                               capture_output=True, text=True, timeout=_PHASE_TIMEOUT_S,
                               env=dict(os.environ if base_env is None else base_env))
     except (OSError, subprocess.SubprocessError):
@@ -130,10 +134,14 @@ def _current_phase(sid: str, plugin_root: str, base_env: Mapping[str, str] | Non
     if proc.returncode != 0:
         return None
     try:
-        phase = json.loads(proc.stdout)
+        answer = json.loads(proc.stdout)
     except ValueError:
         return None
-    return phase if isinstance(phase, dict) else None
+    return answer if isinstance(answer, dict) else None
+
+
+def _current_phase(sid: str, plugin_root: str, base_env: Mapping[str, str] | None) -> dict | None:
+    return writ_session("current-phase", sid, plugin_root=plugin_root, base_env=base_env)
 
 
 def _refresh(sid: str, plugin_root: str, vibe_home: str | None,

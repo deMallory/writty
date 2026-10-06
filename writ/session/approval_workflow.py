@@ -1013,3 +1013,30 @@ def cmd_current_phase(session_id: str) -> None:
         "rule_id": cache.get("pending_review_rule_id") or "",
     })
     sys.stdout.write("\n")
+
+
+def cmd_gate_precheck(session_id: str) -> None:
+    """What the Mistty bridge needs before it asks the user to approve a gate.
+
+    Output: JSON {"gate": "..."|null, "plan": "..."|null, "plan_hash": "..."|null,
+    "problem": "..."|null}. gate null means no gate is pending. plan_hash is current-phase's,
+    so the bridge can tell the plan the user was asked about from one rewritten while the
+    card was open. problem is what `_gate_precheck` says would refuse the approval, null
+    when nothing would. The root is the one the approval claim hashes, as in
+    writ-gate-precheck.sh. Writes no state.
+    """
+    cache = _read_cache(session_id)
+    gate = _next_pending_gate(cache, session_id)
+    root = cache.get("project_root")
+    verdict: dict[str, str | None] = {"gate": gate, "plan": None, "plan_hash": None,
+                                      "problem": None}
+    if gate is not None:
+        if isinstance(root, str) and root:
+            verdict["plan"] = _find_plan_md(root, session_id)
+            verdict["plan_hash"] = plan_md_hash(root, session_id)
+            verdict["problem"] = _gate_precheck(root, session_id, gate)
+        else:
+            verdict["problem"] = ("Writ's session records no project root, so the plan "
+                                  "cannot be checked before the user is asked.")
+    _emit_json(verdict)
+    sys.stdout.write("\n")

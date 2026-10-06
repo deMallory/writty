@@ -5,10 +5,10 @@ with its own envelope on stdin. This module translates that envelope to the Clau
 envelope the scripts in hooks/hooks.json read, runs the scripts that match, and translates
 their answers back to Vibe's output. post_agent runs the Stop scripts at the end of a
 turn, user_prompt the UserPromptSubmit scripts and session_start the SessionStart scripts.
-Every verdict still comes from the scripts, except three Vibe has and Claude lacks: the
-user's own `!mistty` commands, typed input to a running process (`process.write`), and
-Writ's state file in the scratchpad, which the bridge rewrites after each tool call
-(vibe_context.py).
+Every verdict still comes from the scripts, except four Vibe has and Claude lacks: the
+user's own `!mistty` commands, the model's `mistty ask`, which puts a Writ gate on Mistty's
+approval card, typed input to a running process (`process.write`), and Writ's state file
+in the scratchpad, which the bridge rewrites after each tool call (vibe_context.py).
 
 Stdlib-only, like envelope.py, so the shim runs under any python3. writ.shared.state_root
 imports only os.
@@ -81,6 +81,16 @@ _USER_ONLY_REASON = (
     "refuses them to the model. Ask the user to type the one you need themselves, with the "
     "`!` prefix: `!mistty approve`, `!mistty replan` or `!mistty grant manual-test`."
 )
+
+# The model asking the user to approve the pending Writ gate (bin/mistty ask prints one
+# line). The bridge answers Vibe's `ask`, which opens Mistty's approval card over every
+# grant and the bypass. A declined card skips the call with no post_tool, and with no one
+# to answer Mistty denies it, so a post_tool for a call answered with ask is the user's yes.
+# Exact text only: anything chained to it takes the normal path, and so does a newline
+# between the words, which the shell runs as two commands.
+_ASK = re.compile(r"\s*mistty[ \t]+ask\s*", re.IGNORECASE)
+_GATE_LABELS = {"phase-a": "the plan", "test-skeletons": "the test files of the plan"}
+_NO_GATE_REASON = "Writ has no gate pending, so there is nothing to approve."
 
 # process.write types into a process that process.start began. Writ's shell checks read
 # shell syntax, so code typed into a REPL, or a command split across writes, passes them.
@@ -484,10 +494,10 @@ def _to_vibe_args(envelope: Mapping, claude_inputs: list[dict],
 # --------------------------------------------------------------------------- #
 # Deferred pre-tool context
 # --------------------------------------------------------------------------- #
-def _context_file(context_dir: str, sid: str, call_id: str) -> str | None:
+def _context_file(context_dir: str, sid: str, call_id: str, suffix: str = ".ctx") -> str | None:
     if not (_SAFE_ID.match(sid) and _SAFE_ID.match(call_id)):
         return None
-    return os.path.join(context_dir, sid, f"{call_id}.ctx")
+    return os.path.join(context_dir, sid, f"{call_id}{suffix}")
 
 
 def _store_context(path: str | None, text: str) -> None:
@@ -516,6 +526,84 @@ def _render(output: Any) -> str:
     if isinstance(output, dict):
         return "\n".join(f"{key}: {output[key]}" for key in sorted(output))
     return json.dumps(output)
+
+
+# --------------------------------------------------------------------------- #
+# `mistty ask`: the user approves a Writ gate on Mistty's approval card
+# --------------------------------------------------------------------------- #
+def _ask_gate(sid: str, record: str | None, *, plugin_root: str,
+              base_env: Mapping[str, str] | None) -> str:
+    """pre_tool for `mistty ask`: Vibe's `ask` when the pending gate would pass, else a deny.
+
+    The record holds the gate the card names and the plan's hash, so the post_tool advances
+    that gate and no other, once, and not after a parallel call rewrote the plan.
+    """
+    if record is None:
+        return _deny("Writ cannot tie this `mistty ask` call to its answer, so it is denied.")
+    _pop_context(record)
+    verdict = vibe_context.writ_session("gate-precheck", sid, plugin_root=plugin_root,
+                                        base_env=base_env)
+    keys = ("gate", "plan", "plan_hash", "problem")
+    fields = [verdict.get(key) for key in keys] if verdict else []
+    if not fields or not all(f is None or isinstance(f, str) for f in fields):
+        return _deny("Writ could not check the pending gate, so this `mistty ask` is denied "
+                     "(fail-closed).")
+    gate, plan, plan_hash, problem = fields
+    if not gate:
+        return _deny(_NO_GATE_REASON)
+    if problem:
+        return _deny(f"{problem} Fix it, then run `mistty ask` again.")
+    _store_context(record, json.dumps({"gate": gate, "plan_hash": plan_hash}))
+    where = f": {plan}" if plan else ""
+    return json.dumps({"decision": "ask", "reason": (
+        f"Writ asks you to approve {_GATE_LABELS.get(gate, 'it')} ({gate}){where}. "
+        "Writ checked it and found nothing that would refuse it.")})
+
+
+def _answer(envelope: dict, sid: str, record: str | None, *, plugin_root: str,
+            base_env: Mapping[str, str] | None) -> str:
+    """post_tool for `mistty ask`: the user said yes, so advance the gate the card named.
+
+    Returns what the model reads about it, or "" when the bridge asked nothing for this call.
+    """
+    try:
+        asked = json.loads(_pop_context(record) or "null")
+    except ValueError:
+        asked = None
+    gate = asked.get("gate") if isinstance(asked, dict) else None
+    if not isinstance(gate, str) or not gate:
+        return ""
+    if envelope.get("tool_status") != "success":
+        return (f"Writ did not advance the {gate} gate: `mistty ask` failed, so Writ cannot "
+                "tell that the user approved. Run it again.")
+    phase = vibe_context.writ_session("current-phase", sid, plugin_root=plugin_root,
+                                      base_env=base_env)
+    if phase is None:
+        return (f"Writ did not advance the {gate} gate: it could not read the session's "
+                "phase. Ask the user to type `!mistty approve`.")
+    pending = phase.get("next_gate") or None
+    if pending != gate:
+        return (f"Writ did not advance the {gate} gate: the pending gate is now "
+                f"{pending or 'none'}. Run `mistty ask` again if one is pending.")
+    if phase.get("plan_hash") != asked.get("plan_hash"):
+        return (f"Writ did not advance the {gate} gate: the plan changed while the card was "
+                "open, so the user approved another version. Show the plan again, then run "
+                "`mistty ask` again.")
+    from writ.harness import vibe_user  # vibe_user imports this module
+
+    script, phrase = vibe_user._PROMPTS["approve"]
+    _rc, out = vibe_user._prompt_hook(script, phrase, sid, plugin_root=plugin_root,
+                                      base_env=base_env)
+    phase = vibe_context.writ_session("current-phase", sid, plugin_root=plugin_root,
+                                      base_env=base_env)
+    if phase is None:
+        verdict = f"Writ ran its approval of the {gate} gate but could not read the phase after it."
+    elif (phase.get("next_gate") or None) == gate:
+        verdict = f"Writ did not advance the {gate} gate: it is still pending."
+    else:
+        step = vibe_context._next_step(phase.get("mode") or None, phase.get("next_gate") or None)
+        verdict = f"The user approved the {gate} gate. Next: {step}"
+    return "\n".join(text for text in (out.strip(), verdict) if text)
 
 
 # --------------------------------------------------------------------------- #
@@ -757,6 +845,12 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
         if event == PRE:
             return _deny(_NO_SESSION_REASON)
         return ""
+    answered = ""
+    if tool == "Bash" and _ASK.fullmatch(str(_as_dict(envelope.get("tool_input")).get("command") or "")):
+        record = _context_file(context_dir, sid, str(envelope.get("tool_call_id") or ""), ".ask")
+        if event == PRE:
+            return _ask_gate(sid, record, plugin_root=plugin_root, base_env=base_env)
+        answered = _answer(envelope, sid, record, plugin_root=plugin_root, base_env=base_env)
 
     claude_envs = to_claude(envelope, event, sid)
     with open(os.path.join(plugin_root, "hooks", "hooks.json")) as handle:
@@ -788,7 +882,7 @@ def _handle(event: str, raw: str, *, plugin_root: str, base_env: Mapping[str, st
             return json.dumps({"decision": "allow", "hook_specific_output": {"tool_input": vibe_args}})
         return ""
 
-    contexts = [_pop_context(ctx_path)]
+    contexts = [answered, _pop_context(ctx_path)]
     for answer in answers:
         contexts += [answer.context, answer.block, answer.deny]
     context = "\n\n".join(c for c in contexts if c)

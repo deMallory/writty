@@ -20,6 +20,7 @@ from writ.session.gates import cmd_can_write, cmd_can_read_code
 from writ.session.approval_workflow import (
     cmd_advance_phase,
     cmd_current_phase,
+    cmd_gate_precheck,
     cmd_reopen_planning,
 )
 from writ.session.budget_tracking import cmd_update, cmd_should_skip, cmd_format
@@ -292,6 +293,7 @@ _SIMPLE_COMMANDS = {
     "check-escalation": (cmd_check_escalation, "Usage: writ-session.py check-escalation <session_id>"),
     "pending-violations": (cmd_pending_violations, "Usage: writ-session.py pending-violations <session_id>"),
     "current-phase": (cmd_current_phase, "Usage: writ-session.py current-phase <session_id>"),
+    "gate-precheck": (cmd_gate_precheck, "Usage: writ-session.py gate-precheck <session_id>"),
     "clear-rules-for-compaction": (cmd_clear_rules_for_compaction, "Usage: writ-session.py clear-rules-for-compaction <session_id>"),
     "reset-after-compaction": (cmd_reset_after_compaction, "Usage: writ-session.py reset-after-compaction <session_id>"),
 }
@@ -322,7 +324,7 @@ def dispatch(argv: list[str]) -> None:
     through _SIMPLE_COMMANDS; the rest through _COMPLEX_COMMANDS; anything else is unknown."""
     if len(argv) < 2:
         print("Usage: writ-session.py <command> [args]", file=sys.stderr)
-        _usage_exit("Commands: read, update, format, should-skip, mode, coverage, coverage-map, record-analysis, synthesis-gate, scope-estimate, partition-scope, coverage-rollup, aggregate-findings, triangulation-gate, staleness-check, lens, auto-feedback, can-write, can-read-code, advance-phase, reopen-planning, current-phase, metrics, rollup-subagent")
+        _usage_exit("Commands: read, update, format, should-skip, mode, coverage, coverage-map, record-analysis, synthesis-gate, scope-estimate, partition-scope, coverage-rollup, aggregate-findings, triangulation-gate, staleness-check, lens, auto-feedback, can-write, can-read-code, advance-phase, reopen-planning, current-phase, gate-precheck, metrics, rollup-subagent")
 
     cmd = argv[1]
 
