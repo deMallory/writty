@@ -43,3 +43,11 @@ token = ""
 # ai-provisional rules that the semantic path actually retrieves.
 [retrieval]
 authority_preference_threshold = 0.0
+
+# The mode a fresh session gets when no mode is set and the prompt classifies as
+# neither work nor investigate (writ/config.py get_default_mode, applied by
+# hooks/scripts/writ-rag-inject.sh). One of: conversation, debug, review, work,
+# investigate. An unrecognized value falls back to "conversation".
+# $WRIT_DEFAULT_MODE overrides it for one session.
+[governance]
+default_mode = "conversation"

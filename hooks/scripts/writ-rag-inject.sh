@@ -462,6 +462,50 @@ WORKROUTE
   fi
 fi
 
+# 1b-3. Default-mode fallback (config knob + hook wiring). The classifier
+# (bin/lib/writ_mode_hint.py) returns only work, investigate or nothing, so a prompt
+# shaped like neither -- a greeting, a short question -- left a fresh session at
+# mode=None and every turn opened with the "set mode before proceeding" banner.
+# Resolve the configured default (WRIT_DEFAULT_MODE, then writ.toml [governance]
+# default_mode, then "conversation": writ.config.get_default_mode) and `mode init`
+# it ONLY while the session is still unset: the same never-reset-a-live-session
+# guarantee the classifier arm has, and the same mode_source=auto stamp, so a later
+# work- or investigate-shaped prompt still re-routes normally.
+#
+# The default is deliberately NOT fed into the re-route arm above: ROUTE_ELIGIBLE
+# trusts MODE_HINT being classifier output, and a defaulted "conversation" there
+# would switch an auto-investigate session down into conversation on a neutral
+# prompt. This block keeps its own DEFAULT_MODE variable and never touches MODE_HINT.
+if [ -z "$AGENT_ID" ] && [ -z "$MODE_HINT" ]; then
+    # File-direct unset check (the same stdlib-free authority the classifier arm's
+    # safety note describes): a daemon answer is not trusted for a side-effecting set.
+    UNSET_MODE=$(writ_session_mode_direct "$SESSION_ID")
+    if [ -z "$UNSET_MODE" ]; then
+        DEFAULT_MODE=$(python3 -c "
+import sys
+sys.path.insert(0, sys.argv[1])
+from writ.config import get_default_mode
+print(get_default_mode())
+" "$WRIT_DIR" 2>/dev/null || true)
+        if [ -n "$DEFAULT_MODE" ]; then
+            # `mode init`, NEVER `mode set`: a no-op when a mode exists, so a spurious
+            # re-fire can never reset a live gate cycle. --orchestrator is a work-only
+            # flag; the default modes have no worker dispatch to stamp.
+            python3 "$SESSION_HELPER" mode init "$DEFAULT_MODE" "$SESSION_ID" >/dev/null 2>&1 || true
+            CONFIRMED_DEFAULT=$(writ_session_mode_direct "$SESSION_ID")
+            if [ -n "$CONFIRMED_DEFAULT" ]; then
+                # Announce only a change we actually made, and mark the turn
+                # auto-routed so the 1c read below re-reads rather than reusing the
+                # pre-write /prompt-bundle snapshot (the reuse exception keys on this).
+                AUTOROUTED="yes"
+                echo ""
+                echo "[Writ: no mode declared -> '$CONFIRMED_DEFAULT' mode applied as the configured default. Override with: writ mode set <conversation|debug|review|work|investigate> $SESSION_ID]"
+                debug "default-mode fallback set '$CONFIRMED_DEFAULT'"
+            fi
+        fi
+    fi
+fi
+
 # 1c. A1: the SINGLE session-cache read for the whole hook. Was THREE daemon
 # round-trips -- a standalone `mode get`, this orchestrator read, and the
 # main-path read at step 3. Now one read whose $CACHE is reused everywhere:
