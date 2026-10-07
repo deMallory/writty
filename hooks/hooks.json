@@ -341,6 +341,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-bash-grep-guard.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|run_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/hooks/scripts/writ-bash-write-gate.sh\""
           }
         ]
