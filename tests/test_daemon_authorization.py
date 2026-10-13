@@ -260,7 +260,7 @@ class TestTheGateCoversTheRoute:
         port and the socket path rides in --unix-socket's value. Before the fix that
         flag was not in CURL_VALUE_FLAGS, so the socket path became the first
         positional and was taken as the URL: host_of returned `${writ_socket:-$home`,
-        which is not allowlisted, and the verdict was "ask" -- which the mistty
+        which is not allowlisted, and the verdict was "ask", which the mistty
         bridge turns into a deny, so the judgment could never be posted. With
         --unix-socket consumed as a value flag the real URL is the one checked,
         localhost is allowlisted, and the gate emits no verdict at all.
