@@ -252,6 +252,31 @@ class TestTheGateCoversTheRoute:
         )
         assert _decision(cmd) != "deny"
 
+    def test_the_exact_quality_judge_command_gets_no_egress_verdict(self) -> None:
+        """MTY-24: the exact command writ-quality-judge.sh tells the model to run.
+
+        The hook's "Post the judgment" directive (hooks/scripts/writ-quality-judge.sh)
+        posts over Wraidd's own unix socket, so the URL is `http://localhost` with no
+        port and the socket path rides in --unix-socket's value. Before the fix that
+        flag was not in CURL_VALUE_FLAGS, so the socket path became the first
+        positional and was taken as the URL: host_of returned `${writ_socket:-$home`,
+        which is not allowlisted, and the verdict was "ask" -- which the mistty
+        bridge turns into a deny, so the judgment could never be posted. With
+        --unix-socket consumed as a value flag the real URL is the one checked,
+        localhost is allowlisted, and the gate emits no verdict at all.
+        """
+        cmd = (
+            "curl -s --unix-socket \"${WRIT_SOCKET:-$HOME/.cache/writ/run/writ.sock}\" "
+            "-X POST http://localhost/session/abc/quality-judgment "
+            "-H 'Content-Type: application/json' "
+            "-d '{\"artifact_path\": \"/tmp/plan.md\", \"score\": 4, "
+            "\"failing_section\": null, \"rationale\": \"ok\"}'"
+        )
+        assert _decision(cmd) == "", (
+            "the quality-judge POST must get no egress verdict; an ask here is the "
+            "MTY-24 regression (the bridge turns ask into deny)"
+        )
+
     def test_a_bash_post_of_a_verdict_is_still_refused(self) -> None:
         """Must-not-regress: the arm at `:234` that already guards the verdict
         record. Confirmed live this session by being refused while attempting
