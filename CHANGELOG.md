@@ -4,6 +4,10 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.8] - 2026-10-23
+
+Ships the peer-prompt trace rows and one-phase work reminders, so a failed relayed approval says why.
+
 ### Added
 
 - **A peer message that advances nothing now says why.** The first live relayed approval failed and left no row: a peer prompt with `WRIT_PEER_APPROVERS` empty, a header other than `Another Claude session sent a message:`, or a body that is not an approval all exited silently. `auto-approve-gate.sh` now spots a peer prompt with a shell `case` on the raw payload (no process on ordinary turns) and runs `peer_approval.py check` whatever the first line is. Every silent outcome writes one `peer_prompt_unrelayed` friction row: `why` (`approvers_empty`, `header_mismatch`, `not_an_approval`, or `no_session_id` for the early exit), whether the header matched, the first line as a repr of at most 120 characters, whether approvers were set, the verdict and the check. A refusal keeps its `approval_relay_refused` audit row. A mismatched header still never passes.
