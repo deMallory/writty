@@ -68,7 +68,14 @@ def _trace_rows(project: str) -> list[dict]:
 
 
 def _renamed_header_prompt(body: str = "approved") -> str:
-    return _envelope(body).replace(ENVELOPE_HEADER, "Another Claude session sent you a message:", 1)
+    # Neither form: the tag is not the first line, and the line before it is not the header.
+    return "Another Claude session sent you a message:\n" + _envelope(body)
+
+
+# The first line of a real relay prompt, copied from the paulinator friction row of
+# 2026-10-23T16:05:45Z.
+REAL_FIRST_LINE = ('<cross-session-message from="uds:/tmp/claude/cc-socks/22944.sock" '
+                   'from-name="paulinator_worker_2" from-mode="prompting">')
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +132,48 @@ class TestTraceRow:
         assert row["header_matched"] is False, row
         assert len(row["first_line"]) <= 120, row
         assert row["first_line"].startswith("'XXX"), row
+
+
+class TestTagFirstEnvelope:
+    """Claude Code delivers a peer prompt that opens with the tag; every live relay was
+    header_mismatch until the module accepted it."""
+
+    def test_the_fixture_matches_the_logged_first_line(self):
+        assert _envelope("approved", "paulinator_worker_2", 22944).split("\n", 1)[0] == REAL_FIRST_LINE
+
+    def test_a_tag_first_relay_passes_all_six_checks(self, tmp_path):
+        world = World(tmp_path, "tag-pass")
+        world.record()
+        payload = world.payload(world.transcript())
+        assert payload["prompt"].startswith("<cross-session-message "), payload["prompt"]
+        out = world.check(payload)
+        assert out["verdict"] == "pass", out
+
+    def test_a_tag_first_chat_message_is_not_an_approval(self, tmp_path):
+        world = World(tmp_path, "tag-chat")
+        world.record()
+        body = "build is green, merging next"
+        out = world.check(world.payload(world.transcript(body=body), body=body))
+        assert out["verdict"] == "silent" and out["why"] == "not_an_approval", out
+
+    def test_the_old_header_form_still_passes(self, tmp_path):
+        world = World(tmp_path, "tag-old")
+        world.record()
+        payload = {**world.payload(world.transcript()), "prompt": _envelope("approved", header=True)}
+        out = world.check(payload)
+        assert out["verdict"] == "pass", out
+
+    @pytest.mark.parametrize("header", [False, True], ids=["tag-first", "header-first"])
+    def test_envelope_body_reads_both_forms(self, header):
+        prompt = _envelope("approved", header=header) + "\ntrailing guidance"
+        assert _module().envelope_body(prompt) == "approved"
+
+    def test_trace_row_matches_the_tag_first_form(self, tmp_path):
+        world = World(tmp_path, "tag-row")
+        payload = world.payload(world.transcript())
+        out = world.check(payload, approvers=())
+        row = _module().trace_row(payload, [], out)
+        assert row["header_matched"] is True, row
 
 
 # ---------------------------------------------------------------------------

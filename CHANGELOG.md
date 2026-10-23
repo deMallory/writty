@@ -4,6 +4,10 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **A relayed approval reaches its checks.** The hook prompt for a peer message opens with the `<cross-session-message` tag; the `Another Claude session sent a message:` line shows only in the conversation. `peer_approval.py` required that line, so every live relay was silent with `why: header_mismatch` (paulinator friction rows, 2026-10-23 16:05Z and 16:08Z, approvers set). The test fixture built the line, so the suite passed. The module now accepts the tag as the first line, or after the header; the sender still comes only from the transcript, never from the tag's `from-name`. `writ_mode_hint.py` also treats a tag-first prompt as a non-user turn, so a peer message no longer drives mode autoroute as if the user had typed it.
+
 ## [1.7.8] - 2026-10-23
 
 Ships the peer-prompt trace rows and one-phase work reminders, so a failed relayed approval says why.

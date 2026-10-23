@@ -94,9 +94,12 @@ def _peer_row(body, epoch: float, name: str = ORCH_NAME, pid: int = ORCH_PID) ->
             "message": {"role": "user", "content": _envelope(body or "", name, pid)}}
 
 
-def _envelope(body: str, name: str = ORCH_NAME, pid: int = ORCH_PID) -> str:
-    return (f"{ENVELOPE_HEADER}\n<cross-session-message from=\"uds:/tmp/claude/cc-socks/{pid}.sock\" "
-            f"from-name=\"{name}\" from-mode=\"prompting\">\n{body}\n</cross-session-message>")
+def _envelope(body: str, name: str = ORCH_NAME, pid: int = ORCH_PID, header: bool = False) -> str:
+    # The hook prompt opens with the tag itself, as the 2026-10-23 friction rows logged it.
+    # The header line shows only in the conversation; header=True builds that older form.
+    prompt = (f"<cross-session-message from=\"uds:/tmp/claude/cc-socks/{pid}.sock\" "
+              f"from-name=\"{name}\" from-mode=\"prompting\">\n{body}\n</cross-session-message>")
+    return f"{ENVELOPE_HEADER}\n{prompt}" if header else prompt
 
 
 class World:

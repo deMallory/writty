@@ -127,7 +127,7 @@ _HYPOTHETICAL_SPAN = re.compile(
 # markers. Anchored at the start so a user who quotes a marker mid-prompt is still classified.
 _NON_USER_TURN = re.compile(
     r"\A\s*(?:\[SYSTEM NOTIFICATION\b|<task-notification>|"
-    r"Another Claude session sent a message:|<agent-message\b)"
+    r"Another Claude session sent a message:|<agent-message\b|<cross-session-message\b)"
 )
 
 
