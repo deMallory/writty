@@ -695,7 +695,7 @@ STATE_MATCH=""
 for _state_pat in "$STATE_DIR_GUARD" "$LEGACY_STATE_DIR_GUARD" ".cache/writ/session" "state/writ/session" "/tmp/writ-current-session" "writ-session-" \
                   "writ-manual-test-grant" "manual_test_grant" "writ-grant-" \
                   "writ-gate-token" "reopen-planning" "auto-approve-gate" \
-                  "mint_gate_token"; do
+                  "mint_gate_token" ".claude/sessions/"; do
     case "$CMD_FOR_STATE_MATCH" in
         *"$_state_pat"*) STATE_MATCH="$_state_pat"; break ;;
     esac
@@ -1451,6 +1451,9 @@ _WRIT_HOME = os.environ.get("WRIT_DIR", "")
 _STATE_DIRS = tuple(d for d in (
     os.environ.get("WRIT_STATE_DIR_GUARD") or os.environ.get("WRIT_CACHE_DIR") or "",
     os.path.join(_WRIT_HOME, "var", "session") if _WRIT_HOME else "",
+    # Claude Code's live-session registry, which bin/lib/peer_approval.py trusts to map a
+    # pid to a session and a session to its name.
+    os.path.join(os.path.expanduser("~"), ".claude", "sessions"),
 ) if d)
 _POINTER = "/tmp/writ-current-session"
 

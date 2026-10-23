@@ -141,6 +141,9 @@ STREAM_MAP: dict[str, str] = {
     # The `approved anyway` waiver. Recorded so a systemic transcript failure that forces
     # every user onto the override phrase is MEASURABLE rather than invisible.
     "approval_evidence_override": "audit",
+    # A peer-relayed `approved` that failed one of bin/lib/peer_approval.py's six checks.
+    # The row names the check, so a relay that keeps failing is diagnosable afterwards.
+    "approval_relay_refused": "audit",
     # The rule-promotion path in the CLI (`writ review <rule_id> --promote`), one event
     # per refusal class so a fail-closed gate can never read like an absent one, plus the
     # successful authority change.
