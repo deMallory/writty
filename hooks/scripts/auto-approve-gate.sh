@@ -125,6 +125,49 @@ fi
 # Check approval pattern
 PROMPT_LOWER=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
+# ── Relayed approvals (bin/lib/peer_approval.py) ─────────────────────────────
+# ORCHESTRATOR SIDE: the human typed `approved <worker>`. Recorded in gate state, which
+# the write gates refuse to the agent, for that worker's hook to find. No token, no
+# advance: the approval belongs to the worker's gate, not this session's. The `case` is
+# the cheap filter; the module re-reads the WHOLE prompt from the payload, because
+# PROMPT holds only its first line.
+RELAY_STATE_DIR="${WRIT_CACHE_DIR:-$_WRIT_STATE_ROOT/session}"
+case "$PROMPT_LOWER" in
+    "approved "*)
+        mkdir -p "$RELAY_STATE_DIR" 2>/dev/null || true
+        RELAY_WORKER=$(printf '%s' "$STDIN_JSON" | python3 "$WRIT_DIR/bin/lib/peer_approval.py" record "$RELAY_STATE_DIR" 2>/dev/null || echo "")
+        if [ -n "$RELAY_WORKER" ]; then
+            echo "[Writ: approval for ${RELAY_WORKER} recorded; nothing was advanced in this session] Forward exactly \"approved\" to ${RELAY_WORKER} with SendMessage. Its approval hook checks this record, and the record is good for one gate within 10 minutes."
+            exit 0
+        fi
+        ;;
+esac
+
+# WORKER SIDE: a peer message. Only one whose six checks all pass becomes an exact
+# approval (RELAY=1 below); a refusal is recorded and ends the turn, and a silent verdict
+# (feature off, not an approval) falls through to classify(), which answers "none".
+RELAY=""
+if [ "$PROMPT" = "Another Claude session sent a message:" ]; then
+    RELAY_OUT=$(printf '%s' "$STDIN_JSON" | python3 "$WRIT_DIR/bin/lib/peer_approval.py" check "$RELAY_STATE_DIR" 2>/dev/null \
+        || printf 'refused\n0\nthe relay check did not run\n{"check": 0, "reason": "the relay check did not run"}\n')
+    RELAY_VERDICT=$(printf '%s\n' "$RELAY_OUT" | sed -n '1p')
+    case "$RELAY_VERDICT" in
+        pass) RELAY=1 ;;
+        refused)
+            RELAY_CHECK=$(printf '%s\n' "$RELAY_OUT" | sed -n '2p')
+            RELAY_REASON=$(printf '%s\n' "$RELAY_OUT" | sed -n '3p')
+            log_friction_event "$SESSION_ID" "" "approval_relay_refused" "$(printf '%s\n' "$RELAY_OUT" | sed -n '4p')"
+            cat <<DIRECTIVE
+[Writ: relayed approval refused at check ${RELAY_CHECK}, nothing was advanced]
+${RELAY_REASON}. No approval token was minted. Tell the orchestrator the relay was refused
+and why; the user approves either here, or by typing "approved <this session's name>" in
+the orchestrator again after this session has asked for the approval.
+DIRECTIVE
+            exit 0
+            ;;
+    esac
+fi
+
 # Approval detection delegates to the single source of truth in
 # bin/lib/approval_match.py (the hook and the tests bind to one module; no inline
 # detector to drift). SEC-INJ-CMD-001: PROMPT_LOWER is passed as an argv element,
@@ -150,6 +193,10 @@ case "$TIER" in
     exact|embedded|replan|override) ;;
     *) TIER="none" ;;
 esac
+# A passed relay is an exact approval; peer_approval.py already ran the evidence check.
+if [ -n "$RELAY" ]; then
+    TIER="exact"
+fi
 
 if [ "$TIER" = "none" ]; then
     # Debug prompt log, gated behind WRIT_DEBUG (default OFF).
@@ -261,7 +308,7 @@ fi
 # A MISSING TIER, NOT A FAILED ONE: the outcome is TIER=noevidence, which has its own arm
 # below rather than an early exit, so the turn still reaches the debug prompt log at the
 # tail exactly as every other tier does.
-if [ "$TIER" = "exact" ]; then
+if [ "$TIER" = "exact" ] && [ -z "$RELAY" ]; then
     EVIDENCE_OUT=$(printf '%s' "$LAST_ASSISTANT_JSON" | python3 -c "import sys; sys.path.insert(0, '$WRIT_DIR/bin/lib'); from approval_evidence import envelope_evidence_flags; asked, saw_text = envelope_evidence_flags(sys.argv[1], sys.stdin.read()); print('1' if asked else ''); print('1' if saw_text else '')" "$TRANSCRIPT_PATH" 2>/dev/null || printf '\n\n')
     EVIDENCE=${EVIDENCE_OUT%%$'\n'*}
     case "$EVIDENCE_OUT" in
@@ -570,7 +617,7 @@ entry = {
     'mode': sys.argv[2] if sys.argv[2] else None,
     'event': 'approval_pattern_match',
     'matched_prompt': sys.argv[3][:120],
-    'confirmation_source': 'pattern',
+    'confirmation_source': sys.argv[8],
     'outcome': outcome,
     'project_root': sys.argv[5],
 }
@@ -581,7 +628,7 @@ if sys.argv[7] in ('true', 'false'):
     entry['token_spent'] = sys.argv[7] == 'true'
 print(json.dumps(entry))
 " "$SESSION_ID" "${CURRENT_MODE:-}" "$PROMPT" "${ADVANCED_TO:-}" "${PROJECT_ROOT:-}" "${GATE_ERROR:-}" \
-        "${TOKEN_SPENT:-}" 2>/dev/null | python3 "$FA" --stdin-json 2>/dev/null || true
+        "${TOKEN_SPENT:-}" "$([ -n "$RELAY" ] && echo relay || echo pattern)" 2>/dev/null | python3 "$FA" --stdin-json 2>/dev/null || true
 
     if [ -n "$ADVANCED_TO" ]; then
         # Confirm the advance to the assistant/user via next-turn context, NAMING the

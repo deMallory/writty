@@ -37,13 +37,19 @@ POINTER_FILE="/tmp/writ-current-session"
 # the mint's fixed prefix rather than one session's path.
 TOKEN_PREFIX="/tmp/writ-gate-token-"
 
-VERDICT=$(WRIT_TGT="$FILE" WRIT_DIR_PROT="$PROTECTED_DIR" WRIT_DIR_LEGACY="$LEGACY_DIR" WRIT_PTR="$POINTER_FILE" \
+# Claude Code's live-session registry. bin/lib/peer_approval.py reads a pid's session id
+# and a session's name from it to decide a relayed approval, so an agent editing it could
+# rename itself into another worker's approval. Claude Code writes it; the agent does not.
+CLAUDE_SESSIONS_DIR="$HOME/.claude/sessions"
+
+VERDICT=$(WRIT_TGT="$FILE" WRIT_DIR_PROT="$PROTECTED_DIR" WRIT_DIR_LEGACY="$LEGACY_DIR" WRIT_DIR_SESSIONS="$CLAUDE_SESSIONS_DIR" WRIT_PTR="$POINTER_FILE" \
     WRIT_TOK_PREFIX="$TOKEN_PREFIX" python3 <<'PY'
 import os
 
 target = os.environ.get('WRIT_TGT', '')
 protected_dirs = [d for d in (os.environ.get('WRIT_DIR_PROT', ''),
-                              os.environ.get('WRIT_DIR_LEGACY', '')) if d]
+                              os.environ.get('WRIT_DIR_LEGACY', ''),
+                              os.environ.get('WRIT_DIR_SESSIONS', '')) if d]
 pointer = os.environ.get('WRIT_PTR', '')
 token_prefix = os.environ.get('WRIT_TOK_PREFIX', '')
 # A session cache or grant by NAME, in any directory. The migration also reads the var/session
