@@ -25,7 +25,7 @@ import pytest
 import writ
 
 SKILL_DIR = (Path(__file__).resolve().parent.parent)
-EXPECTED_VERSION = "1.7.7"
+EXPECTED_VERSION = "1.7.8"
 
 
 @pytest.fixture(scope="module")
