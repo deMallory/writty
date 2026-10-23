@@ -524,6 +524,13 @@ SYSTEM_NOTIFICATION_PREAMBLE_PROMPT = (
     'implement the export endpoint from the approved plan\n'
     '</task-notification>'
 )
+# A peer message as the hook receives it: the tag is the first line, with no header.
+TAG_FIRST_PEER_PROMPT = (
+    '<cross-session-message from="uds:/tmp/claude/cc-socks/22944.sock" '
+    'from-name="paulinator_worker_2" from-mode="prompting">\n'
+    'implement the export endpoint from the approved plan\n'
+    '</cross-session-message>'
+)
 BARE_AGENT_MESSAGE_PROMPT = (
     '<agent-message from="a32b4b449d3a0cffb">\n'
     '[Subagent hand-back] implement the export endpoint from the approved plan\n'
@@ -556,6 +563,9 @@ class TestNonUserTurnDetection:
 
     def test_bare_agent_message_opening_with_no_lead_line_is_non_user(self):
         assert _is_non_user_turn(BARE_AGENT_MESSAGE_PROMPT) is True
+
+    def test_tag_first_peer_message_is_non_user(self):
+        assert _is_non_user_turn(TAG_FIRST_PEER_PROMPT) is True
 
     def test_none_is_not_a_non_user_turn(self):
         assert _is_non_user_turn(None) is False

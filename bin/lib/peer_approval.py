@@ -40,6 +40,7 @@ from approval_evidence import _assistant_text, has_request_marker  # noqa: E402
 from approval_match import OVERRIDE_PHRASE, is_approval  # noqa: E402
 
 ENVELOPE_HEADER = "Another Claude session sent a message:"
+ENVELOPE_TAG = "<cross-session-message "
 RECORD_TTL_SECONDS = 600
 _TAIL_LINES = 400
 _FIRST_LINE_MAX = 120
@@ -70,12 +71,26 @@ def relay_target(prompt: str) -> str:
     return match.group(1) if match else ""
 
 
+def _tag_line(prompt: str) -> int:
+    """Index of the opening-tag line of a peer envelope, -1 when the prompt is not one.
+
+    The hook receives the tag as line 0; the header line shows only in the conversation.
+    Line 1 after that header is the older form, still accepted.
+    """
+    lines = (prompt or "").split("\n", 2)
+    if lines[0].startswith(ENVELOPE_TAG):
+        return 0
+    if len(lines) > 1 and lines[0] == ENVELOPE_HEADER and lines[1].startswith(ENVELOPE_TAG):
+        return 1
+    return -1
+
+
 def envelope_body(prompt: str) -> str:
     """The message text inside a peer envelope prompt, "" when it is not one."""
-    lines = (prompt or "").split("\n")
-    if len(lines) < 2 or lines[0] != ENVELOPE_HEADER:
+    tag = _tag_line(prompt)
+    if tag < 0:
         return ""
-    body = "\n".join(lines[2:])
+    body = "\n".join(prompt.split("\n")[tag + 1:])
     return body.split("</cross-session-message>", 1)[0].strip()
 
 
@@ -153,7 +168,7 @@ def trace_row(payload: dict, approvers: list, out: dict) -> dict:
     """
     first = (payload.get("prompt") or "").split("\n", 1)[0]
     return {
-        "header_matched": first == ENVELOPE_HEADER,
+        "header_matched": _tag_line(payload.get("prompt") or "") >= 0,
         "first_line": repr(first)[:_FIRST_LINE_MAX],
         "approvers_set": any(a and a.strip() for a in approvers),
         "verdict": out.get("verdict"),
@@ -178,9 +193,9 @@ def _check(payload, state_dir, approvers, sessions_dir, now):
     approvers = [a.strip() for a in approvers if a and a.strip()]
     if not approvers:
         return _verdict("silent", why="approvers_empty")
-    # The hook runs this for any prompt that looks like a peer message, so the header is
-    # tested here. A mismatch never passes: envelope_body requires the exact header.
-    if (payload.get("prompt") or "").split("\n", 1)[0] != ENVELOPE_HEADER:
+    # The hook runs this for any prompt that looks like a peer message, so the envelope
+    # shape is tested here. A mismatch never passes: envelope_body requires the same shape.
+    if _tag_line(payload.get("prompt") or "") < 0:
         return _verdict("silent", why="header_mismatch")
     # Cheap silent exit for ordinary peer chat, read from the prompt itself, so a message
     # that is not an approval never reaches a check that could write a refusal row.
