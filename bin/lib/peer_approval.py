@@ -22,8 +22,10 @@ THE SIX CHECKS (plan.md numbers them), all required:
   6. that record is newer than check 4's request, so one human approval clears one gate.
 
 Fail-closed like approval_evidence.py: an unreadable or garbled file is a refusal and
-nothing here raises. Silent outcomes (feature off, a peer message that is not an
-approval) write no audit row, so ordinary peer chat leaves no trace.
+nothing here raises. Silent outcomes (feature off, a header that is not the envelope's, a
+peer message that is not an approval) write no audit row; the hook writes one
+`peer_prompt_unrelayed` friction row from `trace_row` instead. The first live relay
+failed silently and nothing could say which of those it was.
 """
 
 import json
@@ -40,6 +42,7 @@ from approval_match import OVERRIDE_PHRASE, is_approval  # noqa: E402
 ENVELOPE_HEADER = "Another Claude session sent a message:"
 RECORD_TTL_SECONDS = 600
 _TAIL_LINES = 400
+_FIRST_LINE_MAX = 120
 _RELAY_PROMPT_RE = re.compile(r"approved ([a-z0-9][a-z0-9_.-]*)")
 # A session id becomes part of a file name, so anything but the uuid alphabet is refused.
 _SAFE_ID_RE = re.compile(r"[A-Za-z0-9-]+")
@@ -137,8 +140,28 @@ def _session_name(sessions_dir: str, session_id: str) -> str:
     return ""
 
 
-def _verdict(verdict: str, check: int | None = None, reason: str = "") -> dict:
-    return {"verdict": verdict, "check": check, "reason": reason}
+def _verdict(verdict: str, check: int | None = None, reason: str = "",
+             why: str | None = None) -> dict:
+    return {"verdict": verdict, "check": check, "reason": reason, "why": why}
+
+
+def trace_row(payload: dict, approvers: list, out: dict) -> dict:
+    """The friction row for a peer prompt that advanced nothing.
+
+    `first_line` is a repr so a stray character in a header (a tab, a changed word) is
+    visible in the log, which a header mismatch otherwise hides.
+    """
+    first = (payload.get("prompt") or "").split("\n", 1)[0]
+    return {
+        "header_matched": first == ENVELOPE_HEADER,
+        "first_line": repr(first)[:_FIRST_LINE_MAX],
+        "approvers_set": any(a and a.strip() for a in approvers),
+        "verdict": out.get("verdict"),
+        # "" for no check, as the CLI's line 2 prints it: the friction writer drops a
+        # None field, and the row has to show that no check was reached.
+        "check": "" if out.get("check") is None else out.get("check"),
+        "why": out.get("why"),
+    }
 
 
 def check(payload: dict, state_dir: str, approvers: list, sessions_dir: str,
@@ -154,11 +177,15 @@ def check(payload: dict, state_dir: str, approvers: list, sessions_dir: str,
 def _check(payload, state_dir, approvers, sessions_dir, now):
     approvers = [a.strip() for a in approvers if a and a.strip()]
     if not approvers:
-        return _verdict("silent")
+        return _verdict("silent", why="approvers_empty")
+    # The hook runs this for any prompt that looks like a peer message, so the header is
+    # tested here. A mismatch never passes: envelope_body requires the exact header.
+    if (payload.get("prompt") or "").split("\n", 1)[0] != ENVELOPE_HEADER:
+        return _verdict("silent", why="header_mismatch")
     # Cheap silent exit for ordinary peer chat, read from the prompt itself, so a message
     # that is not an approval never reaches a check that could write a refusal row.
     if not is_approval(envelope_body(payload.get("prompt") or "").lower()):
-        return _verdict("silent")
+        return _verdict("silent", why="not_an_approval")
 
     rows = _transcript_rows(str(payload.get("transcript_path") or ""))
     users = [i for i, r in enumerate(rows) if r.get("type") == "user"]
@@ -173,7 +200,7 @@ def _check(payload, state_dir, approvers, sessions_dir, now):
 
     body = origin.get("body")
     if not isinstance(body, str) or not is_approval(body.strip().lower()):
-        return _verdict("silent")
+        return _verdict("silent", why="not_an_approval")
 
     request = _request_before(rows[:users[-1]])
     if request is None:
@@ -208,7 +235,7 @@ def main(argv: list) -> int:
     """`record <state_dir>` or `check <state_dir>`, the hook payload on stdin.
 
     record prints the worker name when one was recorded. check prints the verdict, the
-    check number, the reason, and the audit row's JSON, one per line.
+    check number, the reason, the audit row's JSON and the trace row's JSON, one per line.
     """
     try:
         payload = json.loads(sys.stdin.read())
@@ -232,6 +259,7 @@ def main(argv: list) -> int:
         print("" if out["check"] is None else out["check"])
         print(out["reason"].replace("\n", " "))
         print(json.dumps({"check": out["check"], "reason": out["reason"]}))
+        print(json.dumps(trace_row(payload, approvers, out)))
         return 0
     return 1
 

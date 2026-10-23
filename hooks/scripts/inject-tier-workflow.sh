@@ -125,15 +125,17 @@ case "$MODE" in
         AC_TEXT="[Writ: Patch mode. Small bounded change: no plan gate, no test-skeleton gate. Read the relevant rule docs, write the code, run the static analysis, and run the tests you touch. Bounded to 3 distinct files: if the task outgrows that, run writ mode set work and pass the plan gate.]"
         ;;
     work)
-        # Check if THIS SESSION's own plan gate already exists. The project-wide path this
-        # replaces was satisfied by any session's approval, so a second instance in the same
-        # repo got no workflow instructions after its own `mode set work` -- silence that
-        # reads as "already past the plan gate". An unusable session id yields "" and the
-        # instructions print, which over-instructs rather than skipping the gate.
-        _WORK_GATE_DIR=$(writ_gate_dir "$PROJECT_ROOT" "$HOOK_SESSION_ID")
-        if [ -n "$_WORK_GATE_DIR" ] && [ -f "$_WORK_GATE_DIR/phase-a.approved" ]; then
-            exit 0
-        fi
+        # Skip only when THIS SESSION's cache says it is past planning, the authority every
+        # gate reads. A gate artifact on disk is not: it goes missing under a daemon older
+        # than its writer, and then this hook and writ-rag-inject.sh reported two phases
+        # for one session. No cache or no phase prints the instructions, which
+        # over-instructs rather than skipping the gate.
+        _WORK_PHASE=$(_writ_session read "$HOOK_SESSION_ID" 2>/dev/null \
+            | json_transform '.current_phase' "d.get('current_phase')" 2>/dev/null || true)
+        case "$_WORK_PHASE" in
+            ""|planning) ;;
+            *) exit 0 ;;
+        esac
 
         AC_TEXT=$(cat << 'WORKFLOW'
 [Writ: Work mode declared -- workflow instructions]

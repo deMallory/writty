@@ -125,6 +125,9 @@ REAL_TREE_DIRECTORY_DELETERS = {
     # Added 2026-10-23 with relayed gate approvals. It drives the real approval hook
     # for the relay's happy path and sweeps through `confined_leak_sweep` like its siblings.
     "test_peer_approval.py": "confined",
+    # Added 2026-10-23 with the peer-prompt trace. It imports test_peer_approval's
+    # leak-sweep fixture rather than defining its own.
+    "test_peer_prompt_trace.py": "inherits:test_peer_approval",
     "test_phase_machine_reset.py": "inherits:test_gate_token_binding",
     "test_replan_reopen_planning.py": "confined",
     "test_review_promote_authority.py": "confined",

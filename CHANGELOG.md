@@ -4,6 +4,18 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **A peer message that advances nothing now says why.** The first live relayed approval failed and left no row: a peer prompt with `WRIT_PEER_APPROVERS` empty, a header other than `Another Claude session sent a message:`, or a body that is not an approval all exited silently. `auto-approve-gate.sh` now spots a peer prompt with a shell `case` on the raw payload (no process on ordinary turns) and runs `peer_approval.py check` whatever the first line is. Every silent outcome writes one `peer_prompt_unrelayed` friction row: `why` (`approvers_empty`, `header_mismatch`, `not_an_approval`, or `no_session_id` for the early exit), whether the header matched, the first line as a repr of at most 120 characters, whether approvers were set, the verdict and the check. A refusal keeps its `approval_relay_refused` audit row. A mismatched header still never passes.
+
+### Fixed
+
+- **Every hook reports the same phase for one session.** The work-mode reminders in `writ-rag-inject.sh` and `inject-tier-workflow.sh` read `.claude/gates/<sid>/*.approved`, while every gate reads the session cache. When the files were missing, a worker at `testing` was told "plan gate pending", and its user approved the test skeletons believing it was the plan. Both reminders now read `current_phase` from the session cache: `planning` names the plan gate, `testing` the test-skeletons gate, a later phase prints nothing.
+
+### Known issue
+
+- **A long-running daemon can predate the gate-artifact writer.** A daemon started before `698e91e` reached main (2026-10-02 12:55) advances phases but writes no `.approved` files, and logs no `gate_artifact_refused` row because it has no writer. Restart the daemon after updating the plugin.
+
 ## [1.7.7] - 2026-10-23
 
 Ships everything merged since 1.7.6 to installed plugins, led by gate approvals relayed from an orchestrator session.

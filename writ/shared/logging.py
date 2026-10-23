@@ -166,6 +166,9 @@ STREAM_MAP: dict[str, str] = {
     "hallucinated_rule_ids": "friction",
     "approval_pattern_miss": "friction",
     "approval_pattern_match": "friction",
+    # A peer message that advanced nothing and was not refused, with the reason
+    # (bin/lib/peer_approval.py trace_row). Friction, not audit: no gate decision was made.
+    "peer_prompt_unrelayed": "friction",
     "subagent_type_fallback": "friction",
     # A user-role entry in a sub-agent's transcript carries a free-text block it should not
     # have: the structural signature of Claude Code splicing a queued user keystroke

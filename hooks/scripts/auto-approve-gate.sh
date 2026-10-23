@@ -59,6 +59,15 @@ source "$WRIT_DIR/bin/lib/common.sh"
 # Read stdin once
 STDIN_JSON=$(cat)
 
+# A peer message, by the raw payload. A shell `case`, not a python spawn, because this
+# runs on every prompt. Both markers, because a header that drifted is one of the causes
+# the trace row below exists to name. Every peer prompt that advances nothing writes one
+# `peer_prompt_unrelayed` friction row saying why: the first live relay failed with none.
+PEER_PROMPT=""
+case "$STDIN_JSON" in
+    *cross-session-message*|*"Another Claude session sent a message"*) PEER_PROMPT=1 ;;
+esac
+
 # Extract session_id and prompt
 PARSED=$(echo "$STDIN_JSON" | python3 -c "
 import sys, json
@@ -98,6 +107,9 @@ LAST_ASSISTANT_JSON=$(echo "$PARSED" | sed -n '5p')
 # paper over: record it and stop.
 if [ -z "$SESSION_ID" ]; then
     writ_critical auto-approve-gate "no session_id in hook payload; refusing to synthesize one"
+    if [ -n "$PEER_PROMPT" ]; then
+        log_friction_event "" "" "peer_prompt_unrelayed" '{"verdict": "silent", "check": "", "why": "no_session_id"}'
+    fi
     exit 0
 fi
 
@@ -145,11 +157,13 @@ esac
 
 # WORKER SIDE: a peer message. Only one whose six checks all pass becomes an exact
 # approval (RELAY=1 below); a refusal is recorded and ends the turn, and a silent verdict
-# (feature off, not an approval) falls through to classify(), which answers "none".
+# (feature off, header mismatch, not an approval) writes its trace row and falls through
+# to classify(), which answers "none". The module tests the header itself, so a drifted
+# one is named in the log instead of skipping the check unseen.
 RELAY=""
-if [ "$PROMPT" = "Another Claude session sent a message:" ]; then
+if [ -n "$PEER_PROMPT" ]; then
     RELAY_OUT=$(printf '%s' "$STDIN_JSON" | python3 "$WRIT_DIR/bin/lib/peer_approval.py" check "$RELAY_STATE_DIR" 2>/dev/null \
-        || printf 'refused\n0\nthe relay check did not run\n{"check": 0, "reason": "the relay check did not run"}\n')
+        || printf 'refused\n0\nthe relay check did not run\n{"check": 0, "reason": "the relay check did not run"}\n{}\n')
     RELAY_VERDICT=$(printf '%s\n' "$RELAY_OUT" | sed -n '1p')
     case "$RELAY_VERDICT" in
         pass) RELAY=1 ;;
@@ -164,6 +178,9 @@ and why; the user approves either here, or by typing "approved <this session's n
 the orchestrator again after this session has asked for the approval.
 DIRECTIVE
             exit 0
+            ;;
+        *)
+            log_friction_event "$SESSION_ID" "" "peer_prompt_unrelayed" "$(printf '%s\n' "$RELAY_OUT" | sed -n '5p')"
             ;;
     esac
 fi
