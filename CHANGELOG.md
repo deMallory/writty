@@ -4,6 +4,10 @@ All notable changes to Writ are documented in this file. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.7] - 2026-10-23
+
+Ships everything merged since 1.7.6 to installed plugins, led by gate approvals relayed from an orchestrator session.
+
 ### Added
 
 - **A worker's gate can be approved from an orchestrator session.** The user types `approved <worker>` in the orchestrator; its approval hook records that in Writ's session state and mints nothing. The orchestrator forwards `approved` to the worker with SendMessage, and the worker's hook accepts it as an exact approval only when `bin/lib/peer_approval.py` passes six checks: the prompt is a peer message Claude Code verified, the sender is in `WRIT_PEER_APPROVERS`, the body is `approved`, the worker had asked, a record from the sender names this worker and is under 10 minutes old, and that record is newer than the request. A passed record is spent, so one approval clears one gate. Any failed check mints nothing and writes one `approval_relay_refused` audit row naming the check. `WRIT_PEER_APPROVERS` is empty by default, which keeps the feature off. The human approval is a hook-written record, not a read of the orchestrator's transcript, because the orchestrator agent could append a fake row to its own transcript.
