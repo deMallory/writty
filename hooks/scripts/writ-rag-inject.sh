@@ -907,31 +907,25 @@ case "$CURRENT_MODE" in
         debug "injected review mode reminder"
         ;;
     work)
-        # Work mode: inject workflow reminder based on gate state. _PROJECT_ROOT is
-        # computed once near the top of the hook (the retrieval requests need it too).
-        # THIS SESSION's own gate directory, never the project-wide one: a flat
-        # phase-a.approved from any session in the repo used to silence this reminder for a
-        # session that had approved nothing, and told it "test-skeletons gate pending",
-        # which reads as progress it never made. An empty answer (no project root, or a
-        # session id that cannot be a path component) means there is nowhere to read gate
-        # state from, so no reminder is printed -- the same silence a rootless project got
-        # before, and never a reminder derived from another session's files.
-        _GATE_DIR=$(writ_gate_dir "$_PROJECT_ROOT" "$SESSION_ID")
-
-        if [ -n "$_GATE_DIR" ]; then
-            _PHASE_A="$_GATE_DIR/phase-a.approved"
-            _TEST_SKEL="$_GATE_DIR/test-skeletons.approved"
-
-            if [ ! -f "$_PHASE_A" ]; then
+        # Work mode: inject workflow reminder from THIS SESSION's cache phase, the same
+        # authority every gate and the approval hook read. It used to read the
+        # `.claude/gates/<sid>/*.approved` artifacts, which disagree with the cache whenever
+        # they are missing: a daemon older than the artifact writer, a session-end cleanup
+        # followed by a resume. A worker then saw "plan gate pending" while its gates were
+        # at testing, and its user approved the wrong gate. A work cache with no phase gets
+        # the plan reminder: over-instructing beats hiding a gate.
+        case "$(parsed_field "$CACHE" "current_phase")" in
+            ""|planning)
                 echo ""
                 echo "[Writ: Work mode, plan gate pending. Enter /plan, write plan.md, exit, present, wait for approval.]"
                 debug "injected work mode state (plan)"
-            elif [ ! -f "$_TEST_SKEL" ]; then
+                ;;
+            testing)
                 echo ""
                 echo "[Writ: Work mode, test-skeletons gate pending. Write test files to disk, present, wait for approval.]"
                 debug "injected work mode state (test-skeletons)"
-            fi
-        fi
+                ;;
+        esac
         ;;
 esac
 
